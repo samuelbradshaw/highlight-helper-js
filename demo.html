@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Text Selection Demo</title>
+    <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">
+    <style>
+      :root {
+        -webkit-text-size-adjust: 100%;
+        --page-bg: hsl(0, 0%, 100%);
+        --text-color: hsl(0, 0%, 0%);
+        --gray: hsl(0, 0%, 50%);
+      }
+      @media (prefers-color-scheme: dark) { :root {
+        --page-bg: hsl(0, 0%, 17%);
+        --text-color: hsl(0, 0%, 95%);
+        --gray: hsl(0, 0%, 70%);
+      }}
+      
+      body {
+        background-color: var(--page-bg);
+        color: var(--text-color);
+      }
+      img { width: 120px; float: right; }
+      a { color: var(--gray); }
+      button { cursor: pointer; }
+      
+      #annotation-menu {
+        font-family: "Helvetica", sans-serif;
+        font-size: 0.8em;
+      }
+      #annotation-menu .buttons-area {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+        gap: 0.6em;
+        overflow: scroll;
+      }
+      #annotation-menu button {
+        background-color: var(--page-bg);
+        border: 0; border-radius: 0.4em;
+        padding: 0.6em 0.4em;
+        font-size: inherit;
+      }
+      #annotation-menu button[name="hh-color"] { color: var(--page-bg); }
+      #annotation-menu button[name="hh-color"][value="red"] { background-color: hsl(352, 99%, 65%); }
+      #annotation-menu button[name="hh-color"][value="orange"] { background-color: hsl(31, 99%, 58%); }
+      #annotation-menu button[name="hh-color"][value="yellow"] { background-color: hsl(50, 98%, 61%); }
+      #annotation-menu button[name="hh-color"][value="green"] { background-color: hsl(75, 70%, 49%); }
+      #annotation-menu button[name="hh-color"][value="blue"] { background-color: hsl(182, 86%, 47%); }
+      #annotation-menu button[name="hh-style"] { color: inherit; border: 2px solid var(--gray); }
+      #annotation-menu button[name="hh-remove"] { background-color: var(--gray); color: var(--page-bg); }
+      
+      #disambiguation-panel {
+        color: inherit;
+        background-color: inherit;
+        width: 400px; max-width: 100%;
+        flex-direction: column;
+        gap: 0.5em;
+      }
+      #disambiguation-panel[open] { display: flex; }
+      #disambiguation-buttons button {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5em;
+        border: none;
+        background-color: inherit;
+        color: inherit;
+        font-family: inherit;
+        font-size: inherit;
+      }
+      #disambiguation-panel::backdrop {
+        background-color: hsla(0, 0%, 0%, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title1">Highlight Helper Demo</h1>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/CMYK_color_model.svg/180px-CMYK_color_model.svg.png">
+      <p id="p1"><b>Highlight Helper</b> is a JavaScript tool that enables highlighting or underlining text in an HTML page (such as a digital book or article). Behind the scenes, it uses the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, which makes it easy to highlight <b>various <i>combinations</i></b> of <b>formatted</b> text.</p>
+      <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images (right) and Japanese ruby/furigana (below) are highlighted around.</p>
+      <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
+    </main>
+    
+    <hr>
+    <aside id="annotation-menu">
+      <div class="buttons-area">
+        <button name="hh-color" value="red">Red</button>
+        <button name="hh-color" value="orange">Orange</button>
+        <button name="hh-color" value="yellow">Yellow</button>
+        <button name="hh-color" value="green">Green</button>
+        <button name="hh-color" value="blue">Blue</button>
+        <button name="hh-style" value="fill" checked> Fill</button>
+        <button name="hh-style" value="single-underline"> Underline</button>
+        <button name="hh-style" value="double-underline"> Double underline</button>
+        <button name="hh-style" value="invisible"> Invisible</button>
+        <button name="hh-style" value="redacted"> Redacted</button>
+        <button name="hh-remove">Remove</button>
+      </div>
+      <p>
+        <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
+        <label><input type="checkbox" id="hh-snap-to-word"> Snap selection to the nearest word</label><br>
+      </p>
+      <p>
+        Highlighting mode:<br>
+        <label><input type="radio" name="hh-highlight-mode" value="default" checked> Default</label><br>
+        <label><input type="radio" name="hh-highlight-mode" value="live"> Live highlighting</label><br>
+        <label><input type="radio" name="hh-highlight-mode" value="auto"> Auto (Live when using stylus)</label><br>
+      </p>
+      <b>Active highlight:</b>
+      <p id="selection-text">N/A</p>
+      <p id="selection-info"></p>
+    </aside>
+    <dialog id="disambiguation-panel">
+      <h1>Select One</h1>
+      <div id="disambiguation-buttons"></div>
+      <button id="disambiguation-cancel">Cancel</button>
+    </dialog>
+    
+    <!-- Link to the Highlight Helper JavaScript file -->
+    <script src="highlight-helper.js"></script>
+    <script>
+      
+      // Initialize Highlight Helper
+      options = {
+        'containerSelector': 'main',
+        'paragraphSelector': 'main [id]',
+        'colors': {
+          'red': 'hsl(352, 99%, 65%)',
+          'orange': 'hsl(31, 99%, 58%)',
+          'yellow': 'hsl(50, 98%, 61%)',
+          'green': 'hsl(75, 70%, 49%)',
+          'blue': 'hsl(182, 86%, 47%)',
+        },
+        'styles': {
+          'fill': 'background-color: hsl(from {color} h s l / 40%);',
+          'single-underline': 'text-decoration: underline; text-decoration-color: {color}; text-underline-offset: 0.15em; text-decoration-thickness: 0.15em; text-decoration-skip-ink: none;',
+          'double-underline': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-style: double;',
+          'invisible': 'background-color: transparent;',
+          'redacted': 'background-color: transparent; color: transparent;',
+        },
+      }
+      let existingHighlightsById = {}
+      const highlighter = new Highlighter(options, existingHighlightsById);
+      highlighter.drawHighlights();
+      
+      
+      // Call Highlight Helper methods when color, style, or remove buttons on this demo page are tapped
+      const colorButtons = document.getElementsByName('hh-color');
+      for (const colorButton of colorButtons) {
+        colorButton.addEventListener('click', () => { highlighter.setColor(colorButton.value); });
+      }
+      const styleButtons = document.getElementsByName('hh-style');
+      for (const styleButton of styleButtons) {
+        styleButton.addEventListener('click', () => { highlighter.setStyle(styleButton.value); });
+      }
+      const removeButton = document.getElementsByName('hh-remove')[0];
+      removeButton.addEventListener('click', highlighter.removeHighlight);
+      document.addEventListener('keydown', respondToKeyPress);
+      function respondToKeyPress(event) {
+        if (event.key === 'Backspace') highlighter.removeHighlight();
+      }
+      
+      
+      // Call Highlight Helper methods when options are changed
+      const rememberStyleCheckbox = document.getElementById('hh-remember-style');
+      const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
+      const highlightModeRadioButtons = document.getElementsByName('hh-highlight-mode');
+      rememberStyleCheckbox.addEventListener('change', (event) => { highlighter.setOption('rememberStyle', event.currentTarget.checked); });
+      snapToWordCheckbox.addEventListener('change', (event) => { highlighter.setOption('snapToWord', event.currentTarget.checked); });
+      for (const highlightModeRadioButton of highlightModeRadioButtons) {
+        highlightModeRadioButton.addEventListener('change', (event) => {
+          let highlightMode = document.querySelector('[name="hh-highlight-mode"]:checked').value;
+          highlighter.setOption('highlightMode', highlightMode);
+        });
+      }
+      
+      
+      // Listen for and respond to highlight info sent back from Highlight Helper
+      const container = document.querySelector(options.containerSelector);
+      const selectionTextDiv = document.getElementById('selection-text');
+      const selectionInfoDiv = document.getElementById('selection-info');
+      container.addEventListener('hh:highlightactivate', updateHighlightInfo);
+      container.addEventListener('hh:highlightdeactivate', updateHighlightInfo);
+      function updateHighlightInfo(event) {
+        if (event.detail.text) {
+          selectionTextDiv.innerHTML = event.detail.text;
+          selectionInfoDiv.innerHTML = `
+            <b>Selection start:</b> #${event.detail.startParagraphId}, offset ${event.detail.startParagraphOffset}<br>
+            <b>Selection end:</b> #${event.detail.endParagraphId}, offset ${event.detail.endParagraphOffset}
+          `;
+        } else {
+          selectionTextDiv.innerHTML = '';
+          selectionInfoDiv.innerHTML = 'N/A'
+        }
+      }
+      
+      // Listen for and respond to ambiguous actions sent back from Highlight Helper (when a user taps on overlapping highlights, or an overlapping link and highlight)
+      const disambiguationPanel = document.getElementById('disambiguation-panel');
+      const disambiguationButtonsDiv = document.getElementById('disambiguation-buttons');
+      const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
+      container.addEventListener('hh:ambiguousaction', handleAmbiguousAction);
+      function handleAmbiguousAction(event) {
+        disambiguationButtonsDiv.innerHTML = '';
+        for (const highlight of event.detail.highlights) {
+          let buttonStyle = options.styles[highlight.style].replace('{color}', options.colors[highlight.color])
+          let buttonHtml = `
+            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.text}</button><br>
+          `;
+          disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
+        }
+        for (const hyperlink of event.detail.hyperlinks) {
+          let buttonStyle = 'color: var(--gray); text-decoration: underline;'
+          let buttonHtml = `
+            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">${hyperlink.innerHTML}</button><br>
+          `;
+          disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
+        }
+        disambiguationPanel.showModal();
+      }
+      disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
+      
+    </script>
+    
+  </body>
+</html>

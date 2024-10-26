@@ -62,12 +62,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   
   // Set the highlight color
   this.setColor = (color) => {
-    let selection = window.getSelection();
-    if (selection.type == 'None' && previousSelectionRange) {
-      // iOS Safari deselects text when a button is tapped. This restores the selection.
-      selection.addRange(previousSelectionRange);
-      previousSelectionRange = null;
-    }
+    let selection = getRestoredSelectionOrCaret(window.getSelection());
     if (selection.type != 'Range') return;
     color = color ?? options.defaultColor;
     let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
@@ -79,12 +74,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   
   // Set the highlight style
   this.setStyle = (style) => {
-    let selection = window.getSelection();
-    if (selection.type == 'None' && previousSelectionRange) {
-      // iOS Safari deselects text when a button is tapped. This restores the selection.
-      selection.addRange(previousSelectionRange);
-      previousSelectionRange = null;
-    }
+    let selection = getRestoredSelectionOrCaret(window.getSelection());
     if (selection.type != 'Range') return;
     let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
     style = style ?? options.defaultStyle;
@@ -96,7 +86,6 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
-    // TODO: Figure out why Chrome on Android doesn't show selection handles when a highlight is selected
     // TODO: Show custom selection handles in desktop browser
     this.deactivateSelection();
     let selection = window.getSelection();
@@ -116,15 +105,15 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   }
   
   // Deactivate any highlights that are currently active/selected
-  this.deactivateSelection = (triggeredBySelectionChange = false) => {
+  this.deactivateSelection = () => {
     let deactivatedHighlightId = activeHighlightId;
     activeHighlightId = null;
     allowNextHyperlinkInteraction = false;
     previousSelectionRange = null;
+    window.getSelection().removeAllRanges();
     container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
       highlightId: deactivatedHighlightId,
     }}));
-    if (!triggeredBySelectionChange) window.getSelection().removeAllRanges();
     updateSelectionStyle();
   }
   
@@ -134,12 +123,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     if (highlightId && highlightsById.hasOwnProperty(highlightId)) {
       deletedHighlightId = highlightId;
     } else {
-      let selection = window.getSelection();
-      if (selection.type == 'None' && previousSelectionRange) {
-        // iOS Safari deselects text when a button is tapped. This restores the selection.
-        selection.addRange(previousSelectionRange);
-        previousSelectionRange = null;
-      }
+      let selection = getRestoredSelectionOrCaret(window.getSelection());
       if (selection.type != 'Range') return;
       if (activeHighlightId) {
         deletedHighlightId = activeHighlightId;
@@ -179,18 +163,16 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     
   // -------- EVENT LISTENERS --------
   
-  // Listen for selection changes (new selection, change in selection range, or selection collapsing to a caret)
+  // Selection change in document (new selection, change in selection range, or selection collapsing to a caret)
   document.addEventListener('selectionchange', (event) => { debounce(respondToSelectionChange(event), 10); });
   const respondToSelectionChange = (event) => {
-    let selection = window.getSelection();
-    if (selection.type != 'Range') {
-      if (activeHighlightId) {
-        this.deactivateSelection(true);
-      } else {
-        this.deactivateSelection(true);
-        checkForTapTargets(selection);
-      }
-    } else {
+    let selection = getRestoredSelectionOrCaret(window.getSelection());
+    // Deactivate active highlight when tapping away
+    if (activeHighlightId && selection.type == 'Caret') this.deactivateSelection();
+    if (isSafari && !activeHighlightId && selection.type == 'Caret') {
+      // SAFARI ONLY: Check for tapped highlights or links (for other browsers, see pointerup event listener)
+      checkForTapTargets(selection);
+    } else if (selection.type == 'Range') {
       let selectionRange = selection.getRangeAt(0);
       if (options.highlightMode == 'live' || (options.highlightMode == 'auto' && isStylus == true)) {
         createOrUpdateHighlight(highlightsById[activeHighlightId]?.color ?? options.defaultColor, highlightsById[activeHighlightId]?.style ?? options.defaultColor, selection);
@@ -201,23 +183,25 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     }
   }
   
-  // Listen for pointerdown events (used to detect stylus; also to restore a valid selection on iOS Safari)
+  // Pointer down in annotatable container
   container.addEventListener('pointerdown', (event) => respondToTap(event) );
   const respondToTap = (event) => {
     isStylus = event.pointerType == 'pen';
-    
-    // In most browsers, tapping or clicking somewhere on the page creates a selection of 0 character length (selection.type == "Caret"). iOS Safari instead clears the selection (selection.type == "None"). This workaround adds the selection when a user taps, if it's missing, so the selectionchange event can be properly triggered.
-    let selection = window.getSelection();
-    if (selection.type == 'None') {
-      range = getRangeFromTapEvent(event);
-      selection.addRange(range);
-    }
   }
   
-  // Listen for pointerup events (used to adjust the text selection if snap to word is on)
-  // TODO: Simplify based on this? https://stackoverflow.com/a/7380435/1349044
-  window.addEventListener('pointerup', adjustSelectionRange);
-  function adjustSelectionRange(event) {
+  // Pointer up in annotatable container
+  container.addEventListener('pointerup', (event) => {
+    // NON-SAFARI BROWSERS: Check for tapped highlights or links (for Safari, see selectionchange event listener)
+    if (activeHighlightId || isSafari) return;
+    let selection = getRestoredSelectionOrCaret(window.getSelection(), event);
+    checkForTapTargets(selection);
+  });
+  
+  // Pointer up in window
+  window.addEventListener('pointerup', respondToPointerUp);
+  function respondToPointerUp(event) {
+    // Adjust the text selection if "snap to word" is on
+    // TODO: Simplify based on this? https://stackoverflow.com/a/7380435/1349044
     if (!options.snapToWord) return;
     
     let selection = window.getSelection();
@@ -253,7 +237,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     selection.addRange(newSelectionRange);
   }
   
-  // Listen for hyperlink clicks
+  // Hyperlink click (for each hyperlink in annotatable container)
   for (const hyperlink of hyperlinks) {
     hyperlink.addEventListener('click', (event) => {
       if (allowNextHyperlinkInteraction) {
@@ -272,12 +256,11 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   
   // -------- MAJOR FUNCTIONS --------
   
-  // Check if the selection caret (created when a user taps on text) is in the range of an existing highlight. If it is, select the highlight for editing.
-  // TODO: If there's no activeHighlightId and the selection range matches the selection range of existing highlight(s), consider allowing the user to choose between creating a new highlight or editing their exiting highlight(s). This could help users who don't understand how to re-select a highlight to edit it.
+  // Check if the selection caret (created when a user taps on text) is in the range of an existing highlight or link. If it is, activate the highlight or link.
   const checkForTapTargets = (selection) => {
-    if (selection.type == 'None' || (Object.keys(highlightsById).length + hyperlinks.length) == 0) return;
-    let tapRange = selection.getRangeAt(0);
+    if (selection.type != 'Caret' || (Object.keys(highlightsById).length + hyperlinks.length) == 0) return;
     
+    let tapRange = selection.getRangeAt(0);
     const tappedHighlights = [];
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
@@ -313,21 +296,20 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
       }}));
     }
   }
+  
   // Update the text selection color (to match the highlight color, when a highlight is selected for editing; or, to reset to the default text selection color)
   const updateSelectionStyle = (color, style) => {
-    container.dispatchEvent(new CustomEvent('hh:selectionstyleupdate', { detail: {
-      color: color,
-      style: style,
-    }}));
-      
-    // TODO: Safari on iOS doesn't respect the selection color from the CSS. However, it might be possible to set the selection color from the app in WKWebView: https://stackoverflow.com/a/60510743/1349044
-    // See also https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews
     if (color) {
       let highlightStyleBlock = getHighlightStyleBlock(color, style);
       selectionStylesheet.textContent = `::selection { ${highlightStyleBlock} }`;
     } else {
       selectionStylesheet.textContent = `::selection { background-color: Highlight; }`;
     }
+    
+    container.dispatchEvent(new CustomEvent('hh:selectionstyleupdate', { detail: {
+      color: color,
+      style: style,
+    }}));
   }
   
   // Get the character offset relative to the annotatable paragraph
@@ -361,13 +343,13 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   const createOrUpdateHighlight = (color, style, selection) => {
     if (!activeHighlightId && (!color || !style || !selection || selection.type != 'Range')) return;
     if (color && style && !selection && activeHighlightId) {
+      highlightsById[activeHighlightId].color = color;
+      highlightsById[activeHighlightId].style = style;
       container.dispatchEvent(new CustomEvent('hh:highlightstyleupdate', { detail: {
         highlightId: activeHighlightId,
         color: color,
         style: style,
       }}));
-      highlightsById[activeHighlightId].color = color;
-      highlightsById[activeHighlightId].style = style;
     } else {
       let selectionRange = selection.getRangeAt(0);
       let startNode = selectionRange.startContainer;
@@ -376,7 +358,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
       let endOffset = selectionRange.endOffset;
       let [ startParagraphId, startParagraphOffset ] = getParagraphOffset(startNode, startOffset);
       let [ endParagraphId, endParagraphOffset ] = getParagraphOffset(endNode, endOffset);
-      if (!startParagraphId || !endParagraphId) return;
+      if (!startParagraphId || !endParagraphId || (startNode == endNode && startOffset == endOffset)) return;
       
       let highlight;
       if (activeHighlightId) { // Existing highlight
@@ -422,6 +404,21 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     let cssStyleString = options.styles[style].replace('{color}', cssColorString);
     return cssStyleString;
   }      
+  
+  // Restore the previous selection range in case the browser clears the selection
+  const getRestoredSelectionOrCaret = (selection, pointerEvent = null) => {
+    if (selection.type == 'None') {
+      if (previousSelectionRange) {
+        // iOS Safari deselects text when a button is tapped. This restores the selection.
+        selection.addRange(previousSelectionRange);
+      } else if (pointerEvent) {
+        // In most browsers, tapping or clicking somewhere on the page creates a selection of 0 character length (selection.type == "Caret"). iOS Safari instead clears the selection (selection.type == "None"). This restores a Caret selection if the selection type is None.
+        let range = getRangeFromTapEvent(pointerEvent);
+        selection.addRange(range);
+      }
+    }
+    return selection;
+  }
   
   // Convert tap or click to a selection range
   // Adapted from https://stackoverflow.com/a/12924488/1349044
@@ -480,3 +477,5 @@ let hhDefaultOptions = {
   'defaultColor': 'yellow',
   'defaultStyle': 'fill',
 }
+
+console.log('Highlighter loaded');

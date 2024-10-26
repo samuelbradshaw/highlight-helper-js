@@ -1,5 +1,0 @@
-Load existing highlights
-expose createOrUpdateHighlight
-Use provided ID for a new highlight (default is "hh-" + timestamp)
-Allow color to be null if it’s not specified in style?
-Remove console logs

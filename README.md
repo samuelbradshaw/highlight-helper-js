@@ -7,14 +7,12 @@ An HTML demo page that shows basic functionality can be found here: [Highlight H
 
 ## Known issues
 
-There are a few known issues that are still being worked through:
+There are a few known issues:
 
 - The Custom Highlight API is relatively new, so **not all browsers support it**. However, it should work with Safari 17.2+ and Chrome 105+, and it’s been tested on macOS, iOS, and Android.
 - **Desktop browsers** don’t show selection handles for changing the bounds of a highlight or selection. Selection handles do show on iOS and Android. In the future it would be nice to have fallback selection handles for desktop browsers, like the ones on [this page](https://www.churchofjesuschrist.org/study/scriptures/bofm/1-ne/1?lang=eng).
-- **Chrome on Android** doesn’t show selection handles the first time you tap an existing highlight to edit it. The highlight has to be tapped twice. I have a workaround in a minimal example, but haven’t found the best way to integrate the example into Highlight Helper yet.
-- **Chrome on Android** doesn't currently snap the selection to the nearest word, when that option is turned on. This needs more research, and might be related to the issue above about tapping twice.
-- **Safari on iOS** doesn't respect the text selection color set via CSS, so when a highlight is active for editing it has a blue overlay. However, if you’re working in a native app with a webview, you may be able to set colors natively with [tintColor](https://stackoverflow.com/a/60510743/1349044) and [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
-- **Safari on iOS and macOS** doesn’t allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044)). This will likely require a fix from Apple. In the meantime, if you need underlines, a workaround could be to use a different underline style, such as a double underline.
+- **Safari on iOS** doesn't respect the text selection color set via CSS, so when a highlight is active for editing it has a blue overlay. However, if you’re working in a native app with a webview, you may be able to set colors natively with [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
+- **Safari on iOS and macOS** doesn’t allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)). This will likely require a fix from Apple. In the meantime, if you need underlines, a workaround could be to use a different underline style, such as a double underline.
 
 
 ## Getting started

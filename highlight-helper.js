@@ -1,4 +1,4 @@
-function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
+function Highlighter(options = hhDefaultOptions) {
   for (const key of Object.keys(hhDefaultOptions)) {
     options[key] = options[key] ?? hhDefaultOptions[key];
   }
@@ -38,14 +38,50 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const container = document.querySelector(options.containerSelector);
   const hyperlinks = container.getElementsByTagName('a');
-  const highlightsById = existingHighlightsById;
+  const highlightsById = {};
   let activeHighlightId = null;
   let allowNextHyperlinkInteraction = false;
   let previousSelectionRange = null;
   let isStylus = false;
   
+  // Load highlights
+  this.loadHighlights = (highlights) => {
+    for (const highlight of highlights) {
+      const startParagraphId = highlight.startParagraphId ?? document.querySelector(options.paragraphSelector).id;
+      const startParagraphOffset = parseInt(highlight.startParagraphOffset) ?? 0;
+      const endParagraphId = highlight.startParagraphId ?? document.querySelector(options.paragraphSelector).id;
+      const endParagraphOffset = parseInt(highlight.endParagraphOffset) ?? 4;
+      const highlightId = highlight.highlightId ?? options.highlightIdFunction();
+      const highlightObj = new Highlight();
+      CSS.highlights.set(highlightId, highlightObj);
+      
+      const highlightRange = document.createRange();
+      const startParagraph = document.getElementById(startParagraphId) ?? document.querySelector(options.paragraphSelector);
+      const endParagraph = document.getElementById(endParagraphId) ?? document.querySelector(options.paragraphSelector);
+      const [ startNode, startOffset ] = getTextNodeOffset(startParagraph, startParagraphOffset);
+      const [ endNode, endOffset ] = getTextNodeOffset(endParagraph, endParagraphOffset);
+      highlightRange.setStart(startNode, startOffset);
+      highlightRange.setEnd(endNode, endOffset);
+      highlightObj.add(highlightRange);
+      
+      highlightsById[highlightId] = {
+        highlightId: highlightId,
+        color: highlight.color ?? options.defaultColor,
+        style: highlight.style ?? options.defaultStyle,
+        startParagraphId: startParagraphId,
+        startParagraphOffset: startParagraphOffset,
+        endParagraphId: endParagraphId,
+        endParagraphOffset: endParagraphOffset,
+        text: highlightRange.toString(),
+        highlightObj: highlightObj,
+      };
+    }
+    container.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: highlights.length, totalCount: Object.keys(highlightsById).length } }));
+  }
+  
   // Draw (or redraw) all highlights on the page
   this.drawHighlights = () => {
+    // TODO: Provide <div> and SVG drawing options as a fallback for browsers that don't support the Custom Highlight API?
     highlightsStylesheet.textContent = '';
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
@@ -94,7 +130,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     let highlightToActivate = highlightsById[highlightId];
     updateSelectionStyle(highlightToActivate.color, highlightToActivate.style);
     activeHighlightId = highlightId;
-    for (const highlightRange of highlightToActivate.highlight.values()) {
+    for (const highlightRange of highlightToActivate.highlightObj.values()) {
       selection.addRange(highlightRange);
     }
   }
@@ -242,6 +278,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   }
   
   // Hyperlink click (for each hyperlink in annotatable container)
+  // TODO: See if there's a way to avoid Safari popup blocker when opening links
   for (const hyperlink of hyperlinks) {
     hyperlink.addEventListener('click', (event) => {
       if (allowNextHyperlinkInteraction) {
@@ -268,8 +305,8 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
     const tappedHighlights = [];
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
-      const highlight = highlightInfo.highlight;
-      for (const range of highlight.values()) {
+      const highlightObj = highlightInfo.highlightObj;
+      for (const range of highlightObj.values()) {
         if (range.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
           tappedHighlights.push(highlightInfo);
         }
@@ -345,6 +382,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   
   // Create a new highlight, or update an existing highlight when its style, color, or bounds are changed
   const createOrUpdateHighlight = (color, style, selection) => {
+    // TODO: Should null colors be allowed (for styles like 'redacted' that don't use provided colors)?
     if (!activeHighlightId && (!color || !style || !selection || selection.type != 'Range')) return;
     if (color && style && !selection && activeHighlightId) {
       highlightsById[activeHighlightId].color = color;
@@ -364,32 +402,32 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
       let [ endParagraphId, endParagraphOffset ] = getParagraphOffset(endNode, endOffset);
       if (!startParagraphId || !endParagraphId || (startNode == endNode && startOffset == endOffset)) return;
       
-      let highlight;
+      let highlightObj;
       if (activeHighlightId) { // Existing highlight
-        highlight = highlightsById[activeHighlightId].highlight;
-        highlight.clear();
+        highlightObj = highlightsById[activeHighlightId].highlightObj;
+        highlightObj.clear();
       } else { // New highlight
-        highlight = new Highlight();
-        let highlightId = 'hh-' + Date.now().toString();
-        CSS.highlights.set(highlightId, highlight);
+        highlightObj = new Highlight();
+        let highlightId = options.highlightIdFunction();
+        CSS.highlights.set(highlightId, highlightObj);
         activeHighlightId = highlightId;
       }
       
       let highlightRange = document.createRange();
       highlightRange.setStart(startNode, startOffset);
       highlightRange.setEnd(endNode, endOffset);
-      highlight.add(highlightRange);
+      highlightObj.add(highlightRange);
       
       highlightsById[activeHighlightId] = {
-        highlight: highlight,
         highlightId: activeHighlightId,
         color: color,
         style: style,
-        text: selection.toString(),
         startParagraphId: startParagraphId,
         startParagraphOffset: startParagraphOffset,
         endParagraphId: endParagraphId,
         endParagraphOffset: endParagraphOffset,
+        text: selection.toString(),
+        highlightObj: highlightObj,
       };
       container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: highlightsById[activeHighlightId] }));
     }
@@ -457,6 +495,11 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   
 }
 
+// Default function for generating a highlight ID
+const hhGetNewHighlightId = () => {
+  return 'hh-' + Date.now().toString();
+}
+
 // Default options
 let hhDefaultOptions = {
   'containerSelector': 'body',
@@ -480,6 +523,7 @@ let hhDefaultOptions = {
   'highlightMode': 'default',
   'defaultColor': 'yellow',
   'defaultStyle': 'fill',
+  'highlightIdFunction': hhGetNewHighlightId,
 }
 
 console.log('Highlighter loaded');

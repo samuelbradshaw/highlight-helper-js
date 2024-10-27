@@ -21,7 +21,7 @@
         background-color: var(--page-bg);
         color: var(--text-color);
       }
-      img { width: 120px; float: right; }
+      img { width: 120px; height: 120px; float: right; }
       a { color: var(--gray); }
       button { cursor: pointer; }
       
@@ -140,8 +140,11 @@
           'redacted': 'background-color: transparent; color: transparent;',
         },
       }
-      let existingHighlightsById = {}
-      const highlighter = new Highlighter(options, existingHighlightsById);
+      const highlighter = new Highlighter(options);
+      let highlights = [
+        { highlightId: 'hh-1729991847207', color: 'green', style: 'fill', startParagraphId: 'p1', startParagraphOffset: 51, endParagraphId: 'p1', endParagraphOffset: 83, },
+      ];
+      highlighter.loadHighlights(highlights);
       highlighter.drawHighlights();
       
       
@@ -186,8 +189,9 @@
         if (event.detail.text) {
           selectionTextDiv.innerHTML = event.detail.text;
           selectionInfoDiv.innerHTML = `
-            <b>Selection start:</b> #${event.detail.startParagraphId}, offset ${event.detail.startParagraphOffset}<br>
-            <b>Selection end:</b> #${event.detail.endParagraphId}, offset ${event.detail.endParagraphOffset}
+            <b>Highlight:</b> ${event.detail.highlightId}, ${event.detail.color}, ${event.detail.style}<br>
+            <b>Start:</b> #${event.detail.startParagraphId}, offset ${event.detail.startParagraphOffset}<br>
+            <b>End:</b> #${event.detail.endParagraphId}, offset ${event.detail.endParagraphOffset}
           `;
         } else {
           selectionTextDiv.innerHTML = '';

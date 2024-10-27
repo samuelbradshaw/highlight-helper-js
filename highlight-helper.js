@@ -16,7 +16,7 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
       -webkit-user-select: none;
       user-select: none;
     }
-    ${options.paragraphSelector} {
+    ${options.containerSelector} {
       -webkit-user-select: text;
       user-select: text;
     }
@@ -63,25 +63,27 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
   // Set the highlight color
   this.setColor = (color) => {
     let selection = getRestoredSelectionOrCaret(window.getSelection());
-    if (selection.type != 'Range') return;
     color = color ?? options.defaultColor;
     let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
     if (options.rememberStyle) options.defaultColor = color;
     if (options.rememberStyle) options.defaultStyle = style;
-    updateSelectionStyle(color, style);
-    createOrUpdateHighlight(color, style, activeHighlightId ? null : selection);
+    if (selection.type == 'Range') {
+      updateSelectionStyle(color, style);
+      createOrUpdateHighlight(color, style, activeHighlightId ? null : selection);
+    }
   }
   
   // Set the highlight style
   this.setStyle = (style) => {
     let selection = getRestoredSelectionOrCaret(window.getSelection());
-    if (selection.type != 'Range') return;
     let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
     style = style ?? options.defaultStyle;
     if (options.rememberStyle) options.defaultColor = color;
     if (options.rememberStyle) options.defaultStyle = style;
-    updateSelectionStyle(color, style);
-    createOrUpdateHighlight(color, style, activeHighlightId ? null : selection);
+    if (selection.type == 'Range') {
+      updateSelectionStyle(color, style);
+      createOrUpdateHighlight(color, style, activeHighlightId ? null : selection);
+    }
   }
   
   // Activate a highlight by ID
@@ -174,11 +176,13 @@ function Highlighter(options = hhDefaultOptions, existingHighlightsById = {}) {
       checkForTapTargets(selection);
     } else if (selection.type == 'Range') {
       let selectionRange = selection.getRangeAt(0);
-      if (options.highlightMode == 'live' || (options.highlightMode == 'auto' && isStylus == true)) {
-        createOrUpdateHighlight(highlightsById[activeHighlightId]?.color ?? options.defaultColor, highlightsById[activeHighlightId]?.style ?? options.defaultColor, selection);
-      } else if (activeHighlightId) {
-        createOrUpdateHighlight(highlightsById[activeHighlightId].color, highlightsById[activeHighlightId].style, selection);
+      let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
+      let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
+      if (!activeHighlightId && (options.highlightMode == 'live' || (options.highlightMode == 'auto' && isStylus == true))) {
+        updateSelectionStyle(color, style);
+        createOrUpdateHighlight(color, style, selection);
       }
+      if (activeHighlightId) createOrUpdateHighlight(color, style, selection);
       previousSelectionRange = selectionRange.cloneRange();
     }
   }

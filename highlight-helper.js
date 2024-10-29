@@ -36,6 +36,7 @@ function Highlighter(options = hhDefaultOptions) {
   document.body.tabIndex = -1;
   
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isIosSafari = isSafari && navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
   const container = document.querySelector(options.containerSelector);
   const hyperlinks = container.getElementsByTagName('a');
   const highlightsById = {};
@@ -43,6 +44,7 @@ function Highlighter(options = hhDefaultOptions) {
   let allowNextHyperlinkInteraction = false;
   let previousSelectionRange = null;
   let isStylus = false;
+  let selectionIsReady = false;
   
   // Load highlights
   this.loadHighlights = (highlights) => {
@@ -204,6 +206,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Selection change in document (new selection, change in selection range, or selection collapsing to a caret)
   document.addEventListener('selectionchange', (event) => { debounce(respondToSelectionChange(event), 10); });
   const respondToSelectionChange = (event) => {
+    selectionIsReady = true;
     let selection = getRestoredSelectionOrCaret(window.getSelection());
     // Deactivate active highlight when tapping away
     if (activeHighlightId && selection.type == 'Caret') this.deactivateSelection();
@@ -292,6 +295,24 @@ function Highlighter(options = hhDefaultOptions) {
         selection.addRange(range);
       }
     });
+  }
+  
+  // Click in annotatable container
+  // TODO: If you attempt to select any text programmatically before the user has long-pressed to create a selection (for example, if you tap an existing highlight after the page loads), iOS Safari selects the text, but it doesn't show the selection UI (selection handles and selection overlay). This workaround opens a temporary tab and closes it, to force Safari to re-focus the original page, which causes the selection UI to show as expected. A better workaround or fix is needed.
+  if (isIosSafari) {
+    container.addEventListener('click', (event) => changeSafariFocus(event) );
+    const changeSafariFocus = (event) => {
+      if (!selectionIsReady) {
+        const tempTab = window.open('', 'temporary');
+        tempTab.document.body.innerHTML = '<meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">Workaround for initial text selection on iOS Safari...';
+        setTimeout(() => {
+          tempTab.close();
+          selectionIsReady = true;
+        }, 500);
+      }
+    }
+  } else {
+    selectionIsReady = true;
   }
   
   

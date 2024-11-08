@@ -27,6 +27,11 @@ function Highlighter(options = hhDefaultOptions) {
       -webkit-user-select: none;
       user-select: none;
     }
+    .hh-wrapper-start, .hh-wrapper-end {
+      position: relative;
+      -webkit-user-select: none;
+      user-select: none;
+    }
   `;
   head.appendChild(generalStylesheet);
   head.appendChild(selectionStylesheet);
@@ -46,115 +51,222 @@ function Highlighter(options = hhDefaultOptions) {
   let isStylus = false;
   let selectionIsReady = false;
   
+  
+  // -------- PUBLIC METHODS --------
+  
   // Load highlights
   this.loadHighlights = (highlights) => {
     for (const highlight of highlights) {
-      const startParagraphId = highlight.startParagraphId ?? document.querySelector(options.paragraphSelector).id;
-      const startParagraphOffset = parseInt(highlight.startParagraphOffset) ?? 0;
-      const endParagraphId = highlight.startParagraphId ?? document.querySelector(options.paragraphSelector).id;
-      const endParagraphOffset = parseInt(highlight.endParagraphOffset) ?? 4;
-      const highlightId = highlight.highlightId ?? options.highlightIdFunction();
-      const highlightObj = new Highlight();
-      CSS.highlights.set(highlightId, highlightObj);
-      
-      const highlightRange = document.createRange();
-      const startParagraph = document.getElementById(startParagraphId) ?? document.querySelector(options.paragraphSelector);
-      const endParagraph = document.getElementById(endParagraphId) ?? document.querySelector(options.paragraphSelector);
-      const [ startNode, startOffset ] = getTextNodeOffset(startParagraph, startParagraphOffset);
-      const [ endNode, endOffset ] = getTextNodeOffset(endParagraph, endParagraphOffset);
-      highlightRange.setStart(startNode, startOffset);
-      highlightRange.setEnd(endNode, endOffset);
-      highlightObj.add(highlightRange);
-      
-      highlightsById[highlightId] = {
-        highlightId: highlightId,
-        color: highlight.color ?? options.defaultColor,
-        style: highlight.style ?? options.defaultStyle,
-        startParagraphId: startParagraphId,
-        startParagraphOffset: startParagraphOffset,
-        endParagraphId: endParagraphId,
-        endParagraphOffset: endParagraphOffset,
-        text: highlightRange.toString(),
-        highlightObj: highlightObj,
-      };
+      this.createOrUpdateHighlight(highlight, false);
     }
     container.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: highlights.length, totalCount: Object.keys(highlightsById).length } }));
   }
   
   // Draw (or redraw) all highlights on the page
   this.drawHighlights = () => {
-    // TODO: Provide <div> and SVG drawing options as a fallback for browsers that don't support the Custom Highlight API?
+    // TODO: Provide SVG drawing option as a fallback for browsers that don't support the Custom Highlight API
     highlightsStylesheet.textContent = '';
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
       let highlightStyleBlock = getHighlightStyleBlock(highlightInfo.color, highlightInfo.style);
       highlightsStylesheet.textContent += `
         ::highlight(${highlightId}) { ${highlightStyleBlock} }
-        rt::highlight(${highlightId}) { background-color: transparent; }
-        sup::highlight(${highlightId}) { background-color: transparent; }
-        sub::highlight(${highlightId}) { background-color: transparent; }
-        img::highlight(${highlightId}) { background-color: transparent; }
+        rt::highlight(${highlightId}) { color: inherit; background-color: transparent; }
+        sup::highlight(${highlightId}) { color: inherit; background-color: transparent; }
+        sub::highlight(${highlightId}) { color: inherit; background-color: transparent; }
+        img::highlight(${highlightId}) { color: inherit; background-color: transparent; }
       `;
     }
   }
   
-  // Set the highlight color
-  this.setColor = (color) => {
-    let selection = getRestoredSelectionOrCaret(window.getSelection());
-    color = color ?? options.defaultColor;
-    let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
-    if (options.rememberStyle) options.defaultColor = color;
-    if (options.rememberStyle) options.defaultStyle = style;
-    if (selection.type == 'Range') {
-      updateSelectionStyle(color, style);
-      createOrUpdateHighlight(color, style, activeHighlightId ? null : selection);
+  // Create a new highlight, or update an existing highlight when it changes
+  this.createOrUpdateHighlight = (attributes = {}, triggeredByUserAction = true) => {
+    let highlightId = attributes.highlightId ?? activeHighlightId;
+    let highlightObj, oldHighlightInfo;
+    appearanceChanges = [];
+    boundsChanges = [];
+    
+    let isNewHighlight = false;
+    if (!highlightId || !highlightsById.hasOwnProperty(highlightId)) { // New highlight
+      highlightObj = new Highlight();
+      highlightId = highlightId || options.highlightIdFunction();
+      CSS.highlights.set(highlightId, highlightObj);
+      isNewHighlight = true;
+    } else {
+      oldHighlightInfo = highlightsById[highlightId];
+      highlightObj = oldHighlightInfo.highlightObj;
     }
-  }
-  
-  // Set the highlight style
-  this.setStyle = (style) => {
-    let selection = getRestoredSelectionOrCaret(window.getSelection());
-    let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
-    style = style ?? options.defaultStyle;
-    if (options.rememberStyle) options.defaultColor = color;
-    if (options.rememberStyle) options.defaultStyle = style;
-    if (selection.type == 'Range') {
-      updateSelectionStyle(color, style);
-      createOrUpdateHighlight(color, style, activeHighlightId ? null : selection);
+    
+    // Log appearance changes
+    for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
+      if (isNewHighlight || (attributes[key] != null && attributes[key] != oldHighlightInfo[key])) appearanceChanges.push(key);
     }
+    
+    // If the highlight was and still is read-only, return
+    if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) return this.deactivateHighlights();
+    
+    // Calculate the bounds of the highlight range, if it's changed
+    let selectionRange, highlightRange;
+    let startNode, startOffset, endNode, endOffset;
+    let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
+    const selection = getRestoredSelectionOrCaret(window.getSelection());
+    if (selection.type == 'Range') selectionRange = selection.getRangeAt(0);
+    if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset  != null) || selectionRange) {
+      if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
+        startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
+        startParagraphOffset = parseInt(attributes.startParagraphOffset) ?? oldHighlightInfo?.startParagraphOffset;
+        endParagraphId = attributes.endParagraphId ?? oldHighlightInfo?.endParagraphId;
+        endParagraphOffset = parseInt(attributes.endParagraphOffset) ?? oldHighlightInfo?.endParagraphOffset;
+        ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(startParagraphId), startParagraphOffset));
+        ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(endParagraphId), endParagraphOffset));
+      } else if (selectionRange) {
+        startNode = selectionRange.startContainer;
+        startOffset = selectionRange.startOffset;
+        endNode = selectionRange.endContainer;
+        endOffset = selectionRange.endOffset;
+        ([ startParagraphId, startParagraphOffset ] = getParagraphOffset(startNode, startOffset));
+        ([ endParagraphId, endParagraphOffset ] = getParagraphOffset(endNode, endOffset));
+      }
+      
+      // Create the new highlight range
+      highlightRange = document.createRange();
+      highlightRange.setStart(startNode, startOffset);
+      highlightRange.setEnd(endNode, endOffset);
+      if (options.snapToWord) highlightRange = snapRangeToWord(highlightRange);
+      
+      // If there are any issues with the range, set the highlight back to how it was
+      if (startNode == null || startOffset == null || endNode == null || endOffset == null || startParagraphId == null || startParagraphOffset == null || endParagraphId == null || endParagraphOffset == null || highlightRange.toString() == '') {
+        return isNewHighlight ? null : this.createOrUpdateHighlight(oldHighlightInfo);
+      }
+      
+      // Add the range to the highlight
+      highlightObj.clear();
+      highlightObj.add(highlightRange);
+      
+      // Log bounds changes
+      for (const key of ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset']) {
+        if (isNewHighlight || eval(key) != oldHighlightInfo[key]) boundsChanges.push(key);
+      }
+    }
+    
+    // If there are no changes, return
+    if (isNewHighlight && boundsChanges.length == 0 || appearanceChanges.length + boundsChanges.length == 0) return;
+    
+    // Update saved highlight info
+    const newHighlightInfo = {
+      highlightId: highlightId,
+      color: attributes?.color ?? oldHighlightInfo?.color ?? options.defaultColor,
+      style: attributes?.style ?? oldHighlightInfo?.style ?? options.defaultStyle,
+      wrapper: attributes?.wrapper ?? oldHighlightInfo?.wrapper ?? options.defaultWrapper,
+      wrapperVariables: attributes?.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
+      readOnly: attributes?.readOnly ?? oldHighlightInfo?.readOnly ?? false,
+      startParagraphId: startParagraphId ?? oldHighlightInfo?.startParagraphId,
+      startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
+      endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
+      endParagraphOffset: endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset,
+      text: highlightRange.toString(),
+      highlightObj: highlightObj,
+    };
+    highlightsById[highlightId] = newHighlightInfo;
+    if (options.rememberStyle && triggeredByUserAction) {
+      if (appearanceChanges.includes('color')) options.defaultColor = newHighlightInfo.color;
+      if (appearanceChanges.includes('style')) options.defaultStyle = newHighlightInfo.style;
+      if (appearanceChanges.includes('wrapper')) options.defaultWrapper = newHighlightInfo.wrapper;
+    }
+    
+    // Update wrapper
+    if (newHighlightInfo.wrapper && (options.wrappers[newHighlightInfo.wrapper]?.start || options.wrappers[newHighlightInfo.wrapper]?.end)) {
+      if (appearanceChanges.includes('wrapper') || appearanceChanges.includes('wrapperVariables') || boundsChanges.length > 0) {
+        document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
+        
+        function addWrapper(edge, range, htmlString) {
+          htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
+          htmlString = htmlString.replace('{color}', options.colors[newHighlightInfo.color]);
+          for (const key of Object.keys(newHighlightInfo.wrapperVariables)) {
+            htmlString = htmlString.replace(`{${key}}`, newHighlightInfo.wrapperVariables[key]);
+          }
+          const template = document.createElement('template');
+          template.innerHTML = htmlString;
+          let htmlElement = template.content.firstChild;
+          
+          const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
+          while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
+          range.insertNode(htmlElement);
+        }
+        const startRange = highlightRange;
+        const endRange = document.createRange(); endRange.setStart(highlightRange.endContainer, highlightRange.endOffset);
+        const wrapperInfo = options.wrappers[newHighlightInfo.wrapper];
+        addWrapper('start', startRange, wrapperInfo.start);
+        addWrapper('end', endRange, wrapperInfo.end);
+        
+        const elementsToNormalize = document.querySelectorAll(`#${oldHighlightInfo?.startParagraphId}, #${oldHighlightInfo?.endParagraphId}, #${newHighlightInfo.startParagraphId}, #${newHighlightInfo.startParagraphId}`);
+        for (const element of elementsToNormalize) element.normalize();
+      }
+    } else {
+      document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
+    }
+    
+    const detail = {
+      highlight: newHighlightInfo,
+      changes: appearanceChanges.concat(boundsChanges),
+    }
+    if (isNewHighlight) {
+      container.dispatchEvent(new CustomEvent('hh:highlightcreate', { detail: detail }));
+    } else {
+      container.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
+    }
+    this.drawHighlights();
+    
+    if (triggeredByUserAction) {
+      if (appearanceChanges.length > 0) updateSelectionStyle(newHighlightInfo.color, newHighlightInfo.style);
+      if (highlightId != activeHighlightId) this.activateHighlight(highlightId);
+    }
+    return newHighlightInfo;
   }
   
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
-    // TODO: Show custom selection handles in desktop browser
-    this.deactivateSelection();
-    let selection = window.getSelection();
-    let highlightToActivate = highlightsById[highlightId];
+    // TODO: Support draggable selection handles for desktop browsers
+    const selection = getRestoredSelectionOrCaret(window.getSelection());
+    const highlightToActivate = highlightsById[highlightId];
+    if (highlightToActivate.readOnly) {
+      // If the highlight is read-only, return an event, but don't actually activate it
+      return container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
+    }
+    const highlightRange = highlightToActivate.highlightObj.values().next().value.cloneRange();
     updateSelectionStyle(highlightToActivate.color, highlightToActivate.style);
-    activeHighlightId = highlightId;
-    for (const highlightRange of highlightToActivate.highlightObj.values()) {
+    if (selection.type != 'Range') {
+      selection.removeAllRanges();
       selection.addRange(highlightRange);
     }
+    activeHighlightId = highlightId;
+    container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
   
   // Activate a link by position
   this.activateHyperlink = (position) => {
-    this.deactivateSelection();
+    this.deactivateHighlights();
     allowNextHyperlinkInteraction = true;
     hyperlinks[position].click();      
   }
   
   // Deactivate any highlights that are currently active/selected
-  this.deactivateSelection = () => {
-    let deactivatedHighlightId = activeHighlightId;
+  this.deactivateHighlights = () => {
+    const deactivatedHighlight = highlightsById[activeHighlightId];
+    const deactivatedHighlightRange = deactivatedHighlight?.highlightObj?.values()?.next()?.value;
     activeHighlightId = null;
     allowNextHyperlinkInteraction = false;
     previousSelectionRange = null;
     window.getSelection().removeAllRanges();
-    container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
-      highlightId: deactivatedHighlightId,
-    }}));
     updateSelectionStyle();
+//     if (deactivatedHighlight && deactivatedHighlightRange.collapsed) {
+//       // Sometimes when tapping to activate a highlight, the highlight's range collapses to a caret and the highlight immediately deactivates itself. This is a workaround to fix it.
+//       console.log('Log: Highlight range collapsed');
+//       this.createOrUpdateHighlight(deactivatedHighlight);
+//     }
+    container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
+      highlightId: deactivatedHighlight?.highlightId,
+    }}));
   }
   
   // Remove the selected highlight or a specific highlight by ID
@@ -163,14 +275,15 @@ function Highlighter(options = hhDefaultOptions) {
     if (highlightId && highlightsById.hasOwnProperty(highlightId)) {
       deletedHighlightId = highlightId;
     } else {
-      let selection = getRestoredSelectionOrCaret(window.getSelection());
+      const selection = getRestoredSelectionOrCaret(window.getSelection());
       if (selection.type != 'Range') return;
       if (activeHighlightId) {
         deletedHighlightId = activeHighlightId;
       }
     }
     if (deletedHighlightId) {
-      this.deactivateSelection();
+      this.deactivateHighlights();
+      document.querySelectorAll(`.${deletedHighlightId}.hh-wrapper-start, .${deletedHighlightId}.hh-wrapper-end`).forEach(el => el.remove());
       delete highlightsById[deletedHighlightId];
       CSS.highlights.delete(deletedHighlightId);
       container.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
@@ -185,9 +298,17 @@ function Highlighter(options = hhDefaultOptions) {
     return activeHighlightId;
   }
   
-  // Get info for all highlights on the page
-  this.getHighlightsById = () => {
-    return highlightsById;
+  // Get info for specified highlights, or all highlights on the page
+  this.getHighlightsById = (highlightIds = []) => {
+    if (highlightIds && highlightIds.length > 0) {
+      const filteredHighlightsById = {}
+      for (const highlightId of highlightIds) {
+        filteredHighlightsById[highlightId] = highlightsById[highlightId];
+      }
+      return filteredHighlightsById;
+    } else {
+      return highlightsById;
+    }
   }
   
   // Update one of the initialized options
@@ -204,80 +325,54 @@ function Highlighter(options = hhDefaultOptions) {
   // -------- EVENT LISTENERS --------
   
   // Selection change in document (new selection, change in selection range, or selection collapsing to a caret)
-  document.addEventListener('selectionchange', (event) => { debounce(respondToSelectionChange(event), 10); });
+  document.addEventListener('selectionchange', (event) => respondToSelectionChange(event) );
   const respondToSelectionChange = (event) => {
-    selectionIsReady = true;
-    let selection = getRestoredSelectionOrCaret(window.getSelection());
-    // Deactivate active highlight when tapping away
-    if (activeHighlightId && selection.type == 'Caret') this.deactivateSelection();
-    if (isSafari && !activeHighlightId && selection.type == 'Caret') {
+    const selection = getRestoredSelectionOrCaret(window.getSelection());
+    // Deactivate active highlight when tapping outside the highlight
+    if (activeHighlightId && selection.type == 'Caret' && highlightsById[activeHighlightId].highlightObj.values().next().value.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
+      this.deactivateHighlights();
+    }
+    if (isSafari && selection.type == 'Caret' && !activeHighlightId) {
       // SAFARI ONLY: Check for tapped highlights or links (for other browsers, see pointerup event listener)
       checkForTapTargets(selection);
     } else if (selection.type == 'Range') {
-      let selectionRange = selection.getRangeAt(0);
+      selectionIsReady = true;
+      const selectionRange = selection.getRangeAt(0);
       let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
       let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
-      if (!activeHighlightId && (options.highlightMode == 'live' || (options.highlightMode == 'auto' && isStylus == true))) {
-        updateSelectionStyle(color, style);
-        createOrUpdateHighlight(color, style, selection);
+      if (!activeHighlightId && (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
+        this.createOrUpdateHighlight();
       }
-      if (activeHighlightId) createOrUpdateHighlight(color, style, selection);
+      if (activeHighlightId) this.createOrUpdateHighlight();
       previousSelectionRange = selectionRange.cloneRange();
     }
   }
   
   // Pointer down in annotatable container
-  container.addEventListener('pointerdown', (event) => respondToTap(event) );
-  const respondToTap = (event) => {
+  container.addEventListener('pointerdown', respondToTap);
+  function respondToTap(event) {
     isStylus = event.pointerType == 'pen';
   }
   
   // Pointer up in annotatable container
   container.addEventListener('pointerup', (event) => {
     // NON-SAFARI BROWSERS: Check for tapped highlights or links (for Safari, see selectionchange event listener)
-    if (activeHighlightId || isSafari) return;
-    let selection = getRestoredSelectionOrCaret(window.getSelection(), event);
+    if (isSafari) return;
+    let selection = window.getSelection();
+    selection.removeAllRanges();
+    selection = getRestoredSelectionOrCaret(selection, event);
     checkForTapTargets(selection);
   });
   
   // Pointer up in window
   window.addEventListener('pointerup', respondToPointerUp);
   function respondToPointerUp(event) {
-    // Adjust the text selection if "snap to word" is on
-    // TODO: Simplify based on this? https://stackoverflow.com/a/7380435/1349044
-    if (!options.snapToWord) return;
-    
-    let selection = window.getSelection();
-    if (selection.type != 'Range') return;
-            
-    let selectionRange = selection.getRangeAt(0);
-    let startNode = selectionRange.startContainer;
-    let endNode = selectionRange.endContainer;
-    let startOffset = selectionRange.startOffset;
-    let endOffset = selectionRange.endOffset;
-    
-    // Trim whitespace at selection start and end
-    while (/\s/.test(startOffset < startNode.wholeText.length && startNode.wholeText[startOffset])) startOffset += 1;
-    while (endOffset - 1 >= 0 && /\s/.test(endNode.wholeText[endOffset - 1])) endOffset -= 1;
-    // If the selection starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the selection from jumping across the text node boundary and selecting an extra word.
-    if (startOffset == startNode.wholeText.length) {
-      let parentElement = selectionRange.commonAncestorContainer;
-      let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
-      let textNode = null;
-      while (!textNode || textNode !== startNode) textNode = walker.nextNode();
-      textNode = walker.nextNode();
-      startNode = textNode;
-      startOffset = 1;
+    const selection = getRestoredSelectionOrCaret(window.getSelection());
+    if (selection.type == 'Range' && options.snapToWord) {
+      const selectionRange = snapRangeToWord(selection.getRangeAt(0)).cloneRange();
+      selection.removeAllRanges();
+      selection.addRange(selectionRange);
     }
-    // Expand selection to word boundaries
-    while (startOffset > 0 && /\S/.test(startNode.wholeText[startOffset - 1])) startOffset -= 1;
-    while (endOffset + 1 <= endNode.wholeText.length && /\S/.test(endNode.wholeText[endOffset])) endOffset += 1;
-    
-    let newSelectionRange = document.createRange();
-    newSelectionRange.setStart(startNode, startOffset);
-    newSelectionRange.setEnd(endNode, endOffset);
-    selection.removeAllRanges();
-    selection.addRange(newSelectionRange);
   }
   
   // Hyperlink click (for each hyperlink in annotatable container)
@@ -289,8 +384,8 @@ function Highlighter(options = hhDefaultOptions) {
       } else {
         allowNextHyperlinkInteraction = true;
         event.preventDefault();
-        range = getRangeFromTapEvent(event);
-        let selection = window.getSelection();
+        const range = getRangeFromTapEvent(event);
+        const selection = window.getSelection();
         selection.removeAllRanges();
         selection.addRange(range);
       }
@@ -314,10 +409,10 @@ function Highlighter(options = hhDefaultOptions) {
   } else {
     selectionIsReady = true;
   }
+    
   
-  
-  // -------- MAJOR FUNCTIONS --------
-  
+  // -------- UTILITY FUNCTIONS --------
+    
   // Check if the selection caret (created when a user taps on text) is in the range of an existing highlight or link. If it is, activate the highlight or link.
   const checkForTapTargets = (selection) => {
     if (selection.type != 'Caret' || (Object.keys(highlightsById).length + hyperlinks.length) == 0) return;
@@ -327,10 +422,9 @@ function Highlighter(options = hhDefaultOptions) {
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
       const highlightObj = highlightInfo.highlightObj;
-      for (const range of highlightObj.values()) {
-        if (range.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
-          tappedHighlights.push(highlightInfo);
-        }
+      const highlightRange = highlightObj.values().next().value;
+      if (highlightRange.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
+        tappedHighlights.push(highlightInfo);
       }
     }
     const tappedHyperlinks = [];
@@ -361,17 +455,48 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Update the text selection color (to match the highlight color, when a highlight is selected for editing; or, to reset to the default text selection color)
   const updateSelectionStyle = (color, style) => {
-    if (color) {
+    if (color && style) {
       let highlightStyleBlock = getHighlightStyleBlock(color, style);
       selectionStylesheet.textContent = `::selection { ${highlightStyleBlock} }`;
     } else {
       selectionStylesheet.textContent = `::selection { background-color: Highlight; }`;
     }
-    
-    container.dispatchEvent(new CustomEvent('hh:selectionstyleupdate', { detail: {
+    container.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: {
       color: color,
       style: style,
     }}));
+  }
+  
+  // Snap the selection or highlight range to the nearest word
+  function snapRangeToWord(range) {
+    let startNode = range.startContainer;
+    let endNode = range.endContainer;
+    let startOffset = range.startOffset;
+    let endOffset = range.endOffset;
+    
+    // Trim whitespace at range start and end
+    while (/\s/.test(startOffset < startNode.wholeText.length && startNode.wholeText[startOffset])) startOffset += 1;
+    while (endOffset - 1 >= 0 && /\s/.test(endNode.wholeText[endOffset - 1])) endOffset -= 1;
+    
+    // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
+    if (startOffset == startNode.wholeText.length) {
+      let parentElement = range.commonAncestorContainer;
+      let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
+      let textNode = null;
+      while (!textNode || textNode !== startNode) textNode = walker.nextNode();
+      textNode = walker.nextNode();
+      startNode = textNode;
+      startOffset = 1;
+    }
+    
+    // Expand range to word boundaries
+    while (startOffset > 0 && /\S/.test(startNode.wholeText[startOffset - 1])) startOffset -= 1;
+    while (endOffset + 1 <= endNode.wholeText.length && /\S/.test(endNode.wholeText[endOffset])) endOffset += 1;
+    
+    let newRange = document.createRange();
+    newRange.setStart(startNode, startOffset);
+    newRange.setEnd(endNode, endOffset);
+    return newRange;
   }
   
   // Get the character offset relative to the annotatable paragraph
@@ -400,64 +525,6 @@ function Highlighter(options = hhDefaultOptions) {
     let relativeOffset = textNode.wholeText.length - currentOffset + targetOffset;
     return [ textNode, relativeOffset ];
   }
-  
-  // Create a new highlight, or update an existing highlight when its style, color, or bounds are changed
-  const createOrUpdateHighlight = (color, style, selection) => {
-    // TODO: Should null colors be allowed (for styles like 'redacted' that don't use provided colors)?
-    if (!activeHighlightId && (!color || !style || !selection || selection.type != 'Range')) return;
-    if (color && style && !selection && activeHighlightId) {
-      highlightsById[activeHighlightId].color = color;
-      highlightsById[activeHighlightId].style = style;
-      container.dispatchEvent(new CustomEvent('hh:highlightstyleupdate', { detail: {
-        highlightId: activeHighlightId,
-        color: color,
-        style: style,
-      }}));
-    } else {
-      let selectionRange = selection.getRangeAt(0);
-      let startNode = selectionRange.startContainer;
-      let startOffset = selectionRange.startOffset;
-      let endNode = selectionRange.endContainer;
-      let endOffset = selectionRange.endOffset;
-      let [ startParagraphId, startParagraphOffset ] = getParagraphOffset(startNode, startOffset);
-      let [ endParagraphId, endParagraphOffset ] = getParagraphOffset(endNode, endOffset);
-      if (!startParagraphId || !endParagraphId || (startNode == endNode && startOffset == endOffset)) return;
-      
-      let highlightObj;
-      if (activeHighlightId) { // Existing highlight
-        highlightObj = highlightsById[activeHighlightId].highlightObj;
-        highlightObj.clear();
-      } else { // New highlight
-        highlightObj = new Highlight();
-        let highlightId = options.highlightIdFunction();
-        CSS.highlights.set(highlightId, highlightObj);
-        activeHighlightId = highlightId;
-      }
-      
-      let highlightRange = document.createRange();
-      highlightRange.setStart(startNode, startOffset);
-      highlightRange.setEnd(endNode, endOffset);
-      highlightObj.add(highlightRange);
-      
-      highlightsById[activeHighlightId] = {
-        highlightId: activeHighlightId,
-        color: color,
-        style: style,
-        startParagraphId: startParagraphId,
-        startParagraphOffset: startParagraphOffset,
-        endParagraphId: endParagraphId,
-        endParagraphOffset: endParagraphOffset,
-        text: selection.toString(),
-        highlightObj: highlightObj,
-      };
-      container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: highlightsById[activeHighlightId] }));
-    }
-    this.drawHighlights();
-    return highlightsById[activeHighlightId];
-  }
-  
-  
-  // -------- UTILITY FUNCTIONS --------
   
   // Build CSS string for a given highlight style
   const getHighlightStyleBlock = (color, style) => {
@@ -501,7 +568,7 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Debounce a function to prevent it from being executed too frequently
-  // Based on https://levelup.gitconnected.com/debounce-in-javascript-improve-your-applications-performance-5b01855e086
+  // Adapted from https://levelup.gitconnected.com/debounce-in-javascript-improve-your-applications-performance-5b01855e086
   const debounce = (func, wait) => {
     let timeout;
     return function executedFunction(...args) {
@@ -516,6 +583,9 @@ function Highlighter(options = hhDefaultOptions) {
   
 }
 
+
+// -------- DEFAULTS --------
+
 // Default function for generating a highlight ID
 const hhGetNewHighlightId = () => {
   return 'hh-' + Date.now().toString();
@@ -523,28 +593,34 @@ const hhGetNewHighlightId = () => {
 
 // Default options
 let hhDefaultOptions = {
-  'containerSelector': 'body',
-  'paragraphSelector': 'h1, h2, h3, h4, h5, h6, p, ol, ul, dl, tr',
-  'colors': {
+  containerSelector: 'body',
+  paragraphSelector: 'h1, h2, h3, h4, h5, h6, p, ol, ul, dl, tr',
+  colors: {
     'red': 'hsl(352, 99%, 65%)',
     'orange': 'hsl(31, 99%, 58%)',
     'yellow': 'hsl(50, 98%, 61%)',
     'green': 'hsl(75, 70%, 49%)',
     'blue': 'hsl(182, 86%, 47%)',
   },
-  'styles': {
+  styles: {
     'fill': 'background-color: hsl(from {color} h s l / 40%);',
     'single-underline': 'text-decoration: underline; text-decoration-color: {color}; text-underline-offset: 0.15em; text-decoration-thickness: 0.15em; text-decoration-skip-ink: none;',
     'double-underline': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-style: double;',
-    'invisible': 'background-color: transparent;',
+    'colored-text': 'color: {color};',
     'redacted': 'background-color: transparent; color: transparent;',
   },
-  'rememberStyle': true,
-  'snapToWord': false,
-  'highlightMode': 'default',
-  'defaultColor': 'yellow',
-  'defaultStyle': 'fill',
-  'highlightIdFunction': hhGetNewHighlightId,
+  wrappers: {
+    'none': {},
+    'sliders': { start: '<span class="slider-start" style="--color: {color}"></span>', end: '<span class="slider-end" style="--color: {color}"></span>', },
+    'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" style="--color: {color}"></span>', end: '', },
+  },
+  rememberStyle: true,
+  snapToWord: false,
+  pointerMode: 'default',
+  defaultColor: 'yellow',
+  defaultStyle: 'fill',
+  defaultWrapper: 'none',
+  highlightIdFunction: hhGetNewHighlightId,
 }
 
 console.log('Highlighter loaded');

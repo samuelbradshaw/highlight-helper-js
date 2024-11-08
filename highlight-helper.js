@@ -175,35 +175,38 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // Update wrapper
-    if (newHighlightInfo.wrapper && (options.wrappers[newHighlightInfo.wrapper]?.start || options.wrappers[newHighlightInfo.wrapper]?.end)) {
-      if (appearanceChanges.includes('wrapper') || appearanceChanges.includes('wrapperVariables') || boundsChanges.length > 0) {
-        document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
-        
-        function addWrapper(edge, range, htmlString) {
-          htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
-          htmlString = htmlString.replace('{color}', options.colors[newHighlightInfo.color]);
-          for (const key of Object.keys(newHighlightInfo.wrapperVariables)) {
-            htmlString = htmlString.replace(`{${key}}`, newHighlightInfo.wrapperVariables[key]);
-          }
-          const template = document.createElement('template');
-          template.innerHTML = htmlString;
-          let htmlElement = template.content.firstChild;
+    // TODO: Enable wrappers for editable highlights
+    if (newHighlightInfo.readOnly) {
+      if (newHighlightInfo.wrapper && (options.wrappers[newHighlightInfo.wrapper]?.start || options.wrappers[newHighlightInfo.wrapper]?.end)) {
+        if (appearanceChanges.includes('wrapper') || appearanceChanges.includes('wrapperVariables') || boundsChanges.length > 0) {
+          document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
           
-          const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
-          while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
-          range.insertNode(htmlElement);
+          function addWrapper(edge, range, htmlString) {
+            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
+            htmlString = htmlString.replace('{color}', options.colors[newHighlightInfo.color]);
+            for (const key of Object.keys(newHighlightInfo.wrapperVariables)) {
+              htmlString = htmlString.replace(`{${key}}`, newHighlightInfo.wrapperVariables[key]);
+            }
+            const template = document.createElement('template');
+            template.innerHTML = htmlString;
+            let htmlElement = template.content.firstChild;
+            
+            const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
+            while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
+            range.insertNode(htmlElement);
+          }
+          const startRange = highlightRange;
+          const endRange = document.createRange(); endRange.setStart(highlightRange.endContainer, highlightRange.endOffset);
+          const wrapperInfo = options.wrappers[newHighlightInfo.wrapper];
+          addWrapper('start', startRange, wrapperInfo.start);
+          addWrapper('end', endRange, wrapperInfo.end);
+          
+          const elementsToNormalize = document.querySelectorAll(`#${oldHighlightInfo?.startParagraphId}, #${oldHighlightInfo?.endParagraphId}, #${newHighlightInfo.startParagraphId}, #${newHighlightInfo.startParagraphId}`);
+          for (const element of elementsToNormalize) element.normalize();
         }
-        const startRange = highlightRange;
-        const endRange = document.createRange(); endRange.setStart(highlightRange.endContainer, highlightRange.endOffset);
-        const wrapperInfo = options.wrappers[newHighlightInfo.wrapper];
-        addWrapper('start', startRange, wrapperInfo.start);
-        addWrapper('end', endRange, wrapperInfo.end);
-        
-        const elementsToNormalize = document.querySelectorAll(`#${oldHighlightInfo?.startParagraphId}, #${oldHighlightInfo?.endParagraphId}, #${newHighlightInfo.startParagraphId}, #${newHighlightInfo.startParagraphId}`);
-        for (const element of elementsToNormalize) element.normalize();
+      } else {
+        document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
       }
-    } else {
-      document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
     }
     
     const detail = {

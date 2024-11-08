@@ -55,7 +55,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 - **paragraphSelector** – CSS selector for the paragraphs or other blocks of text on the page that should be annotatable. Each block is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Default: `h1, h2, h3, h4, h5, h6, p, ol, ul, dl, tr`.
 - **colors** – Object that describes available highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default: red, orange, yellow, green, blue (see full default values at the bottom of highlight-helper.js).
 - **styles** – Object that describes available highlight styles. Keys are style names, and values are CSS property lists. Supported CSS properties are limited and support varies by browser (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). If present, the substring `{color}` will be dynamically replaced with the relevant color string. Default: fill, single-underline, double-underline, colored-text, redacted (see full default values at the bottom of highlight-helper.js).
-- **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with three optional properties: `start` (HTML string to be inserted at the beginning of the highlight), `end` (HTML string to be inserted at the end of the highlight). To avoid problems when calculating ranges and offsets, all [text nodes](https://developer.mozilla.org/en-US/docs/Web/API/Text) in the start and end wrappers will be removed (if text is needed, it should be rendered with CSS). If present, the substring `{color}` will be dynamically replaced with the relevant color string from the highlight, and other substrings with curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. Default: none, sliders, footnote (see full default values at the bottom of highlight-helper.js).
+- **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with three optional properties: `start` (HTML string to be inserted at the beginning of the highlight), `end` (HTML string to be inserted at the end of the highlight). For now, wrappers are only supported if the highlight is read-only. To avoid problems when calculating ranges and offsets, all [text nodes](https://developer.mozilla.org/en-US/docs/Web/API/Text) in the start and end wrappers will be removed (if text is needed, it should be rendered with CSS). If present, the substring `{color}` will be dynamically replaced with the relevant color string from the highlight, and other substrings with curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. Default: none, sliders, footnote (see full default values at the bottom of highlight-helper.js).
 - **rememberStyle** – Whether the most recent color, style, and wrapper should be remembered and used by default the next time the user creates a highlight. Boolean. Default: `true`.
 - **snapToWord** – Whether text selection and highlights should snap to the nearest word boundary. Boolean. Default: `false`.
 - **pointerMode** – Mode for responding to pointer events. Options are `default` (create highlights by selecting text, then tapping a color or style); `live` (create highlights immediately when selecting text, without needing to tap a button); and `auto` (`default` for touch and mouse input, but `live` when a stylus or Apple Pencil is detected). Default: `default`.
@@ -83,15 +83,15 @@ Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/
 
 These are the attributes that Highlight Helper stores for each highlight. Most of the attributes can be changed by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
 
-**highlightId** (read-only after creation) – The ID of the highlight.
-**color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
-**style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
-**wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
-**wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
-**readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
-**startParagraphId** – ID of the annotatable block element where the highlight starts. Example: `p1`.
-**startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
-**endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
-**endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
-**text** (read-only) – The text that’s highlighted.
-**highlightObj** (read-only) – The highlight object created with the Custom Highlight API.
+- **highlightId** (read-only after creation) – The ID of the highlight.
+- **color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
+- **style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
+- **wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
+- **wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
+- **readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
+- **startParagraphId** – ID of the annotatable block element where the highlight starts. Example: `p1`.
+- **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
+- **endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
+- **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
+- **text** (read-only) – The text that’s highlighted.
+- **highlightObj** (read-only) – The highlight object created with the Custom Highlight API.

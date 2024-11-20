@@ -119,7 +119,7 @@
   <body>
     <main>
       <h1 id="title1">Highlight Helper Demo</h1>
-<!--       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/CMYK_color_model.svg/180px-CMYK_color_model.svg.png"> -->
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/CMYK_color_model.svg/180px-CMYK_color_model.svg.png">
       <p id="p1"><b>Highlight Helper</b> is a JavaScript tool that enables highlighting or underlining text in an HTML page (such as a digital book or article). Behind the scenes, it uses the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, which makes it easy to highlight <b>various <i>combinations</i></b> of <b>formatted</b> text.</p>
       <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images (right) and Japanese ruby/furigana (below) are highlighted around.</p>
       <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
@@ -140,9 +140,9 @@
         <button name="hh-style" value="redacted"> Redacted</button>
         <button name="hh-remove">Remove</button>
         <div></div>
-        <button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
+        <!--button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
         <button name="hh-wrapper" value="sliders" title="Sliders"><span class="slider-start" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span><span class="slider-end" style="--color: hsl(0, 0%, 50%)"></span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span></button-->
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
@@ -167,39 +167,21 @@
     <!-- Link to the Highlight Helper JavaScript file -->
     <script src="highlight-helper.js"></script>
     <script>
-      // Initialize Highlight Helper
+      // Example highlights
+      let highlights = [
+        { highlightId: 'hh-1729991847207', color: 'green', style: 'fill', startParagraphId: 'p1', startParagraphOffset: 51, endParagraphId: 'p1', endParagraphOffset: 83, },
+        { highlightId: 'hh-1729991847300', color: 'blue', style: 'fill', startParagraphId: 'p2', startParagraphOffset: 27, endParagraphId: 'p2', endParagraphOffset: 42, },
+        { highlightId: 'hh-1729991847468', color: 'red', style: 'colored-text', wrapper: 'footnote', wrapperVariables: { marker: 'a', }, readOnly: true, startParagraphId: 'p2', startParagraphOffset: 119, endParagraphId: 'p2', endParagraphOffset: 127, },
+      ];
+      
+      // Set options and initialize Highlight Helper, then load and draw highlights
       options = {
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
-        colors: {
-          'red': 'hsl(352, 99%, 65%)',
-          'orange': 'hsl(31, 99%, 58%)',
-          'yellow': 'hsl(50, 98%, 61%)',
-          'green': 'hsl(75, 70%, 49%)',
-          'blue': 'hsl(182, 86%, 47%)',
-        },
-        styles: {
-          'fill': 'background-color: hsl(from {color} h s l / 40%);',
-          'single-underline': 'text-decoration: underline; text-decoration-color: {color}; text-underline-offset: 0.15em; text-decoration-thickness: 0.15em; text-decoration-skip-ink: none;',
-          'double-underline': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-style: double;',
-          'colored-text': 'color: {color};',
-          'redacted': 'background-color: transparent; color: transparent;',
-        },
-        wrappers: {
-          'none': {},
-          'sliders': { start: '<span class="slider-start" style="--color: {color}"></span>', end: '<span class="slider-end" style="--color: {color}"></span>', },
-          'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" style="--color: {color}"></span>', end: '', },
-        },
       }
       const highlighter = new Highlighter(options);
-      let highlights = [
-        { highlightId: 'hh-1729991847207', color: 'green', style: 'fill', startParagraphId: 'p1', startParagraphOffset: 51, endParagraphId: 'p1', endParagraphOffset: 83, },
-        { highlightId: 'hh-1729991847300', color: 'blue', style: 'fill', wrapper: 'sliders', startParagraphId: 'p2', startParagraphOffset: 27, endParagraphId: 'p2', endParagraphOffset: 42, },
-        { highlightId: 'hh-1729991847468', color: 'red', style: 'colored-text', wrapper: 'footnote', wrapperVariables: { marker: 'a', }, readOnly: true, startParagraphId: 'p2', startParagraphOffset: 119, endParagraphId: 'p2', endParagraphOffset: 127, },
-      ];
       highlighter.loadHighlights(highlights);
       highlighter.drawHighlights();
-      
       
       // Call Highlight Helper methods when color, style, or remove buttons on this demo page are tapped
       const colorButtons = document.getElementsByName('hh-color');
@@ -214,14 +196,12 @@
       for (const wrapperButton of wrapperButtons) {
         wrapperButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ wrapper: wrapperButton.value }); });
       }
-      
       const removeButton = document.getElementsByName('hh-remove')[0];
       removeButton.addEventListener('click', highlighter.removeHighlight);
       document.addEventListener('keydown', respondToKeyPress);
       function respondToKeyPress(event) {
         if (event.key === 'Backspace') highlighter.removeHighlight();
       }
-      
       
       // Call Highlight Helper methods when options are changed
       const rememberStyleCheckbox = document.getElementById('hh-remember-style');
@@ -235,7 +215,6 @@
           highlighter.setOption('pointerMode', pointerMode);
         });
       }
-      
       
       // Listen for and respond to highlight info sent back from Highlight Helper
       const container = document.querySelector(options.containerSelector);
@@ -285,6 +264,7 @@
       }
       disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
       
+      // Log events for debugging
       container.addEventListener('hh:highlightactivate', console.log)
       container.addEventListener('hh:highlightdeactivate', console.log)
     </script>

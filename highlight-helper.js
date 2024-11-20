@@ -229,7 +229,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
-    // TODO: Support draggable selection handles for desktop browsers
+    // TODO: Show custom selection handles in desktop browser
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     const highlightToActivate = highlightsById[highlightId];
     if (highlightToActivate.readOnly) {
@@ -558,7 +558,7 @@ function Highlighter(options = hhDefaultOptions) {
   function getRangeFromTapEvent(event) {
     let range;
     if (document.caretPositionFromPoint) {
-      // Most browsers (in case there are others that need the workaround)
+      // Most browsers
       let caretPosition = document.caretPositionFromPoint(event.clientX, event.clientY);
       range = document.createRange();
       range.setStart(caretPosition.offsetNode, caretPosition.offset);

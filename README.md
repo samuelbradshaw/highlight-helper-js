@@ -83,15 +83,15 @@ Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/
 
 These are the attributes that Highlight Helper stores for each highlight. Most of the attributes can be changed by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
 
-- **highlightId** (read-only after creation) – The ID of the highlight.
-- **color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
-- **style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
-- **wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
-- **wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
-- **readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
-- **startParagraphId** – ID of the annotatable block element where the highlight starts. Example: `p1`.
-- **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
-- **endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
-- **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
-- **text** (read-only) – The text that’s highlighted.
-- **highlightObj** (read-only) – The highlight object created with the Custom Highlight API.
+**highlightId** (read-only after creation) – The ID of the highlight.
+**color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
+**style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
+**wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
+**wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
+**readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
+**startParagraphId** – ID of the annotatable block element where the highlight starts. Example: `p1`.
+**startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
+**endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
+**endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
+**text** (read-only) – The text that’s highlighted.
+**highlightObj** (read-only) – The highlight object created with the Custom Highlight API.

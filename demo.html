@@ -154,6 +154,11 @@
         <label><input type="radio" name="hh-pointer-mode" value="live"> Live highlighting</label><br>
         <label><input type="radio" name="hh-pointer-mode" value="auto"> Auto (Live when using stylus)</label><br>
       </p>
+      <p>
+        Drawing mode:<br>
+        <label><input type="radio" name="hh-drawing-mode" value="highlight-api" checked> Custom Highlight API</label><br>
+        <label><input type="radio" name="hh-drawing-mode" value="svg"> SVG shapes</label><br>
+      </p>
       <b>Active highlight:</b>
       <p id="selection-text">N/A</p>
       <p id="selection-info"></p>
@@ -207,12 +212,20 @@
       const rememberStyleCheckbox = document.getElementById('hh-remember-style');
       const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
       const pointerModeRadioButtons = document.getElementsByName('hh-pointer-mode');
+      const drawingModeRadioButtons = document.getElementsByName('hh-drawing-mode');
       rememberStyleCheckbox.addEventListener('change', (event) => { highlighter.setOption('rememberStyle', event.currentTarget.checked); });
       snapToWordCheckbox.addEventListener('change', (event) => { highlighter.setOption('snapToWord', event.currentTarget.checked); });
       for (const pointerModeRadioButton of pointerModeRadioButtons) {
         pointerModeRadioButton.addEventListener('change', (event) => {
           let pointerMode = document.querySelector('[name="hh-pointer-mode"]:checked').value;
           highlighter.setOption('pointerMode', pointerMode);
+        });
+      }
+      if (!CSS.highlights) document.querySelector('[name="hh-drawing-mode"][value="svg"]').checked = true;
+      for (const drawingModeRadioButton of drawingModeRadioButtons) {
+        drawingModeRadioButton.addEventListener('change', (event) => {
+          let drawingMode = document.querySelector('[name="hh-drawing-mode"]:checked').value;
+          highlighter.setOption('drawingMode', drawingMode);
         });
       }
       
@@ -247,7 +260,7 @@
       function handleAmbiguousAction(event) {
         disambiguationButtonsDiv.innerHTML = '';
         for (const highlight of event.detail.highlights) {
-          let buttonStyle = options.styles[highlight.style].replace('{color}', options.colors[highlight.color])
+          let buttonStyle = options.styles[highlight.style]['css'].replace('{color}', options.colors[highlight.color])
           let buttonHtml = `
             <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.text}</button><br>
           `;
@@ -268,6 +281,5 @@
       container.addEventListener('hh:highlightactivate', console.log)
       container.addEventListener('hh:highlightdeactivate', console.log)
     </script>
-    
   </body>
 </html>

@@ -408,7 +408,7 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     // Deactivate active highlight when tapping outside the highlight
-    if (activeHighlightId && selection.type == 'Caret' && highlightsById[activeHighlightId].highlightRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
+    if (previousSelectionRange && selection.type == 'Caret' && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
       this.deactivateHighlights();
     }
     if (isSafari && selection.type == 'Caret' && !activeHighlightId) {

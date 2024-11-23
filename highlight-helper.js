@@ -4,6 +4,7 @@ function Highlighter(options = hhDefaultOptions) {
   }
   const annotatableContainer = document.querySelector(options.containerSelector);
   const annotatableParagraphs = document.querySelectorAll(options.paragraphSelector);
+  const hyperlinks = annotatableContainer.getElementsByTagName('a');
   
   // Set up stylesheets
   const generalStylesheet = new CSSStyleSheet();
@@ -55,10 +56,10 @@ function Highlighter(options = hhDefaultOptions) {
   // Setting -1 as the tabIndex on <body> is a workaround to avoid "tap to search" in Chrome on Android. 
   document.body.tabIndex = -1;
   
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
   const isIosSafari = isSafari && navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
-  const hyperlinks = annotatableContainer.getElementsByTagName('a');
   const highlightsById = {};
+  let annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
   let activeHighlightId = null;
   let allowNextHyperlinkInteraction = false;
   let previousSelectionRange = null;
@@ -78,10 +79,9 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Draw (or redraw) specified highlights, or all highlights on the page
   this.drawHighlights = (highlightIds = Object.keys(highlightsById)) => {
-    const annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
-      const range = getRestoredHighlightRange(highlightInfo.highlightRange, highlightInfo);
+      const range = getRestoredHighlightRange(highlightInfo);
       const wasDrawnAsReadOnly = document.querySelector(`.hh-read-only[data-highlight-id="${highlightId}"]`);
       
       // Remove old highlight elements and styles
@@ -167,7 +167,10 @@ function Highlighter(options = hhDefaultOptions) {
       isNewHighlight = true;
     }
     
-    // Log appearance changes
+    // If a different highlight is active, deactivate it
+    if (activeHighlightId && highlightId != activeHighlightId) this.deactivateHighlights();
+    
+    // Check which appearance properties changed
     for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
       if (isNewHighlight || (attributes[key] != null && attributes[key] != oldHighlightInfo[key])) appearanceChanges.push(key);
     }
@@ -177,11 +180,11 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Calculate the bounds of the highlight range, if it's changed
     let selectionRange, highlightRange;
-    let startNode, startOffset, endNode, endOffset;
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     if (selection.type == 'Range') selectionRange = selection.getRangeAt(0);
     if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || selectionRange) {
+      let startNode, startOffset, endNode, endOffset;
       if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
         startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
         startParagraphOffset = parseInt(attributes.startParagraphOffset) ?? oldHighlightInfo?.startParagraphOffset;
@@ -209,7 +212,7 @@ function Highlighter(options = hhDefaultOptions) {
         return isNewHighlight ? null : this.createOrUpdateHighlight(oldHighlightInfo);
       }
       
-      // Log bounds changes
+      // Check which bounds properties changed
       for (const key of ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset']) {
         if (isNewHighlight || eval(key) != oldHighlightInfo[key]) boundsChanges.push(key);
       }
@@ -291,8 +294,8 @@ function Highlighter(options = hhDefaultOptions) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
     }
     
+    this.drawHighlights([highlightId]);
     if (triggeredByUserAction) {
-      this.drawHighlights([highlightId]);
       if (appearanceChanges.length > 0) updateSelectionStyle(newHighlightInfo.color, newHighlightInfo.style);
       if (highlightId != activeHighlightId) this.activateHighlight(highlightId);
     }
@@ -328,20 +331,22 @@ function Highlighter(options = hhDefaultOptions) {
   // Deactivate any highlights that are currently active/selected
   this.deactivateHighlights = () => {
     const deactivatedHighlight = highlightsById[activeHighlightId];
-    const deactivatedHighlightRange = deactivatedHighlight ? deactivatedHighlight.highlightRange : null;
     activeHighlightId = null;
     allowNextHyperlinkInteraction = false;
     previousSelectionRange = null;
     window.getSelection().removeAllRanges();
     updateSelectionStyle();
-//     if (deactivatedHighlight && deactivatedHighlightRange.collapsed) {
-//       // Sometimes when tapping to activate a highlight, the highlight's range collapses to a caret and the highlight immediately deactivates itself. This is a workaround to fix it.
-//       console.log('Log: Highlight range collapsed');
-//       this.createOrUpdateHighlight(deactivatedHighlight);
-//     }
-    annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
-      highlightId: deactivatedHighlight?.highlightId,
-    }}));
+    if (deactivatedHighlight) {
+      // TODO: Determine if this debugging fix is needed (I haven't seen the issue for a while)
+//       if (deactivatedHighlight.highlightRange?.collapsed) {
+//         // Sometimes when tapping to activate a highlight, the highlight's range collapses to a caret and the highlight immediately deactivates itself. This is a workaround to fix it.
+//         console.log('Log: Highlight range collapsed');
+//         this.createOrUpdateHighlight(deactivatedHighlight);
+//       }
+      annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
+        highlightId: deactivatedHighlight.highlightId,
+      }}));
+    }
   }
   
   // Remove the selected highlight or a specific highlight by ID
@@ -407,7 +412,7 @@ function Highlighter(options = hhDefaultOptions) {
   document.addEventListener('selectionchange', (event) => respondToSelectionChange(event) );
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
-    // Deactivate active highlight when tapping outside the highlight
+    // Deselect text or deactivate highlights when tapping away
     if (previousSelectionRange && selection.type == 'Caret' && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
       this.deactivateHighlights();
     }
@@ -422,7 +427,7 @@ function Highlighter(options = hhDefaultOptions) {
       if (!activeHighlightId && (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
         this.createOrUpdateHighlight();
       }
-      if (activeHighlightId) this.createOrUpdateHighlight();
+      if (activeHighlightId) this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
       previousSelectionRange = selectionRange.cloneRange();
     }
   }
@@ -491,6 +496,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Window resize
   const respondToWindowResize = (event) => {
+    annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
     if (options.drawingMode == 'svg') this.drawHighlights();
   }
   window.addEventListener('resize', respondToWindowResize);
@@ -547,7 +553,7 @@ function Highlighter(options = hhDefaultOptions) {
       span.outerHTML = span.innerHTML;
       parentParagraph.normalize();
     });
-    if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.highlightRange = getRestoredHighlightRange(highlightInfo.highlightRange, highlightInfo);
+    if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.highlightRange = getRestoredHighlightRange(highlightInfo);
     const highlightCssRules = highlightsStylesheet.cssRules;
     const ruleIndexesToDelete = [];
     for (let r = 0; r < highlightCssRules.length; r++) {
@@ -563,7 +569,7 @@ function Highlighter(options = hhDefaultOptions) {
       let styleTemplate = getStyleTemplate(color, style, 'css');
       selectionStylesheet.replaceSync(`::selection { ${styleTemplate} }`);
     } else {
-      selectionStylesheet.replaceSync(`::selection { background-color: Highlight; }`);
+      selectionStylesheet.replaceSync(`::selection { background-color: Highlight; color: HighlightText; }`);
     }
     annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: {
       color: color,
@@ -655,7 +661,8 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Fix highlight range if the DOM changed and made the previous highlight range invalid
-  const getRestoredHighlightRange = (highlightRange, highlightInfo) => {
+  const getRestoredHighlightRange = (highlightInfo) => {
+    const highlightRange = highlightInfo.highlightRange;
     if (highlightRange.startContainer.nodeType != Node.TEXT_NODE || highlightRange.endContainer.nodeType != Node.TEXT_NODE) {
       ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.startParagraphId), highlightInfo.startParagraphOffset));
       ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.endParagraphId), highlightInfo.endParagraphOffset));

@@ -39,11 +39,11 @@ All of the available methods, options, and custom events are documented below.
 
 ### Methods
 
-- **loadHighlights(highlights)** – Load an array of existing highlights into Highlight Helper. After loading highlights, you’ll usually want to call drawHighlights() to draw them on the page. See the demo source code for an example highlights array. Omitted or invalid properties will fall back to default values.
-- **drawHighlights(highlightIds)** – Draw (or redraw) highlights on the page. If no highlight IDs are passed, all highlights will be drawn. Highlight Helper should redraw highlights automatically when an individual highlight is added, updated, or removed, but you’ll need to call drawHighlights() manually if you use loadHighlights() to load several highlights at once.
-- **createOrUpdateHighlight(attributes)** – Create or update a highlight. `attributes` is an object with these attribute keys: highlightId, color, style, wrapper, wrapperVariables, readOnly, startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset. Each of these attributes are described below. All of the keys are optional. If a highlight ID isn’t passed, the currently-active highlight will be updated, if there is one, or a new highlight will be created. If start and end bounds aren’t passed, the highlight will be created or updated using the current text selection, if there is one. `triggeredByUserAction` is a boolean (default: `true` – when true, the highlight will be activated as soon as it’s created or updated).
-- **activateHighlight(highlightId)** – Activate a highlight for editing, given its `highlightId`. Only one highlight can be active at a time (because it’s tied to text selection, and there can only be one text selection on a page). Normally, a highlight activates automatically when the user taps it, but if a highlight overlaps another highlight or a link, it’s not clear which one the user is tapping, so neither activates automatically.
-- **activateHyperlink(position)** – Activate the specified hyperlink (i.e. open the link). `position` is the 0-based position of the link in the annotatable area of the page, relative to other links. Normally, a link opens automatically when the user taps it; but if a highlight overlaps the link, it’s not clear which one the user is tapping, so neither activates automatically.
+- **loadHighlights(highlights)** – Load an array of existing highlights into Highlight Helper. Each highlight should have one or more of the properties described under “Highlight attributes” below. Omitted or invalid properties will fall back to default values.
+- **createOrUpdateHighlight(attributes, triggeredByUserAction)** – Create or update an individual highlight. `attributes` is an object with one or more of the properties described under “Highlight attributes” below. If a highlight ID isn’t passed in, the currently-active highlight will be updated, if there is one, otherwise a new highlight will be created. If it’s a new highlight and start and end bounds aren’t passed in, the highlight will be created based on selected text. `triggeredByUserAction` is an optional boolean (default: `true`). If this is set to false, the highlight won’t be activated after editing, and the color and style won’t be saved as the default for the next highlight.
+- **drawHighlights(highlightIds)** – Draw or redraw highlights on the page, given an array of highlight IDs. If no highlight IDs are passed, all highlights will be drawn. This shouldn’t need to be called frequently (Highlight Helper will usually draw or redraw highlights automatically).
+- **activateHighlight(highlightId)** – Activate a highlight for editing, given its `highlightId`. Only one highlight can be active at a time (because it’s tied to text selection, and there can only be one text selection on a page). Normally, a highlight activates automatically when the user taps it; however, if there are overlapping highlights, an `hh:ambiguousaction` event will be sent instead.
+- **activateHyperlink(position)** – Activate the specified hyperlink (i.e. open the link). `position` is the 0-based position of the link in the annotatable area of the page, relative to other links. Normally, a link opens automatically when the user taps it; but if a highlight overlaps the link, an `hh:ambiguousaction` event will be sent instead.
 - **deactivateHighlights()** – Clear the text selection and deactivate any active highlights.
 - **removeHighlight(highlightId)** – Remove the specified highlight. If `highlightId` isn’t provided, the currently-active highlight will be deleted (if there is one).
 - **getActiveHighlightId()** – Get the ID of the currently-active highlight (if there is one).
@@ -75,7 +75,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 
 Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the container element (defined in the `containerSelector` option) that can be listened for and responded to:
 
-- **hh:highlightsload** – Sent when a set of highlights loads. Includes the number of highlights added and the overall number of loaded highlights.
+- **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added and the overall number of loaded highlights.
 - **hh:highlightcreate** – Sent when a new highlight is created. Includes information about the highlight.
 - **hh:highlightupdate** – Sent when the highlight changes. Includes information about the highlight, and a list of the attributes that changed.
 - **hh:highlightactivate** – Sent when a highlight is activated. Includes information about the activated highlight.
@@ -89,16 +89,16 @@ Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/
 
 These are the attributes that Highlight Helper stores for each highlight. Most of the attributes can be changed by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
 
-**highlightId** (read-only after creation) – The ID of the highlight.
-**color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
-**style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
-**wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
-**wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
-**readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
-**startParagraphId** – ID of the annotatable block element where the highlight starts. Example: `p1`.
-**startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
-**endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
-**endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
-**text** (read-only) – Text from the highlighted range.
-**html** (read-only) – HTML from the highlighted range.
-**highlightRange** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
+- **highlightId** (read-only after creation) – The ID of the highlight.
+- **color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
+- **style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
+- **wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
+- **wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
+- **readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
+- **startParagraphId** – ID of the annotatable block element where the highlight starts. Example: `p1`.
+- **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
+- **endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
+- **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
+- **text** (read-only) – Text from the highlighted range.
+- **html** (read-only) – HTML from the highlighted range.
+- **highlightRange** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.

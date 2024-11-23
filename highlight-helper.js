@@ -4,7 +4,11 @@ function Highlighter(options = hhDefaultOptions) {
   }
   const annotatableContainer = document.querySelector(options.containerSelector);
   const annotatableParagraphs = document.querySelectorAll(options.paragraphSelector);
-  const hyperlinks = annotatableContainer.getElementsByTagName('a');
+  const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
+  const isIosSafari = isSafari && navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
+  
+  // Setting -1 as the tabIndex on <body> is a workaround to avoid "tap to search" in Chrome on Android
+  document.body.tabIndex = -1;
   
   // Set up stylesheets
   const generalStylesheet = new CSSStyleSheet();
@@ -53,15 +57,21 @@ function Highlighter(options = hhDefaultOptions) {
   svgBackground.classList.add('hh-svg-background');
   annotatableContainer.appendChild(svgBackground);
   
-  // Setting -1 as the tabIndex on <body> is a workaround to avoid "tap to search" in Chrome on Android. 
-  document.body.tabIndex = -1;
+  // Check for hyperlinks on the page
+  const hyperlinkElements = annotatableContainer.getElementsByTagName('a');
+  const hyperlinksByPosition = {}
+  for (let hyp = 0; hyp < hyperlinkElements.length; hyp++) {
+    hyperlinksByPosition[hyp] = {
+      'position': hyp,
+      'text': hyperlinkElements[hyp].innerHTML,
+      'url': hyperlinkElements[hyp].href,
+      'hyperlinkElement': hyperlinkElements[hyp],
+    }
+  }
   
-  const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
-  const isIosSafari = isSafari && navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
   const highlightsById = {};
   let annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
   let activeHighlightId = null;
-  let allowNextHyperlinkInteraction = false;
   let previousSelectionRange = null;
   let isStylus = false;
   let selectionIsReady = false;
@@ -170,6 +180,13 @@ function Highlighter(options = hhDefaultOptions) {
     // If a different highlight is active, deactivate it
     if (activeHighlightId && highlightId != activeHighlightId) this.deactivateHighlights();
     
+    // Update defaults
+    if (options.rememberStyle && triggeredByUserAction) {
+      if (attributes.color) options.defaultColor = attributes.color;
+      if (attributes.style) options.defaultStyle = attributes.style;
+      if (attributes.wrapper) options.defaultWrapper = attributes.wrapper;
+    }
+    
     // Check which appearance properties changed
     for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
       if (isNewHighlight || (attributes[key] != null && attributes[key] != oldHighlightInfo[key])) appearanceChanges.push(key);
@@ -241,11 +258,6 @@ function Highlighter(options = hhDefaultOptions) {
       highlightRange: highlightRange ?? oldHighlightInfo?.highlightRange,
     };
     highlightsById[highlightId] = newHighlightInfo;
-    if (options.rememberStyle && triggeredByUserAction) {
-      if (appearanceChanges.includes('color')) options.defaultColor = newHighlightInfo.color;
-      if (appearanceChanges.includes('style')) options.defaultStyle = newHighlightInfo.style;
-      if (appearanceChanges.includes('wrapper')) options.defaultWrapper = newHighlightInfo.wrapper;
-    }
     
     // Update wrapper
     // TODO: Enable wrappers for editable highlights
@@ -305,7 +317,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
     // TODO: Show custom selection handles in desktop browser
-    const selection = getRestoredSelectionOrCaret(window.getSelection());
+    const selection = window.getSelection();
     const highlightToActivate = highlightsById[highlightId];
     if (highlightToActivate.readOnly) {
       // If the highlight is read-only, return an event, but don't actually activate it
@@ -322,27 +334,22 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Activate a link by position
+  let allowHyperlinkClick = false;
   this.activateHyperlink = (position) => {
     this.deactivateHighlights();
-    allowNextHyperlinkInteraction = true;
-    hyperlinks[position].click();
+    allowHyperlinkClick = true;
+    hyperlinksByPosition[position].hyperlinkElement.click();
+    allowHyperlinkClick = false;
   }
   
   // Deactivate any highlights that are currently active/selected
   this.deactivateHighlights = () => {
     const deactivatedHighlight = highlightsById[activeHighlightId];
     activeHighlightId = null;
-    allowNextHyperlinkInteraction = false;
     previousSelectionRange = null;
     window.getSelection().removeAllRanges();
     updateSelectionStyle();
     if (deactivatedHighlight) {
-      // TODO: Determine if this debugging fix is needed (I haven't seen the issue for a while)
-//       if (deactivatedHighlight.highlightRange?.collapsed) {
-//         // Sometimes when tapping to activate a highlight, the highlight's range collapses to a caret and the highlight immediately deactivates itself. This is a workaround to fix it.
-//         console.log('Log: Highlight range collapsed');
-//         this.createOrUpdateHighlight(deactivatedHighlight);
-//       }
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
         highlightId: deactivatedHighlight.highlightId,
       }}));
@@ -351,25 +358,16 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Remove the selected highlight or a specific highlight by ID
   this.removeHighlight = (highlightId = null) => {
-    let deletedHighlightId;
-    if (highlightId && highlightsById.hasOwnProperty(highlightId)) {
-      deletedHighlightId = highlightId;
-    } else {
-      const selection = getRestoredSelectionOrCaret(window.getSelection());
-      if (selection.type != 'Range') return;
-      if (activeHighlightId) {
-        deletedHighlightId = activeHighlightId;
-      }
-    }
-    if (deletedHighlightId) {
-      const deletedHighlightInfo = highlightsById[deletedHighlightId];
+    highlightId = highlightId ?? activeHighlightId;
+    const highlightInfo = highlightsById[highlightId];
+    if (highlightInfo) {
       this.deactivateHighlights();
-      document.querySelectorAll(`.${deletedHighlightInfo.escapedHighlightId}.hh-wrapper-start, .${deletedHighlightInfo.escapedHighlightId}.hh-wrapper-end`).forEach(el => el.remove());
-      delete highlightsById[deletedHighlightId];
+      document.querySelectorAll(`.${highlightInfo.escapedHighlightId}.hh-wrapper-start, .${highlightInfo.escapedHighlightId}.hh-wrapper-end`).forEach(el => el.remove());
+      delete highlightsById[highlightId];
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
-        highlightId: deletedHighlightId,
+        highlightId: highlightId,
       }}));
-      undrawHighlight(deletedHighlightInfo);
+      undrawHighlight(highlightInfo);
     }
   }
   
@@ -409,17 +407,15 @@ function Highlighter(options = hhDefaultOptions) {
   // -------- EVENT LISTENERS --------
   
   // Selection change in document (new selection, change in selection range, or selection collapsing to a caret)
-  document.addEventListener('selectionchange', (event) => respondToSelectionChange(event) );
+  document.addEventListener('selectionchange', (event) => respondToSelectionChange(event));
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     // Deselect text or deactivate highlights when tapping away
     if (previousSelectionRange && selection.type == 'Caret' && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
       this.deactivateHighlights();
     }
-    if (isSafari && selection.type == 'Caret' && !activeHighlightId) {
-      // SAFARI ONLY: Check for tapped highlights or links (for other browsers, see pointerup event listener)
-      checkForTapTargets(selection);
-    } else if (selection.type == 'Range') {
+    
+    if (selection.type == 'Range') {
       selectionIsReady = true;
       const selectionRange = selection.getRangeAt(0);
       let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
@@ -433,54 +429,50 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Pointer down in annotatable container
-  annotatableContainer.addEventListener('pointerdown', respondToTap);
-  function respondToTap(event) {
+  tapResult = null;
+  annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event));
+  const respondToPointerDown = (event) => {
     isStylus = event.pointerType == 'pen';
+    const tapRange = getRangeFromTapEvent(event);
+    tapResult = checkForTapTargets(tapRange);
+  }
+  
+  // Hyperlink click (for each hyperlink in annotatable container)
+  for (const hyperlinkElement of hyperlinkElements) {
+    hyperlinkElement.addEventListener('click', (event) => {
+      this.deactivateHighlights();
+      if (!allowHyperlinkClick) event.preventDefault();
+    });
   }
   
   // Pointer up in annotatable container
-  annotatableContainer.addEventListener('pointerup', (event) => {
-    // NON-SAFARI BROWSERS: Check for tapped highlights or links (for Safari, see selectionchange event listener)
-    if (isSafari) return;
-    let selection = window.getSelection();
-    selection.removeAllRanges();
-    selection = getRestoredSelectionOrCaret(selection, event);
-    checkForTapTargets(selection);
-  });
+  annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
+  const respondToPointerUp = (event) => {
+    const selection = window.getSelection();
+    if (tapResult && !activeHighlightId && selection.type != 'Range') {
+      if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
+        return this.activateHighlight(tapResult.highlights[0].highlightId);
+      } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1) {
+        return this.activateHyperlink(tapResult.hyperlinks[0].position);
+      } else if (tapResult.highlights.length + tapResult.hyperlinks.length > 1) {
+        return annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
+      }
+    }
+    tapResult = null;
+  }
   
   // Pointer up in window
-  window.addEventListener('pointerup', respondToPointerUp);
-  function respondToPointerUp(event) {
-    const selection = getRestoredSelectionOrCaret(window.getSelection());
+  window.addEventListener('pointerup', respondToWindowPointerUp);
+  function respondToWindowPointerUp(event) {
+    const selection = window.getSelection();
     if (selection.type == 'Range' && options.snapToWord) {
       const selectionRange = snapRangeToWord(selection.getRangeAt(0)).cloneRange();
       selection.removeAllRanges();
       selection.addRange(selectionRange);
     }
-  }
-  
-  // Hyperlink click (for each hyperlink in annotatable container)
-  // TODO: See if there's a way to avoid Safari popup blocker when opening links
-  for (const hyperlink of hyperlinks) {
-    hyperlink.addEventListener('click', (event) => {
-      if (allowNextHyperlinkInteraction) {
-        allowNextHyperlinkInteraction = false;
-      } else {
-        allowNextHyperlinkInteraction = true;
-        event.preventDefault();
-        const range = getRangeFromTapEvent(event);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-    });
-  }
-  
-  // Click in annotatable container
-  // TODO: If you attempt to select any text programmatically before the user has long-pressed to create a selection (for example, if you tap an existing highlight after the page loads), iOS Safari selects the text, but it doesn't show the selection UI (selection handles and selection overlay). This workaround opens a temporary tab and closes it, to force Safari to re-focus the original page, which causes the selection UI to show as expected. A better workaround or fix is needed.
-  if (isIosSafari) {
-    annotatableContainer.addEventListener('click', (event) => changeSafariFocus(event) );
-    const changeSafariFocus = (event) => {
+    
+    // TODO: If you attempt to select any text programmatically before the user has long-pressed to create a selection (for example, if you tap an existing highlight after the page loads), iOS Safari selects the text, but it doesn't show the selection UI (selection handles and selection overlay). This workaround opens a temporary tab and closes it, to force Safari to re-focus the original page, which causes the selection UI to show as expected. A better workaround or fix is needed.
+    if (isIosSafari) {
       if (!selectionIsReady) {
         const tempTab = window.open('', 'temporary');
         tempTab.document.body.innerHTML = '<meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">Workaround for initial text selection on iOS Safari...';
@@ -490,25 +482,26 @@ function Highlighter(options = hhDefaultOptions) {
         }, 500);
       }
     }
-  } else {
-    selectionIsReady = true;
   }
   
   // Window resize
+  window.addEventListener('resize', (event) => respondToWindowResize(event));
   const respondToWindowResize = (event) => {
     annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
     if (options.drawingMode == 'svg') this.drawHighlights();
   }
-  window.addEventListener('resize', respondToWindowResize);
+  
+  // Window blur
+  window.addEventListener('blur', (event) => selectionIsReady = false)
   
   
   // -------- UTILITY FUNCTIONS --------
     
-  // Check if the selection caret (created when a user taps on text) is in the range of an existing highlight or link. If it is, activate the highlight or link.
-  const checkForTapTargets = (selection) => {
-    if (selection.type != 'Caret' || (Object.keys(highlightsById).length + hyperlinks.length) == 0) return;
+  // Check if the tap is in the range of an existing highlight or link
+  const checkForTapTargets = (tapRange) => {
+    if ((Object.keys(highlightsById).length + Object.keys(hyperlinksByPosition).length) == 0) return;
     
-    let tapRange = selection.getRangeAt(0);
+    // Check for tapped highlights and hyperlinks
     const tappedHighlights = [];
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
@@ -518,29 +511,28 @@ function Highlighter(options = hhDefaultOptions) {
       }
     }
     const tappedHyperlinks = [];
-    for (let hyp = 0; hyp < hyperlinks.length; hyp++) {
-      hyperlinks[hyp].position = hyp;
-      if (selection.anchorNode.parentElement == hyperlinks[hyp]) tappedHyperlinks.push(hyperlinks[hyp]);
+    for (const hyperlinkPosition of Object.keys(hyperlinksByPosition)) {
+      const hyperlinkInfo = hyperlinksByPosition[hyperlinkPosition];
+      const hyperlinkRange = document.createRange()
+      hyperlinkRange.selectNodeContents(hyperlinkInfo.hyperlinkElement);
+      if (hyperlinkRange.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
+        tappedHyperlinks.push(hyperlinkInfo);
+      }
     }
     
-    if (tappedHighlights.length == 1 && tappedHyperlinks.length == 0) {
-      let tappedHighlight = tappedHighlights[0];
-      this.activateHighlight(tappedHighlight.highlightId);
-    } else if (tappedHighlights.length == 0 && tappedHyperlinks.length == 1) {
-      allowNextHyperlinkInteraction = true;
-      tappedHyperlinks[0].click();      
-    } else if (tappedHighlights.length + tappedHyperlinks.length > 1) {
+    // Sort tapped highlights based on their order on the page (hyperlinks should already be sorted)
+    if (tappedHighlights.length > 0) {
       let orderedElementIds = Array.from(annotatableContainer.querySelectorAll('[id]'), node => node.id);
       tappedHighlights.sort((a, b) => {
         return (orderedElementIds.indexOf(a.startParagraphId) - orderedElementIds.indexOf(b.startParagraphId)) || (a.startParagraphOffset - b.startParagraphOffset);
       });
-      
-      annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: {
-        'tapRange': tapRange,
-        'highlights': tappedHighlights,
-        'hyperlinks': tappedHyperlinks,
-      }}));
     }
+    
+    return {
+      'tapRange': tapRange,
+      'highlights': tappedHighlights,
+      'hyperlinks': tappedHyperlinks,
+    };
   }
   
   // Undraw the specified highlight

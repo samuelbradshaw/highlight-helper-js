@@ -201,7 +201,7 @@
         wrapperButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ wrapper: wrapperButton.value }); });
       }
       const removeButton = document.getElementsByName('hh-remove')[0];
-      removeButton.addEventListener('click', highlighter.removeHighlight);
+      removeButton.addEventListener('click', () => { highlighter.removeHighlight(); });
       document.addEventListener('keydown', respondToKeyPress);
       function respondToKeyPress(event) {
         if (event.key === 'Backspace') highlighter.removeHighlight();
@@ -268,7 +268,7 @@
         for (const hyperlink of event.detail.hyperlinks) {
           let buttonStyle = 'color: var(--gray-50); text-decoration: underline;'
           let buttonHtml = `
-            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">${hyperlink.innerHTML}</button><br>
+            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">${hyperlink.text}</button><br>
           `;
           disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
         }

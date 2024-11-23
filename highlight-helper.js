@@ -85,7 +85,7 @@ function Highlighter(options = hhDefaultOptions) {
       const wasDrawnAsReadOnly = document.querySelector(`.hh-read-only[data-highlight-id="${highlightId}"]`);
       
       // Remove old highlight elements and styles
-      if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !highlightInfo.readOnly)) undrawHighlight(highlightId);
+      if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !highlightInfo.readOnly)) undrawHighlight(highlightInfo);
       
       if (highlightInfo.readOnly) {
         let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'css');
@@ -123,11 +123,11 @@ function Highlighter(options = hhDefaultOptions) {
           }
           highlightObj.add(range);
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'css');
-          highlightsStylesheet.insertRule(`::highlight(${highlightId}) { ${styleTemplate} }`);
-          highlightsStylesheet.insertRule(`rt::highlight(${highlightId}) { color: inherit; background-color: transparent; }`);
-          highlightsStylesheet.insertRule(`sup::highlight(${highlightId}) { color: inherit; background-color: transparent; }`);
-          highlightsStylesheet.insertRule(`sub::highlight(${highlightId}) { color: inherit; background-color: transparent; }`);
-          highlightsStylesheet.insertRule(`img::highlight(${highlightId}) { color: inherit; background-color: transparent; }`);
+          highlightsStylesheet.insertRule(`::highlight(${highlightInfo.escapedHighlightId}) { ${styleTemplate} }`);
+          highlightsStylesheet.insertRule(`rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+          highlightsStylesheet.insertRule(`sup::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+          highlightsStylesheet.insertRule(`sub::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+          highlightsStylesheet.insertRule(`img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
         
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
@@ -138,7 +138,7 @@ function Highlighter(options = hhDefaultOptions) {
             if (!isContained(clientRect, relevantClientRects)) relevantClientRects.push(clientRect);
           }
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          group.classList.add(highlightId);
+          group.dataset.highlightId = highlightId;
           svgContent = '';
           for (const clientRect of relevantClientRects) {
             svgContent += styleTemplate
@@ -234,6 +234,7 @@ function Highlighter(options = hhDefaultOptions) {
       endParagraphOffset: endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset,
       text: (highlightRange ?? oldHighlightInfo?.highlightRange).toString(),
       html: temporaryHtmlElement.innerHTML,
+      escapedHighlightId: CSS.escape(highlightId),
       highlightRange: highlightRange ?? oldHighlightInfo?.highlightRange,
     };
     highlightsById[highlightId] = newHighlightInfo;
@@ -356,13 +357,14 @@ function Highlighter(options = hhDefaultOptions) {
       }
     }
     if (deletedHighlightId) {
+      const deletedHighlightInfo = highlightsById[deletedHighlightId];
       this.deactivateHighlights();
-      document.querySelectorAll(`.${deletedHighlightId}.hh-wrapper-start, .${deletedHighlightId}.hh-wrapper-end`).forEach(el => el.remove());
+      document.querySelectorAll(`.${deletedHighlightInfo.escapedHighlightId}.hh-wrapper-start, .${deletedHighlightInfo.escapedHighlightId}.hh-wrapper-end`).forEach(el => el.remove());
       delete highlightsById[deletedHighlightId];
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
         highlightId: deletedHighlightId,
       }}));
-      undrawHighlight(deletedHighlightId);
+      undrawHighlight(deletedHighlightInfo);
     }
   }
   
@@ -536,20 +538,20 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Undraw the specified highlight
-  const undrawHighlight = (highlightId) => {
-    const highlightInfo = highlightsById[highlightId];
-    for (const svgGroup of svgBackground.querySelectorAll(`g.${highlightId}`)) svgGroup.remove();
+  const undrawHighlight = (highlightInfo) => {
+    const highlightId = highlightInfo.highlightId;
+    for (const svgGroup of svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`)) svgGroup.remove();
     document.querySelectorAll(`.hh-read-only[data-highlight-id="${highlightId}"]`).forEach(span => {
       const parentParagraph = span.closest(options.paragraphSelector);
       const textNode = span.firstChild;
       span.outerHTML = span.innerHTML;
       parentParagraph.normalize();
     });
-    if (highlightInfo) highlightInfo.highlightRange = getRestoredHighlightRange(highlightInfo.highlightRange, highlightInfo);
+    if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.highlightRange = getRestoredHighlightRange(highlightInfo.highlightRange, highlightInfo);
     const highlightCssRules = highlightsStylesheet.cssRules;
     const ruleIndexesToDelete = [];
     for (let r = 0; r < highlightCssRules.length; r++) {
-      if (highlightCssRules[r].selectorText.includes(highlightId)) ruleIndexesToDelete.push(r);
+      if (highlightCssRules[r].selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`) || highlightCssRules[r].selectorText.includes(`[data-highlight-id="${highlightId}"]`)) ruleIndexesToDelete.push(r);
     }
     for (const index of ruleIndexesToDelete.reverse()) highlightsStylesheet.deleteRule(index);
     if (CSS.highlights && CSS.highlights.has(highlightId)) CSS.highlights.delete(highlightId);
@@ -694,6 +696,19 @@ function Highlighter(options = hhDefaultOptions) {
     }
     return false;
   }
+  
+//   // Merge overlapping DOMRects
+//   // TODO
+//   const mergeDomRects = (rects) => {
+//     const linesByYPosition = {}
+//     for (const rect of rects) {
+//       if (!linesByYPosition.hasOwnProperty(rect.y) {
+//         linesByYPosition[rect.y] = { x: rect.x, width: rect.width, height: rect.height }
+//       } else {
+//         linesByYPosition[rect.y]
+//       }
+//     }
+//   }
   
   // Debounce a function to prevent it from being executed too frequently
   // Adapted from https://levelup.gitconnected.com/debounce-in-javascript-improve-your-applications-performance-5b01855e086

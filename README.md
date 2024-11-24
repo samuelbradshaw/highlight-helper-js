@@ -10,8 +10,16 @@ Behind the scenes, Highlight Helper uses three different mechanisms for drawing 
 
 An HTML demo page that shows basic functionality can be found here: [Highlight Helper Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html). Source code for the demo is in **demo.html**. Highlight Helper itself is in **highlight-helper.js**.
 
+### Documentation:
+- [Known issues](#known-issues)
+- [Getting started](#getting-started)
+- [Methods, options, and custom events](#methods-options-and-custom-events)
+    - [Methods](#methods)
+    - [Options](#options)
+    - [Custom events](#custom-events)
+- [Highlight attributes](#highlight-attributes)
 
-## Known issues
+## <a name="known-issues"></a>Known issues
 
 There are a few known issues:
 
@@ -21,7 +29,7 @@ There are a few known issues:
 - **Safari on iOS and macOS** doesn’t allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)). This will likely require a fix from Apple. In the meantime, a workaround could be to use a different underline style, such as a double underline. Alternatively, you can set Highlight Helper to use the SVG drawing mode.
 
 
-## Getting started
+## <a name="getting-started"></a>Getting started
 
 The easiest way to get started is to download demo.html and highlight-helper.js, open demo.html in a text editor and browser, and make changes to adapt it for your needs.
 
@@ -35,9 +43,9 @@ In the source of demo.html, you’ll see CSS styles, followed by the HTML body, 
 All of the available methods, options, and custom events are documented below.
 
 
-## Methods, options, and custom events
+## <a name="methods-options-and-custom-events"></a>Methods, options, and custom events
 
-### Methods
+### <a name="methods"></a>Methods
 
 - **loadHighlights(highlights)** – Load an array of existing highlights into Highlight Helper. Each highlight should have one or more of the properties described under “Highlight attributes” below. Omitted or invalid properties will fall back to default values.
 - **createOrUpdateHighlight(attributes, triggeredByUserAction)** – Create or update an individual highlight. `attributes` is an object with one or more of the properties described under “Highlight attributes” below. If a highlight ID isn’t passed in, the currently-active highlight will be updated, if there is one, otherwise a new highlight will be created. If it’s a new highlight and start and end bounds aren’t passed in, the highlight will be created based on selected text. `triggeredByUserAction` is an optional boolean (default: `true`). If this is set to false, the highlight won’t be activated after editing, and the color and style won’t be saved as the default for the next highlight.
@@ -47,19 +55,19 @@ All of the available methods, options, and custom events are documented below.
 - **deactivateHighlights()** – Clear the text selection and deactivate any active highlights.
 - **removeHighlight(highlightId)** – Remove the specified highlight. If `highlightId` isn’t provided, the currently-active highlight will be deleted (if there is one).
 - **getActiveHighlightId()** – Get the ID of the currently-active highlight (if there is one).
-- **getHighlightsById(highlightIds)** – Get highlight information for an array of highlight IDs. If no highlight IDs are passed, information for all highlights will be returned.
+- **getHighlightInfo(highlightIds, paragraphId)** – Get highlight information for an array of highlight IDs. If no highlight IDs are passed, information for all relevant highlights will be returned. If `paragraphId` is provided, only highlights that start in the specified paragraph will be returned. Highlights will be sorted based on their position on the page.
 - **setOption(key, value)** – Change one of the initialized options. Available options are described below.
 - **getOptions()** – Get the initialized options, including defaults for any options that weren’t explicitly set.
 
 
-### Options
+### <a name="options"></a>Options
 
 Options can be provided when Highlight Helper is initialized. They can also be set on demand using `setOption(key, value)` (described above). All of these settings are optional. If not specified, the default value for each option will be used.
 
 - **containerSelector** – CSS selector for the section of the page that should be annotatable. Default: `body`.
 - **paragraphSelector** – CSS selector for the paragraphs or other blocks of text on the page that should be annotatable. Each block is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Default: `h1, h2, h3, h4, h5, h6, p, ol, ul, dl, tr`.
 - **colors** – Object that describes available highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default: red, orange, yellow, green, blue (see full default values at the bottom of highlight-helper.js).
-- **styles** – Object that describes available highlight styles. Keys are style names, and there are two properties for each style: `css` and `svg`. `css` is a CSS string used for styling highlights in `highlight-api` drawing mode; as well as for styling read-only highlights and text selection. Only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). `svg` is an SVG string used in `svg` drawing mode. If present, the variable `{color}` will be dynamically replaced with the relevant color string. For SVG highlights, the variables `{x}`, `{y}`, `{width}`, and `{height}` will also be replaced with relevant values. Default: fill, single-underline, double-underline, colored-text, redacted (see full default values at the bottom of highlight-helper.js).
+- **styles** – Object that describes available highlight styles. Keys are style names, and there are two properties for each style: `css` and `svg`. `css` is a CSS string used for styling highlights in `highlight-api` drawing mode; as well as for styling read-only highlights and text selection. Only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). `svg` is an SVG string used in `svg` drawing mode. If present, the variable `{color}` will be dynamically replaced with the relevant color string. For SVG highlights, the DOMRect variables `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, and `{right}` will also be replaced with relevant values. Default: fill, single-underline, double-underline, colored-text, redacted (see full default values at the bottom of highlight-helper.js).
 - **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with three optional properties: `start` (HTML string to be inserted at the beginning of the highlight), `end` (HTML string to be inserted at the end of the highlight), and `drag` (boolean indicating if the user should be able to drag the wrapper to resize the highlight). For now, only read-only highlights support wrappers, and `drag` doesn’t do anything. To avoid problems when calculating ranges and offsets, all [text nodes](https://developer.mozilla.org/en-US/docs/Web/API/Text) in the start and end wrappers will be removed (if text is needed, it should be rendered with CSS). If present, the variable `{color}` will be dynamically replaced with the relevant color string from the highlight, and other variable with curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. Default: none, sliders, footnote (see full default values at the bottom of highlight-helper.js).
 - **rememberStyle** – Whether the most recent color, style, and wrapper should be remembered and used by default the next time the user creates a highlight. Boolean. Default: `true`.
 - **snapToWord** – Whether text selection and highlights should snap to the nearest word boundary. Boolean. Default: `false`.
@@ -71,7 +79,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 - **highlightIdFunction** – Identifier of a function that provides unique IDs for new highlights. Default: `hhGetNewHighlightId`.
 
 
-### Custom events
+### <a name="custom-events"></a>Custom events
 
 Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the container element (defined in the `containerSelector` option) that can be listened for and responded to:
 
@@ -85,7 +93,7 @@ Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/
 - **hh:selectionupdate** – Sent when the selection color or style changes. Includes the key of the color and style.
 
 
-## Highlight attributes
+## <a name="highlight-attributes"></a>Highlight attributes
 
 These are the attributes that Highlight Helper stores for each highlight. Most of the attributes can be changed by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
 
@@ -101,4 +109,5 @@ These are the attributes that Highlight Helper stores for each highlight. Most o
 - **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
 - **text** (read-only) – Text from the highlighted range.
 - **html** (read-only) – HTML from the highlighted range.
+- **escapedHighlightId** (read-only) – Escaped highlight ID used as a CSS identifier.
 - **highlightRange** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.

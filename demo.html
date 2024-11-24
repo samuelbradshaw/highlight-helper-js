@@ -65,7 +65,7 @@
         display: inline-block;
         -webkit-transform: translate3d(0, 0, 0);
         &::before {
-          content: "0";
+          content: "0" / attr(data-accessibility-label);
           display: inline-block;
           width: 1ch; height: 2em;
           color: transparent;
@@ -88,7 +88,7 @@
         line-height: 0.5em;
         color: var(--color);
         &::before {
-          content: attr(data-marker);
+          content: attr(data-marker) / attr(data-accessibility-label);
         }
       }
       
@@ -100,15 +100,19 @@
         gap: 0.5em;
         box-sizing: border-box;
         &[open] { display: flex; }
-        #disambiguation-buttons button {
+        #disambiguation-buttons {
           display: flex;
           flex-direction: column;
-          gap: 0.5em;
-          border: none;
-          background-color: inherit;
-          color: inherit;
-          font-family: inherit;
-          font-size: inherit;
+          & button {
+            display: inline-block;
+            border: none;
+            background-color: inherit;
+            color: inherit;
+            font-family: inherit;
+            font-size: inherit;
+            text-align: inherit;
+            margin-bottom: 1em;
+          }
         }
         &::backdrop {
           background-color: hsla(0, 0%, 0%, 0.5);
@@ -141,8 +145,8 @@
         <button name="hh-remove">Remove</button>
         <div></div>
         <!--button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="sliders" title="Sliders"><span class="slider-start" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span><span class="slider-end" style="--color: hsl(0, 0%, 50%)"></span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span></button-->
+        <button name="hh-wrapper" value="sliders" title="Sliders"><span class="slider-start" data-accessibility-label="Resize highlight (start)" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span><span class="slider-end" data-accessibility-label="Resize highlight (end)" style="--color: hsl(0, 0%, 50%)"></span></button>
+        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" data-accessibility-label="Footnote" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span></button-->
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
@@ -174,9 +178,26 @@
     <script>
       // Example highlights
       let highlights = [
-        { highlightId: 'hh-1729991847207', color: 'green', style: 'fill', startParagraphId: 'p1', startParagraphOffset: 51, endParagraphId: 'p1', endParagraphOffset: 83, },
-        { highlightId: 'hh-1729991847300', color: 'blue', style: 'fill', startParagraphId: 'p2', startParagraphOffset: 27, endParagraphId: 'p2', endParagraphOffset: 42, },
-        { highlightId: 'hh-1729991847468', color: 'red', style: 'colored-text', wrapper: 'footnote', wrapperVariables: { marker: 'a', }, readOnly: true, startParagraphId: 'p2', startParagraphOffset: 119, endParagraphId: 'p2', endParagraphOffset: 127, },
+        {
+          highlightId: 'hh-1729991847207',
+          color: 'green', style: 'fill',
+          startParagraphId: 'p1', startParagraphOffset: 51,
+          endParagraphId: 'p1', endParagraphOffset: 83,
+        },
+        {
+          highlightId: 'hh-1729991847300',
+          color: 'blue', style: 'fill',
+          startParagraphId: 'p2', startParagraphOffset: 27,
+          endParagraphId: 'p2', endParagraphOffset: 42,
+        },
+        {
+          highlightId: 'hh-1729991847468',
+          color: 'red', style: 'colored-text', wrapper: 'footnote',
+          wrapperVariables: { marker: 'a', accessibilityLabel: 'Footnote 1a', },
+          readOnly: true,
+          startParagraphId: 'p2', startParagraphOffset: 119,
+          endParagraphId: 'p2', endParagraphOffset: 127,
+        },
       ];
       
       // Set options and initialize Highlight Helper, then load and draw highlights
@@ -261,14 +282,14 @@
         for (const highlight of event.detail.highlights) {
           let buttonStyle = options.styles[highlight.style]['css'].replace('{color}', options.colors[highlight.color])
           let buttonHtml = `
-            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.text}</button><br>
+            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.html}</button>
           `;
           disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
         }
         for (const hyperlink of event.detail.hyperlinks) {
           let buttonStyle = 'color: var(--gray-50); text-decoration: underline;'
           let buttonHtml = `
-            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">${hyperlink.text}</button><br>
+            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">${hyperlink.text}</button>
           `;
           disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
         }

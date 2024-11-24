@@ -81,7 +81,9 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Load highlights
   this.loadHighlights = (highlights) => {
-    for (const highlight of highlights) {
+    // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
+    const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
+    for (const highlight of sortedHighlights) {
       this.createOrUpdateHighlight(highlight, false);
     }
     annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: highlights.length, totalCount: Object.keys(highlightsById).length } }));
@@ -142,20 +144,18 @@ function Highlighter(options = hhDefaultOptions) {
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'svg');
-          let clientRects = range.getClientRects();
-          let relevantClientRects = [];
-          for (const clientRect of clientRects) {
-            if (!isContained(clientRect, relevantClientRects)) relevantClientRects.push(clientRect);
-          }
+          const clientRects = range.getClientRects();
+          const mergedClientRects = getMergedDomRects(clientRects, lineRoundN = 10);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
           svgContent = '';
-          for (const clientRect of relevantClientRects) {
+          for (const clientRect of mergedClientRects) {
             svgContent += styleTemplate
             .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x)
             .replaceAll('{y}', clientRect.y - annotatableContainerClientRect.y)
-            .replaceAll('{width}', clientRect.width)
-            .replaceAll('{height}', clientRect.height);
+            .replaceAll('{width}', clientRect.width).replaceAll('{height}', clientRect.height)
+            .replaceAll('{top}', clientRect.top).replaceAll('{bottom}', clientRect.bottom)
+            .replaceAll('{left}', clientRect.left).replaceAll('{right}', clientRect.right);
           }
           group.innerHTML = svgContent;
           svgBackground.appendChild(group);
@@ -241,6 +241,7 @@ function Highlighter(options = hhDefaultOptions) {
     // Update saved highlight info
     const temporaryHtmlElement = document.createElement('div');
     temporaryHtmlElement.appendChild((highlightRange ?? oldHighlightInfo?.highlightRange).cloneContents());
+    for (const hyperlink of temporaryHtmlElement.querySelectorAll('a')) hyperlink.setAttribute('onclick', 'event.preventDefault();');
     const newHighlightInfo = {
       highlightId: highlightId,
       color: attributes?.color ?? oldHighlightInfo?.color ?? options.defaultColor,
@@ -377,16 +378,22 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Get info for specified highlights, or all highlights on the page
-  this.getHighlightsById = (highlightIds = []) => {
-    if (highlightIds && highlightIds.length > 0) {
-      const filteredHighlightsById = {}
-      for (const highlightId of highlightIds) {
-        filteredHighlightsById[highlightId] = highlightsById[highlightId];
+  this.getHighlightInfo = (highlightIds = Object.keys(highlightsById), paragraphId = null) => {
+    let filteredHighlights = []
+    for (highlightId of highlightIds) {
+      const highlightInfo = highlightsById[highlightId];
+      if (!paragraphId || paragraphId == highlightInfo.startParagraphId) {
+        filteredHighlights.push(highlightInfo);
       }
-      return filteredHighlightsById;
-    } else {
-      return highlightsById;
     }
+    // Sort highlights based on their order on the page
+    if (filteredHighlights.length > 0) {
+      let orderedElementIds = Array.from(annotatableContainer.querySelectorAll('[id]'), node => node.id);
+      filteredHighlights.sort((a, b) => {
+        return (orderedElementIds.indexOf(a.startParagraphId) - orderedElementIds.indexOf(b.startParagraphId)) || (a.startParagraphOffset - b.startParagraphOffset);
+      });
+    }
+    return filteredHighlights;
   }
   
   // Update one of the initialized options
@@ -520,17 +527,14 @@ function Highlighter(options = hhDefaultOptions) {
       }
     }
     
-    // Sort tapped highlights based on their order on the page (hyperlinks should already be sorted)
-    if (tappedHighlights.length > 0) {
-      let orderedElementIds = Array.from(annotatableContainer.querySelectorAll('[id]'), node => node.id);
-      tappedHighlights.sort((a, b) => {
-        return (orderedElementIds.indexOf(a.startParagraphId) - orderedElementIds.indexOf(b.startParagraphId)) || (a.startParagraphOffset - b.startParagraphOffset);
-      });
-    }
+    // Sort highlights (hyperlinks should already be sorted)
+    const tappedHyperlinkIds = [];
+    for (const highlightInfo of tappedHighlights) tappedHyperlinkIds.push(highlightInfo.highlightId);
+    const sortedTappedHighlights = this.getHighlightInfo(tappedHyperlinkIds);
     
     return {
       'tapRange': tapRange,
-      'highlights': tappedHighlights,
+      'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
     };
   }
@@ -681,33 +685,38 @@ function Highlighter(options = hhDefaultOptions) {
     return range;
   }
   
-  // Check if a DOMRect is contained inside other DOMRects
-  // Adapted from https://phuoc.ng/collection/1-loc/check-if-a-given-dom-rect-is-contained-within-another-dom-rect/
-  const isContained = (currentRect, otherRects) => {
-    for (const otherRect of otherRects) {
-      const adjustedCurrentRect = new DOMRect(currentRect.x + 2, currentRect.y + (currentRect.height / 2), currentRect.width - 4, 2);
-      if (
-        adjustedCurrentRect.left >= otherRect.left &&
-        adjustedCurrentRect.left + adjustedCurrentRect.width <= otherRect.left + otherRect.width &&
-        adjustedCurrentRect.top >= otherRect.top &&
-        adjustedCurrentRect.top + adjustedCurrentRect.height <= otherRect.top + otherRect.height
-      ) return true;
+  // Merge adjacent DOMRects
+  const getMergedDomRects = (rects, lineRoundN = 10) => {
+    // Group rects into lines by rounding the Y position up or down (for elements like drop caps, subscripts, and superscripts that may not otherwise line up)
+    const linesByRoundedYPos = {};
+    for (const rect of rects) {
+      const yPos = rect.y;
+      const roundedYPos = Math.round(yPos / lineRoundN) * lineRoundN;
+      if (!linesByRoundedYPos.hasOwnProperty(roundedYPos)) {
+        linesByRoundedYPos[roundedYPos] = { rects: [], combinedWidthByYPos: {}, }
+      }
+      linesByRoundedYPos[roundedYPos].rects.push(rect);
+      if (!linesByRoundedYPos[roundedYPos].combinedWidthByYPos.hasOwnProperty(yPos)) {
+        linesByRoundedYPos[roundedYPos].combinedWidthByYPos[yPos] = 0;
+      }
+      linesByRoundedYPos[roundedYPos].combinedWidthByYPos[yPos] += rect.width;
     }
-    return false;
+    // Merge the rects (one rect for each line)
+    const mergedRects = [];
+    for (const lineInfo of Object.values(linesByRoundedYPos)) {
+      const sortedCombinedWidthByYPos = Object.entries(lineInfo.combinedWidthByYPos).sort((a, b) => b[1] - a[1]);
+      const dominantYPos = sortedCombinedWidthByYPos[0]?.[0];
+      const mergedRect = lineInfo.rects[0];
+      for (const rect of lineInfo.rects) {
+        mergedRect.x = Math.min(mergedRect.x, rect.x);
+        mergedRect.width = Math.max(mergedRect.right, rect.right) - mergedRect.x;
+        mergedRect.y = dominantYPos;
+        mergedRect.height = Math.max(mergedRect.bottom, rect.bottom) - mergedRect.y;
+      }
+      mergedRects.push(mergedRect);
+    }
+    return mergedRects;
   }
-  
-//   // Merge overlapping DOMRects
-//   // TODO
-//   const mergeDomRects = (rects) => {
-//     const linesByYPosition = {}
-//     for (const rect of rects) {
-//       if (!linesByYPosition.hasOwnProperty(rect.y) {
-//         linesByYPosition[rect.y] = { x: rect.x, width: rect.width, height: rect.height }
-//       } else {
-//         linesByYPosition[rect.y]
-//       }
-//     }
-//   }
   
   // Debounce a function to prevent it from being executed too frequently
   // Adapted from https://levelup.gitconnected.com/debounce-in-javascript-improve-your-applications-performance-5b01855e086
@@ -747,15 +756,15 @@ let hhDefaultOptions = {
   styles: {
     'fill': {
       'css': 'background-color: hsl(from {color} h s l / 40%);',
-      'svg': '<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="hsl(from {color} h s l / 40%)" />',
+      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" height="{height}" rx="4" style="width: calc({width}px + ({height}px / 5)); transform: translateX(calc({height}px / -10));" />',
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      'svg': '<rect x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 6); transform: translateY(calc({height}px * 0.9));" fill="{color}" />',
+      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 6); transform: translateY(calc({height}px * 0.9));" />',
     },
     'double-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-style: double; text-decoration-skip-ink: none;',
-      'svg': '<rect x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.8));" fill="{color}" /><rect x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc(({height}px * 0.8) + ({height}px / 6)));" fill="{color}" />',
+      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" /><rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 1.05));" />',
     },
     'colored-text': {
       'css': 'color: {color};',
@@ -768,8 +777,8 @@ let hhDefaultOptions = {
   },
   wrappers: {
     'none': {},
-    'sliders': { start: '<span class="slider-start" style="--color: {color}"></span>', end: '<span class="slider-end" style="--color: {color}"></span>', },
-    'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" style="--color: {color}"></span>', end: '', },
+    'sliders': { start: '<span class="slider-start" data-accessibility-label="{startAccessibilityLabel}" style="--color: {color}"></span>', end: '<span class="slider-end" data-accessibility-label="{endAccessibilityLabel}" style="--color: {color}"></span>', },
+    'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}" style="--color: {color}"></span>', end: '', },
   },
   rememberStyle: true,
   snapToWord: false,

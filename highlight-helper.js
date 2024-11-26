@@ -83,10 +83,23 @@ function Highlighter(options = hhDefaultOptions) {
   this.loadHighlights = (highlights) => {
     // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
     const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
+    const knownHighlightIds = Object.keys(highlightsById);
+    let addedCount = 0; let updatedCount = 0;
     for (const highlight of sortedHighlights) {
-      this.createOrUpdateHighlight(highlight, false);
+      const highlightInfo = diffHighlight(highlight, highlightsById[highlight.highlightId]);
+      highlightInfo.highlightId = highlight.highlightId;
+      const knownHighlightIndex = knownHighlightIds.indexOf(highlightInfo.highlightId);
+      if (knownHighlightIndex > -1) {
+        knownHighlightIds.splice(knownHighlightIndex, 1);
+        if (Object.keys(highlightInfo).length > 1) {
+          this.createOrUpdateHighlight(highlightInfo, false); updatedCount++;
+        }
+      } else {
+        this.createOrUpdateHighlight(highlightInfo, false); addedCount++;
+      }
     }
-    annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: highlights.length, totalCount: Object.keys(highlightsById).length } }));
+    if (knownHighlightIds.length > 0) this.removeHighlights([knownHighlightIds]);
+    annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount, totalCount: Object.keys(highlightsById).length } }));
   }
   
   // Draw (or redraw) specified highlights, or all highlights on the page
@@ -234,9 +247,9 @@ function Highlighter(options = hhDefaultOptions) {
       let startNode, startOffset, endNode, endOffset;
       if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
         startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
-        startParagraphOffset = parseInt(attributes.startParagraphOffset) ?? oldHighlightInfo?.startParagraphOffset;
+        startParagraphOffset = parseInt(attributes.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
         endParagraphId = attributes.endParagraphId ?? oldHighlightInfo?.endParagraphId;
-        endParagraphOffset = parseInt(attributes.endParagraphOffset) ?? oldHighlightInfo?.endParagraphOffset;
+        endParagraphOffset = parseInt(attributes.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
         ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(startParagraphId), startParagraphOffset));
         ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(endParagraphId), endParagraphOffset));
       } else if (selectionRange) {
@@ -345,7 +358,7 @@ function Highlighter(options = hhDefaultOptions) {
     updateSelectionStyle();
     if (deactivatedHighlight) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
-        highlightId: deactivatedHighlight.highlightId,
+        highlight: deactivatedHighlight,
       }}));
     }
   }
@@ -530,6 +543,18 @@ function Highlighter(options = hhDefaultOptions) {
       'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
     };
+  }
+  
+  // Compare new highlight information to old highlight information, returning an object with the properties that changed
+  function diffHighlight(newHighlightInfo, oldHighlightInfo) {
+    if (!oldHighlightInfo) return newHighlightInfo;
+    const changedHighlightInfo = {}
+    for (const key of Object.keys(newHighlightInfo)) {
+      if (oldHighlightInfo.hasOwnProperty(key) && oldHighlightInfo[key] != newHighlightInfo[key]) {
+        changedHighlightInfo[key] = newHighlightInfo[key];
+      }
+    }
+    return changedHighlightInfo;
   }
   
   // Undraw the specified highlight

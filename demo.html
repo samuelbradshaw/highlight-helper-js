@@ -256,7 +256,7 @@
       container.addEventListener('hh:highlightactivate', updateHighlightInfo);
       container.addEventListener('hh:highlightdeactivate', updateHighlightInfo);
       function updateHighlightInfo(event) {
-        if (event.detail.highlight?.text) {
+        if (event.type == 'hh:highlightactivate') {
           selectionTextDiv.innerHTML = event.detail.highlight.text;
           selectionInfoDiv.innerHTML = `
             <b>Highlight:</b> ${event.detail.highlight.highlightId}<br>
@@ -300,6 +300,7 @@
       // Log events for debugging
       container.addEventListener('hh:highlightactivate', console.log)
       container.addEventListener('hh:highlightdeactivate', console.log)
+      container.addEventListener('hh:highlightsload', console.log)
     </script>
   </body>
 </html>

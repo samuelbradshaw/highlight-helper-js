@@ -161,6 +161,36 @@ function Highlighter(options = hhDefaultOptions) {
           svgBackground.appendChild(group);
         }
       }
+      
+      // Update wrapper
+      // TODO: Enable wrappers for editable highlights
+      if (highlightInfo.readOnly && !wasDrawnAsReadOnly) {
+        if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
+          function addWrapper(edge, range, htmlString) {
+            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
+            htmlString = htmlString.replaceAll('{color}', options.colors[highlightInfo.color]);
+            for (const key of Object.keys(highlightInfo.wrapperVariables)) {
+              htmlString = htmlString.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
+            }
+            const template = document.createElement('template');
+            template.innerHTML = htmlString;
+            let htmlElement = template.content.firstChild;
+            
+            const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
+            while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
+            range.insertNode(htmlElement);
+            
+          }
+          const startRange = highlightInfo.highlightRange;
+          const endRange = document.createRange(); endRange.setStart(highlightInfo.highlightRange.endContainer, highlightInfo.highlightRange.endOffset);
+          const wrapperInfo = options.wrappers[highlightInfo.wrapper];
+          addWrapper('start', startRange, wrapperInfo.start);
+          addWrapper('end', endRange, wrapperInfo.end);
+          
+          document.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`).forEach(p => { p.normalize(); });
+        }
+      }
+      
     }
   }
   
@@ -260,43 +290,6 @@ function Highlighter(options = hhDefaultOptions) {
     };
     highlightsById[highlightId] = newHighlightInfo;
     
-    // Update wrapper
-    // TODO: Enable wrappers for editable highlights
-    if (newHighlightInfo.readOnly) {
-      if (newHighlightInfo.wrapper && (options.wrappers[newHighlightInfo.wrapper]?.start || options.wrappers[newHighlightInfo.wrapper]?.end)) {
-        if (appearanceChanges.includes('wrapper') || appearanceChanges.includes('wrapperVariables') || boundsChanges.length > 0) {
-          document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
-          
-          function addWrapper(edge, range, htmlString) {
-            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
-            htmlString = htmlString.replaceAll('{color}', options.colors[newHighlightInfo.color]);
-            for (const key of Object.keys(newHighlightInfo.wrapperVariables)) {
-              htmlString = htmlString.replaceAll(`{${key}}`, newHighlightInfo.wrapperVariables[key]);
-            }
-            const template = document.createElement('template');
-            template.innerHTML = htmlString;
-            let htmlElement = template.content.firstChild;
-            
-            const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
-            while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
-            range.insertNode(htmlElement);
-          }
-          const startRange = highlightRange;
-          const endRange = document.createRange(); endRange.setStart(highlightRange.endContainer, highlightRange.endOffset);
-          const wrapperInfo = options.wrappers[newHighlightInfo.wrapper];
-          addWrapper('start', startRange, wrapperInfo.start);
-          addWrapper('end', endRange, wrapperInfo.end);
-          
-          const elementsToNormalize = document.querySelectorAll(`#${oldHighlightInfo?.startParagraphId}, #${oldHighlightInfo?.endParagraphId}, #${newHighlightInfo.startParagraphId}, #${newHighlightInfo.startParagraphId}`);
-          for (const element of elementsToNormalize) element.normalize();
-        }
-      } else {
-        document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
-      }
-    } else {
-      document.querySelectorAll(`[data-highlight-id="${highlightId}"].hh-wrapper-start, [data-highlight-id="${highlightId}"].hh-wrapper-end`).forEach(el => el.remove());
-    }
-    
     const detail = {
       highlight: newHighlightInfo,
       changes: appearanceChanges.concat(boundsChanges),
@@ -357,18 +350,18 @@ function Highlighter(options = hhDefaultOptions) {
     }
   }
   
-  // Remove the selected highlight or a specific highlight by ID
-  this.removeHighlight = (highlightId = null) => {
-    highlightId = highlightId ?? activeHighlightId;
-    const highlightInfo = highlightsById[highlightId];
-    if (highlightInfo) {
-      this.deactivateHighlights();
-      document.querySelectorAll(`.${highlightInfo.escapedHighlightId}.hh-wrapper-start, .${highlightInfo.escapedHighlightId}.hh-wrapper-end`).forEach(el => el.remove());
-      delete highlightsById[highlightId];
-      annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
-        highlightId: highlightId,
-      }}));
-      undrawHighlight(highlightInfo);
+  // Remove the specified highlights, or all highlights on the page
+  this.removeHighlights = (highlightIds = Object.keys(highlightsById)) => {
+    this.deactivateHighlights();
+    for (const highlightId of highlightIds) {
+      const highlightInfo = highlightsById[highlightId];
+      if (highlightInfo) {
+        delete highlightsById[highlightId];
+        annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
+          highlightId: highlightId,
+        }}));
+        undrawHighlight(highlightInfo);
+      }
     }
   }
   
@@ -543,6 +536,7 @@ function Highlighter(options = hhDefaultOptions) {
   const undrawHighlight = (highlightInfo) => {
     const highlightId = highlightInfo.highlightId;
     for (const svgGroup of svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`)) svgGroup.remove();
+    document.querySelectorAll(`.hh-wrapper-start[data-highlight-id="${highlightId}"], .hh-wrapper-end[data-highlight-id="${highlightId}"]`).forEach(el => el.remove());
     document.querySelectorAll(`.hh-read-only[data-highlight-id="${highlightId}"]`).forEach(span => {
       const parentParagraph = span.closest(options.paragraphSelector);
       const textNode = span.firstChild;

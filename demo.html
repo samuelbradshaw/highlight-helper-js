@@ -222,10 +222,10 @@
         wrapperButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ wrapper: wrapperButton.value }); });
       }
       const removeButton = document.getElementsByName('hh-remove')[0];
-      removeButton.addEventListener('click', () => { highlighter.removeHighlight(); });
+      removeButton.addEventListener('click', () => { highlighter.removeHighlights([highlighter.getActiveHighlightId()]); });
       document.addEventListener('keydown', respondToKeyPress);
       function respondToKeyPress(event) {
-        if (event.key === 'Backspace') highlighter.removeHighlight();
+        if (event.key === 'Backspace') highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
       }
       
       // Call Highlight Helper methods when options are changed

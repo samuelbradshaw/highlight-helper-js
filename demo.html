@@ -200,7 +200,7 @@
         },
       ];
       
-      // Set options and initialize Highlight Helper, then load and draw highlights
+      // Set options and initialize Highlight Helper, then load highlights
       options = {
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
@@ -208,7 +208,7 @@
       const highlighter = new Highlighter(options);
       highlighter.loadHighlights(highlights);
       
-      // Call Highlight Helper methods when color, style, or remove buttons on this demo page are tapped
+      // Call Highlight Helper methods when color, style, wrapper, or remove buttons on this demo page are tapped
       const colorButtons = document.getElementsByName('hh-color');
       for (const colorButton of colorButtons) {
         colorButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ color: colorButton.value }); });
@@ -298,9 +298,14 @@
       disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
       
       // Log events for debugging
+      container.addEventListener('hh:highlightcreate', console.log)
+      container.addEventListener('hh:highlightupdate', console.log)
+      container.addEventListener('hh:highlightremove', console.log)
+      container.addEventListener('hh:highlightsload', console.log)
       container.addEventListener('hh:highlightactivate', console.log)
       container.addEventListener('hh:highlightdeactivate', console.log)
-      container.addEventListener('hh:highlightsload', console.log)
+      container.addEventListener('hh:ambiguousaction', console.log)
+      container.addEventListener('hh:selectionupdate', console.log)
     </script>
   </body>
 </html>

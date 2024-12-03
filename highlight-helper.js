@@ -42,6 +42,7 @@ function Highlighter(options = hhDefaultOptions) {
     .hh-svg-background {
       position: absolute;
       top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       z-index: -1;
@@ -98,7 +99,7 @@ function Highlighter(options = hhDefaultOptions) {
         this.createOrUpdateHighlight(highlightInfo, false); addedCount++;
       }
     }
-    if (knownHighlightIds.length > 0) this.removeHighlights([knownHighlightIds]);
+    if (knownHighlightIds.length > 0) this.removeHighlights(knownHighlightIds);
     annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount, totalCount: Object.keys(highlightsById).length } }));
   }
   
@@ -164,11 +165,11 @@ function Highlighter(options = hhDefaultOptions) {
           svgContent = '';
           for (const clientRect of mergedClientRects) {
             svgContent += styleTemplate
-            .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x)
-            .replaceAll('{y}', clientRect.y - annotatableContainerClientRect.y)
+            .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x + window.scrollX)
+            .replaceAll('{y}', clientRect.y - annotatableContainerClientRect.y + window.scrollY)
             .replaceAll('{width}', clientRect.width).replaceAll('{height}', clientRect.height)
-            .replaceAll('{top}', clientRect.top).replaceAll('{bottom}', clientRect.bottom)
-            .replaceAll('{left}', clientRect.left).replaceAll('{right}', clientRect.right);
+            .replaceAll('{top}', clientRect.top).replaceAll('{bottom}', clientRect.bottom + window.scrollY)
+            .replaceAll('{left}', clientRect.left).replaceAll('{right}', clientRect.right + window.scrollX);
           }
           group.innerHTML = svgContent;
           svgBackground.appendChild(group);

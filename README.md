@@ -47,7 +47,7 @@ All of the available methods, options, and custom events are documented below.
 
 ### <a name="methods"></a>Methods
 
-- **loadHighlights(highlights)** – Load an array of existing highlights into Highlight Helper. Each highlight should have one or more of the properties described under “Highlight attributes” below. Omitted or invalid properties will fall back to default values.
+- **loadHighlights(highlights)** – Load an array of existing highlights into Highlight Helper. Each highlight should have one or more of the properties described under “Highlight attributes” below. Omitted or invalid properties will fall back to previous or default values. If highlights are already loaded, this method will replace the loaded highlights by diffing for changes, then adding, removing, or updating individual highlights as needed.
 - **createOrUpdateHighlight(attributes, triggeredByUserAction)** – Create or update an individual highlight. `attributes` is an object with one or more of the properties described under “Highlight attributes” below. If a highlight ID isn’t passed in, the currently-active highlight will be updated, if there is one, otherwise a new highlight will be created. If it’s a new highlight and start and end bounds aren’t passed in, the highlight will be created based on selected text. `triggeredByUserAction` is an optional boolean (default: `true`). If this is set to false, the highlight won’t be activated after editing, and the color and style won’t be saved as the default for the next highlight.
 - **drawHighlights(highlightIds)** – Draw or redraw highlights on the page, given an array of highlight IDs. If no highlight IDs are passed, all highlights will be drawn. This shouldn’t need to be called frequently (Highlight Helper will usually draw or redraw highlights automatically).
 - **activateHighlight(highlightId)** – Activate a highlight for editing, given its `highlightId`. Only one highlight can be active at a time (because it’s tied to text selection, and there can only be one text selection on a page). Normally, a highlight activates automatically when the user taps it; however, if there are overlapping highlights, an `hh:ambiguousaction` event will be sent instead.
@@ -83,7 +83,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 
 Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the container element (defined in the `containerSelector` option) that can be listened for and responded to:
 
-- **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added and the overall number of loaded highlights.
+- **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added, removed, or updated, and the total number of loaded highlights.
 - **hh:highlightcreate** – Sent when a new highlight is created. Includes information about the highlight.
 - **hh:highlightupdate** – Sent when the highlight changes. Includes information about the highlight, and a list of the attributes that changed.
 - **hh:highlightactivate** – Sent when a highlight is activated. Includes information about the activated highlight.

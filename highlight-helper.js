@@ -736,10 +736,22 @@ function Highlighter(options = hhDefaultOptions) {
       const approximateLineHeight = parseInt(computedParagraphStyle.lineHeight);
       while ((numLinesInParagraph + 1) * approximateLineHeight <= paragraphHeight) numLinesInParagraph++;
       
+      // Calculate offset between the paragraph y-position and a reference range y-position, to account for differing font metrics
+      let walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      let referenceRange;
+      while (node = walker.nextNode()) {
+        if (window.getComputedStyle(node.parentElement).lineHeight == computedParagraphStyle.lineHeight) {
+          referenceRange = document.createRange();
+          referenceRange.selectNode(node);
+          break;
+        }
+      }
+      const lineOffset = referenceRange ? paragraphRect.y - referenceRange.getClientRects()[0].y : 0;
+      
       // Create a merged rect for each line
       const exactLineHeight = paragraphHeight / numLinesInParagraph;
       for (let ln = 0; ln < numLinesInParagraph; ln++) {
-        const mergedRect = new DOMRect(paragraphRect.right, paragraphRect.top + (ln * exactLineHeight), 0, exactLineHeight);
+        const mergedRect = new DOMRect(paragraphRect.right, paragraphRect.top + (ln * exactLineHeight) + lineOffset, 0, exactLineHeight);
         for (let r = 0; r < unmergedRects.length; r++) {
           const rect = unmergedRects[r];
           const rectVerticalPosition = rect.y + (rect.height / 2);
@@ -800,15 +812,15 @@ let hhDefaultOptions = {
   styles: {
     'fill': {
       'css': 'background-color: hsl(from {color} h s l / 40%);',
-      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 5)); height: calc({height}px * 0.8); transform: translateX(calc({height}px / -10)) translateY(calc({height}px * 0.08));" />',
+      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 5)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -10)) translateY(calc({height}px * 0.17));" />',
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.85));" />',
+      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
     },
     'double-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-style: double; text-decoration-skip-ink: none;',
-      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.85));" /><rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.95));" />',
+      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" /><rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />',
     },
     'colored-text': {
       'css': 'color: {color};',

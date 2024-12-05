@@ -107,7 +107,8 @@ These are the attributes that Highlight Helper stores for each highlight. Most o
 - **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the annotatable block element. Example: 12.
 - **endParagraphId** – ID of the annotatable block element where the highlight ends. Example: `p1`.
 - **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the annotatable block element. Example: 14.
-- **text** (read-only) – Text from the highlighted range.
-- **html** (read-only) – HTML from the highlighted range.
 - **escapedHighlightId** (read-only) – Escaped highlight ID used as a CSS identifier.
-- **highlightRange** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
+- **rangeText** (read-only) – Text content in the highlighted range.
+- **rangeHtml** (read-only) – HTML content in the highlighted range.
+- **rangeParagraphIds** (read-only) – IDs of paragraphs in the highlighted range.
+- **rangeObj** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.

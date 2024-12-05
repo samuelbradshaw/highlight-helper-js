@@ -4,6 +4,7 @@ function Highlighter(options = hhDefaultOptions) {
   }
   const annotatableContainer = document.querySelector(options.containerSelector);
   const annotatableParagraphs = document.querySelectorAll(options.paragraphSelector);
+  const annotatableParagraphIds = Array.from(annotatableParagraphs, paragraph => paragraph.id);
   const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
   const isIosSafari = isSafari && navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
   
@@ -82,8 +83,12 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Load highlights
   this.loadHighlights = (highlights) => {
+    // Don't load highlights in SVG mode until the document is ready (otherwise, highlights may be offset)
+    if (options.drawingMode == 'svg' && document.readyState !== 'complete') return setTimeout(this.loadHighlights, 10, highlights);
+    
     // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
     const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
+    
     const knownHighlightIds = Object.keys(highlightsById);
     let addedCount = 0; let updatedCount = 0;
     for (const highlight of sortedHighlights) {
@@ -108,6 +113,7 @@ function Highlighter(options = hhDefaultOptions) {
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
       const range = getRestoredHighlightRange(highlightInfo);
+      const rangeParagraphs = document.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
       const wasDrawnAsReadOnly = document.querySelector(`.hh-read-only[data-highlight-id="${highlightId}"]`);
       
       // Remove old highlight elements and styles
@@ -136,7 +142,7 @@ function Highlighter(options = hhDefaultOptions) {
           textNode.before(styledSpan);
           styledSpan.appendChild(textNode);
         }
-        document.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`).forEach(p => { p.normalize(); });
+        rangeParagraphs.forEach(p => { p.normalize(); });
       } else {        
         // Draw highlights with Custom Highlight API
         if (options.drawingMode == 'highlight-api') {
@@ -158,8 +164,7 @@ function Highlighter(options = hhDefaultOptions) {
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'svg');
-          const clientRects = range.getClientRects();
-          const mergedClientRects = getMergedDomRects(clientRects, lineRoundN = 10);
+          const mergedClientRects = getMergedClientRects(range, rangeParagraphs);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
           svgContent = '';
@@ -195,13 +200,12 @@ function Highlighter(options = hhDefaultOptions) {
             range.insertNode(htmlElement);
             
           }
-          const startRange = highlightInfo.highlightRange;
-          const endRange = document.createRange(); endRange.setStart(highlightInfo.highlightRange.endContainer, highlightInfo.highlightRange.endOffset);
+          const startRange = highlightInfo.rangeObj;
+          const endRange = document.createRange(); endRange.setStart(highlightInfo.rangeObj.endContainer, highlightInfo.rangeObj.endOffset);
           const wrapperInfo = options.wrappers[highlightInfo.wrapper];
           addWrapper('start', startRange, wrapperInfo.start);
-          addWrapper('end', endRange, wrapperInfo.end);
-          
-          document.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`).forEach(p => { p.normalize(); });
+          addWrapper('end', endRange, wrapperInfo.end);          
+          rangeParagraphs.forEach(p => { p.normalize(); });
         }
       }
       
@@ -241,6 +245,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Calculate the bounds of the highlight range, if it's changed
     let selectionRange, highlightRange;
+    let rangeText, rangeHtml, rangeParagraphIds;
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     if (selection.type == 'Range') selectionRange = selection.getRangeAt(0);
@@ -277,15 +282,20 @@ function Highlighter(options = hhDefaultOptions) {
       for (const key of ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset']) {
         if (isNewHighlight || eval(key) != oldHighlightInfo[key]) boundsChanges.push(key);
       }
+      
+      // Set variables that depend on the range
+      const temporaryHtmlElement = document.createElement('div');
+      temporaryHtmlElement.appendChild(highlightRange.cloneContents());
+      for (const hyperlink of temporaryHtmlElement.querySelectorAll('a')) hyperlink.setAttribute('onclick', 'event.preventDefault();');
+      rangeText = highlightRange.toString();
+      rangeHtml = temporaryHtmlElement.innerHTML;
+      rangeParagraphIds = annotatableParagraphIds.slice(annotatableParagraphIds.indexOf(startParagraphId), annotatableParagraphIds.indexOf(endParagraphId) + 1);
     }
     
     // If there are no changes, return
     if (isNewHighlight && boundsChanges.length == 0 || appearanceChanges.length + boundsChanges.length == 0) return;
     
-    // Update saved highlight info
-    const temporaryHtmlElement = document.createElement('div');
-    temporaryHtmlElement.appendChild((highlightRange ?? oldHighlightInfo?.highlightRange).cloneContents());
-    for (const hyperlink of temporaryHtmlElement.querySelectorAll('a')) hyperlink.setAttribute('onclick', 'event.preventDefault();');
+    // Update saved highlight info    
     const newHighlightInfo = {
       highlightId: highlightId,
       color: attributes?.color ?? oldHighlightInfo?.color ?? options.defaultColor,
@@ -297,10 +307,12 @@ function Highlighter(options = hhDefaultOptions) {
       startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
       endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
       endParagraphOffset: endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset,
-      text: (highlightRange ?? oldHighlightInfo?.highlightRange).toString(),
-      html: temporaryHtmlElement.innerHTML,
+      // Read-only properties
       escapedHighlightId: CSS.escape(highlightId),
-      highlightRange: highlightRange ?? oldHighlightInfo?.highlightRange,
+      rangeText: rangeText ?? oldHighlightInfo?.rangeText,
+      rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
+      rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
+      rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
     };
     highlightsById[highlightId] = newHighlightInfo;
     
@@ -331,7 +343,7 @@ function Highlighter(options = hhDefaultOptions) {
       // If the highlight is read-only, return an event, but don't actually activate it
       return annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
     }
-    const highlightRange = highlightToActivate.highlightRange.cloneRange();
+    const highlightRange = highlightToActivate.rangeObj.cloneRange();
     updateSelectionStyle(highlightToActivate.color, highlightToActivate.style);
     if (selection.type != 'Range') {
       selection.removeAllRanges();
@@ -395,9 +407,8 @@ function Highlighter(options = hhDefaultOptions) {
     }
     // Sort highlights based on their order on the page
     if (filteredHighlights.length > 0) {
-      let orderedElementIds = Array.from(annotatableContainer.querySelectorAll('[id]'), node => node.id);
       filteredHighlights.sort((a, b) => {
-        return (orderedElementIds.indexOf(a.startParagraphId) - orderedElementIds.indexOf(b.startParagraphId)) || (a.startParagraphOffset - b.startParagraphOffset);
+        return (annotatableParagraphIds.indexOf(a.startParagraphId) - annotatableParagraphIds.indexOf(b.startParagraphId)) || (a.startParagraphOffset - b.startParagraphOffset);
       });
     }
     return filteredHighlights;
@@ -519,7 +530,7 @@ function Highlighter(options = hhDefaultOptions) {
     const tappedHighlights = [];
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
-      const highlightRange = highlightInfo.highlightRange;
+      const highlightRange = highlightInfo.rangeObj;
       if (highlightRange.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
         tappedHighlights.push(highlightInfo);
       }
@@ -569,7 +580,7 @@ function Highlighter(options = hhDefaultOptions) {
       span.outerHTML = span.innerHTML;
       parentParagraph.normalize();
     });
-    if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.highlightRange = getRestoredHighlightRange(highlightInfo);
+    if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.rangeObj = getRestoredHighlightRange(highlightInfo);
     const highlightCssRules = highlightsStylesheet.cssRules;
     const ruleIndexesToDelete = [];
     for (let r = 0; r < highlightCssRules.length; r++) {
@@ -678,7 +689,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Fix highlight range if the DOM changed and made the previous highlight range invalid
   const getRestoredHighlightRange = (highlightInfo) => {
-    const highlightRange = highlightInfo.highlightRange;
+    const highlightRange = highlightInfo.rangeObj;
     if (highlightRange.startContainer.nodeType != Node.TEXT_NODE || highlightRange.endContainer.nodeType != Node.TEXT_NODE) {
       ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.startParagraphId), highlightInfo.startParagraphOffset));
       ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.endParagraphId), highlightInfo.endParagraphOffset));
@@ -705,36 +716,49 @@ function Highlighter(options = hhDefaultOptions) {
     return range;
   }
   
-  // Merge adjacent DOMRects
-  const getMergedDomRects = (rects, lineRoundN = 10) => {
-    // Group rects into lines by rounding the Y position up or down (for elements like drop caps, subscripts, and superscripts that may not otherwise line up)
-    const linesByRoundedYPos = {};
-    for (const rect of rects) {
-      const yPos = rect.y;
-      const roundedYPos = Math.round(yPos / lineRoundN) * lineRoundN;
-      if (!linesByRoundedYPos.hasOwnProperty(roundedYPos)) {
-        linesByRoundedYPos[roundedYPos] = { rects: [], combinedWidthByYPos: {}, }
-      }
-      linesByRoundedYPos[roundedYPos].rects.push(rect);
-      if (!linesByRoundedYPos[roundedYPos].combinedWidthByYPos.hasOwnProperty(yPos)) {
-        linesByRoundedYPos[roundedYPos].combinedWidthByYPos[yPos] = 0;
-      }
-      linesByRoundedYPos[roundedYPos].combinedWidthByYPos[yPos] += rect.width;
-    }
-    // Merge the rects (one rect for each line)
+  // Get merged DOMRects from the highlight range
+  const getMergedClientRects = (range, paragraphs) => {
+    const unmergedRects = Array.from(range.getClientRects());
+    const paragraphRects = Array.from(paragraphs, paragraph => paragraph.getClientRects()[0]);
     const mergedRects = [];
-    for (const lineInfo of Object.values(linesByRoundedYPos)) {
-      const sortedCombinedWidthByYPos = Object.entries(lineInfo.combinedWidthByYPos).sort((a, b) => b[1] - a[1]);
-      const dominantYPos = sortedCombinedWidthByYPos[0]?.[0];
-      const mergedRect = lineInfo.rects[0];
-      for (const rect of lineInfo.rects) {
-        mergedRect.x = Math.min(mergedRect.x, rect.x);
-        mergedRect.width = Math.max(mergedRect.right, rect.right) - mergedRect.x;
-        mergedRect.y = dominantYPos;
-        mergedRect.height = Math.max(mergedRect.bottom, rect.bottom) - mergedRect.y;
+    
+    // Loop through the highlight's paragraphs
+    for (const paragraph of paragraphs) {
+      const paragraphRect = paragraph.getClientRects()[0];
+      const computedParagraphStyle = window.getComputedStyle(paragraph);
+      
+      // Calculate the number of lines in each paragraph
+      let paragraphHeight = parseFloat(computedParagraphStyle.height);
+      if (computedParagraphStyle.boxSizing == 'border-box') {
+        paragraphHeight = parseFloat(computedParagraphStyle.height) - parseFloat(computedParagraphStyle.paddingTop) - parseFloat(computedParagraphStyle.paddingBottom) - parseFloat(computedParagraphStyle.borderTop) - parseFloat(computedParagraphStyle.borderBottom);
       }
-      mergedRects.push(mergedRect);
+      let numLinesInParagraph = 0;
+      const approximateLineHeight = parseInt(computedParagraphStyle.lineHeight);
+      while ((numLinesInParagraph + 1) * approximateLineHeight <= paragraphHeight) numLinesInParagraph++;
+      
+      // Create a merged rect for each line
+      const exactLineHeight = paragraphHeight / numLinesInParagraph;
+      for (let ln = 0; ln < numLinesInParagraph; ln++) {
+        const mergedRect = new DOMRect(paragraphRect.right, paragraphRect.top + (ln * exactLineHeight), 0, exactLineHeight);
+        for (let r = 0; r < unmergedRects.length; r++) {
+          const rect = unmergedRects[r];
+          const rectVerticalPosition = rect.y + (rect.height / 2);
+          if (paragraphRect.width == rect.width && paragraphRect.height == rect.height && paragraphRect.top == rect.top && paragraphRect.left == rect.left) {
+            // Remove rects that are the same size as the paragraph rect (the highlight range gives us these unneeded rects for "middle" paragraphs between the start and end paragraph)
+            unmergedRects.splice(r, 1);
+            r--;
+          } else if (rectVerticalPosition > mergedRect.y && rectVerticalPosition < mergedRect.y + mergedRect.height) {
+            // Process then remove rects that apply to the current line
+            mergedRect.x = Math.min(mergedRect.x, rect.x);
+            mergedRect.width = Math.max(mergedRect.right, rect.right) - mergedRect.x;
+            unmergedRects.splice(r, 1);
+            r--;
+          }
+        }
+        if (mergedRect.width != 0) mergedRects.push(mergedRect);
+      }
     }
+    
     return mergedRects;
   }
   
@@ -776,15 +800,15 @@ let hhDefaultOptions = {
   styles: {
     'fill': {
       'css': 'background-color: hsl(from {color} h s l / 40%);',
-      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" height="{height}" rx="4" style="width: calc({width}px + ({height}px / 5)); transform: translateX(calc({height}px / -10));" />',
+      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 5)); height: calc({height}px * 0.8); transform: translateX(calc({height}px / -10)) translateY(calc({height}px * 0.08));" />',
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 6); transform: translateY(calc({height}px * 0.9));" />',
+      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.85));" />',
     },
     'double-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-style: double; text-decoration-skip-ink: none;',
-      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" /><rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 1.05));" />',
+      'svg': '<rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.85));" /><rect fill="{color}" x="{x}" y="{y}" style="width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.95));" />',
     },
     'colored-text': {
       'css': 'color: {color};',

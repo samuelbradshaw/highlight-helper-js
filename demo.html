@@ -257,7 +257,7 @@
       container.addEventListener('hh:highlightdeactivate', updateHighlightInfo);
       function updateHighlightInfo(event) {
         if (event.type == 'hh:highlightactivate') {
-          selectionTextDiv.innerHTML = event.detail.highlight.text;
+          selectionTextDiv.innerHTML = event.detail.highlight.rangeText;
           selectionInfoDiv.innerHTML = `
             <b>Highlight:</b> ${event.detail.highlight.highlightId}<br>
             <b>Color and style:</b> ${event.detail.highlight.color}, ${event.detail.highlight.style}<br>
@@ -282,7 +282,7 @@
         for (const highlight of event.detail.highlights) {
           let buttonStyle = options.styles[highlight.style]['css'].replace('{color}', options.colors[highlight.color])
           let buttonHtml = `
-            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.html}</button>
+            <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.rangeHtml}</button>
           `;
           disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
         }

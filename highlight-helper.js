@@ -72,7 +72,6 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   const highlightsById = {};
-  let annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
   let activeHighlightId = null;
   let previousSelectionRange = null;
   let isStylus = false;
@@ -164,17 +163,21 @@ function Highlighter(options = hhDefaultOptions) {
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'svg');
+          let svgBackgroundClientRect = svgBackground.getBoundingClientRect();
           const mergedClientRects = getMergedClientRects(range, rangeParagraphs);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
           svgContent = '';
           for (const clientRect of mergedClientRects) {
             svgContent += styleTemplate
-            .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x + window.scrollX)
-            .replaceAll('{y}', clientRect.y - annotatableContainerClientRect.y + window.scrollY)
-            .replaceAll('{width}', clientRect.width).replaceAll('{height}', clientRect.height)
-            .replaceAll('{top}', clientRect.top).replaceAll('{bottom}', clientRect.bottom + window.scrollY)
-            .replaceAll('{left}', clientRect.left).replaceAll('{right}', clientRect.right + window.scrollX);
+            .replaceAll('{x}', clientRect.x - svgBackgroundClientRect.x)
+            .replaceAll('{y}', clientRect.y - svgBackgroundClientRect.y)
+            .replaceAll('{width}', clientRect.width)
+            .replaceAll('{height}', clientRect.height)
+            .replaceAll('{top}', clientRect.top - svgBackgroundClientRect.top)
+            .replaceAll('{right}', clientRect.right - svgBackgroundClientRect.right)
+            .replaceAll('{bottom}', clientRect.bottom - svgBackgroundClientRect.bottom)
+            .replaceAll('{left}', clientRect.left - svgBackgroundClientRect.left);
           }
           group.innerHTML = svgContent;
           svgBackground.appendChild(group);
@@ -436,11 +439,9 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     // Deselect text or deactivate highlights when tapping away
-    if (previousSelectionRange && selection.type == 'Caret' && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
+    if (selection.type == 'Caret' && previousSelectionRange && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
       this.deactivateHighlights();
-    }
-    
-    if (selection.type == 'Range') {
+    } else if (selection.type == 'Range') {
       selectionIsReady = true;
       const selectionRange = selection.getRangeAt(0);
       let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
@@ -510,10 +511,13 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Window resize
+  let previousWindowWidth = window.innerWidth;
   window.addEventListener('resize', (event) => respondToWindowResize(event));
   const respondToWindowResize = (event) => {
-    annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
+    // Only respond if the width changed (ignore height changes)
+    if (window.innerWidth == previousWindowWidth) return;
     if (options.drawingMode == 'svg') this.drawHighlights();
+    previousWindowWidth = window.innerWidth;
   }
   
   // Window blur

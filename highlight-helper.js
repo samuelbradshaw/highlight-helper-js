@@ -442,7 +442,6 @@ function Highlighter(options = hhDefaultOptions) {
     if (selection.type == 'Caret' && previousSelectionRange && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
       this.deactivateHighlights();
     } else if (selection.type == 'Range') {
-      selectionIsReady = true;
       const selectionRange = selection.getRangeAt(0);
       let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
       let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
@@ -461,6 +460,23 @@ function Highlighter(options = hhDefaultOptions) {
     isStylus = event.pointerType == 'pen';
     const tapRange = getRangeFromTapEvent(event);
     tapResult = checkForTapTargets(tapRange);
+    
+    // TODO: If you attempt to select any text programmatically before the user has long-pressed to create a selection (for example, if you tap an existing highlight after the page loads), iOS Safari selects the text, but it doesn't show the selection UI (selection handles and selection overlay). This workaround creates a temporary input and focuses it. Then, when Safari re-focuses the window, the selection UI shows.
+    // Adapted from https://stackoverflow.com/a/55652503/1349044. See also https://stackoverflow.com/q/79136377/1349044.
+    if (isIosSafari && !selectionIsReady) {
+      const tempInput = document.createElement('input');
+      tempInput.style.position = 'fixed';
+      tempInput.style.opacity = 0;
+      tempInput.style.height = 0;
+      tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
+      tempInput.inputMode = 'none'; // Don't show keyboard
+      document.body.prepend(tempInput);
+      tempInput.focus();
+      setTimeout(() => {
+        tempInput.blur();
+        tempInput.remove();
+      }, 200);
+    }
   }
   
   // Hyperlink click (for each hyperlink in annotatable container)
@@ -474,6 +490,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Pointer up in annotatable container
   annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
   const respondToPointerUp = (event) => {
+    selectionIsReady = true;
     const selection = window.getSelection();
     if (tapResult && !activeHighlightId && selection.type != 'Range') {
       if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
@@ -497,17 +514,6 @@ function Highlighter(options = hhDefaultOptions) {
       selection.addRange(selectionRange);
     }
     
-    // TODO: If you attempt to select any text programmatically before the user has long-pressed to create a selection (for example, if you tap an existing highlight after the page loads), iOS Safari selects the text, but it doesn't show the selection UI (selection handles and selection overlay). This workaround opens a temporary tab and closes it, to force Safari to re-focus the original page, which causes the selection UI to show as expected. A better workaround or fix is needed.
-    if (isIosSafari) {
-      if (!selectionIsReady) {
-        const tempTab = window.open('', 'temporary');
-        tempTab.document.body.innerHTML = '<meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">Workaround for initial text selection on iOS Safari...';
-        setTimeout(() => {
-          tempTab.close();
-          selectionIsReady = true;
-        }, 500);
-      }
-    }
   }
   
   // Window resize
@@ -521,7 +527,7 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Window blur
-  window.addEventListener('blur', (event) => selectionIsReady = false)
+  window.addEventListener('blur', (event) => selectionIsReady = false);
   
   
   // -------- UTILITY FUNCTIONS --------

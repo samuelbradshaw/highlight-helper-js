@@ -29,8 +29,6 @@ function Highlighter(options = hhDefaultOptions) {
       user-select: text;
     }
     ${options.containerSelector} rt,
-    ${options.containerSelector} sup,
-    ${options.containerSelector} sub,
     ${options.containerSelector} img {
       -webkit-user-select: none;
       user-select: none;
@@ -156,8 +154,6 @@ function Highlighter(options = hhDefaultOptions) {
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'css');
           highlightsStylesheet.insertRule(`::highlight(${highlightInfo.escapedHighlightId}) { ${styleTemplate} }`);
           highlightsStylesheet.insertRule(`rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
-          highlightsStylesheet.insertRule(`sup::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
-          highlightsStylesheet.insertRule(`sub::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
           highlightsStylesheet.insertRule(`img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
         
         // Draw highlights with SVG shapes
@@ -454,45 +450,23 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Pointer down in annotatable container
-  tapResult = null;
+  tapResult = {};
   annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event));
   const respondToPointerDown = (event) => {
     isStylus = event.pointerType == 'pen';
+    
+    // Return if it's not a regular click (modifier keys, left click, etc.)
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.button != 0) return;
+    
     const tapRange = getRangeFromTapEvent(event);
     tapResult = checkForTapTargets(tapRange);
-    
-    // TODO: If you attempt to select any text programmatically before the user has long-pressed to create a selection (for example, if you tap an existing highlight after the page loads), iOS Safari selects the text, but it doesn't show the selection UI (selection handles and selection overlay). This workaround creates a temporary input and focuses it. Then, when Safari re-focuses the window, the selection UI shows.
-    // Adapted from https://stackoverflow.com/a/55652503/1349044. See also https://stackoverflow.com/q/79136377/1349044.
-    if (isIosSafari && !selectionIsReady) {
-      const tempInput = document.createElement('input');
-      tempInput.style.position = 'fixed';
-      tempInput.style.opacity = 0;
-      tempInput.style.height = 0;
-      tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
-      tempInput.inputMode = 'none'; // Don't show keyboard
-      document.body.prepend(tempInput);
-      tempInput.focus();
-      setTimeout(() => {
-        tempInput.blur();
-        tempInput.remove();
-      }, 200);
-    }
-  }
-  
-  // Hyperlink click (for each hyperlink in annotatable container)
-  for (const hyperlinkElement of hyperlinkElements) {
-    hyperlinkElement.addEventListener('click', (event) => {
-      this.deactivateHighlights();
-      if (!allowHyperlinkClick) event.preventDefault();
-    });
   }
   
   // Pointer up in annotatable container
   annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
   const respondToPointerUp = (event) => {
-    selectionIsReady = true;
     const selection = window.getSelection();
-    if (tapResult && !activeHighlightId && selection.type != 'Range') {
+    if (tapResult.targetFound && !activeHighlightId && selection.type != 'Range') {
       if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
         return this.activateHighlight(tapResult.highlights[0].highlightId);
       } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1) {
@@ -501,11 +475,11 @@ function Highlighter(options = hhDefaultOptions) {
         return annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
       }
     }
-    tapResult = null;
   }
   
-  // Pointer up in window
+  // Pointer up or cancel in window
   window.addEventListener('pointerup', respondToWindowPointerUp);
+  window.addEventListener('pointercancel', respondToWindowPointerUp);
   function respondToWindowPointerUp(event) {
     const selection = window.getSelection();
     if (selection.type == 'Range' && options.snapToWord) {
@@ -513,7 +487,15 @@ function Highlighter(options = hhDefaultOptions) {
       selection.removeAllRanges();
       selection.addRange(selectionRange);
     }
-    
+    tapResult = {};
+  }
+  
+  // Hyperlink click (for each hyperlink in annotatable container)
+  for (const hyperlinkElement of hyperlinkElements) {
+    hyperlinkElement.addEventListener('click', (event) => {
+      this.deactivateHighlights();
+      if (!allowHyperlinkClick) event.preventDefault();
+    });
   }
   
   // Window resize
@@ -526,7 +508,25 @@ function Highlighter(options = hhDefaultOptions) {
     previousWindowWidth = window.innerWidth;
   }
   
-  // Window blur
+  // Workaround to allow programmatic text selection on tap in iOS Safari
+  // See https://stackoverflow.com/a/79261423/1349044
+  window.addEventListener('pointerdown', (event) => initializeSelection(event));
+  const initializeSelection = (event) => {
+    if (isIosSafari && !selectionIsReady) {
+      const tempInput = document.createElement('input');
+      tempInput.style.position = 'fixed';
+      tempInput.style.opacity = 0;
+      tempInput.style.height = 0;
+      tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
+      tempInput.inputMode = 'none'; // Don't show keyboard
+      document.body.prepend(tempInput);
+      tempInput.focus();
+      setTimeout(() => {
+        tempInput.remove();
+        selectionIsReady = true;
+      }, 100);
+    }
+  }
   window.addEventListener('blur', (event) => selectionIsReady = false);
   
   
@@ -561,6 +561,7 @@ function Highlighter(options = hhDefaultOptions) {
     const sortedTappedHighlights = this.getHighlightInfo(tappedHyperlinkIds);
     
     return {
+      'targetFound': sortedTappedHighlights.length > 0 || tappedHyperlinks.length > 0,
       'tapRange': tapRange,
       'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
@@ -729,7 +730,6 @@ function Highlighter(options = hhDefaultOptions) {
   // Get merged DOMRects from the highlight range
   const getMergedClientRects = (range, paragraphs) => {
     const unmergedRects = Array.from(range.getClientRects());
-    const paragraphRects = Array.from(paragraphs, paragraph => paragraph.getClientRects()[0]);
     const mergedRects = [];
     
     // Loop through the highlight's paragraphs
@@ -737,31 +737,23 @@ function Highlighter(options = hhDefaultOptions) {
       const paragraphRect = paragraph.getClientRects()[0];
       const computedParagraphStyle = window.getComputedStyle(paragraph);
       
-      // Calculate the number of lines in each paragraph
-      let paragraphHeight = parseFloat(computedParagraphStyle.height);
-      if (computedParagraphStyle.boxSizing == 'border-box') {
-        paragraphHeight = parseFloat(computedParagraphStyle.height) - parseFloat(computedParagraphStyle.paddingTop) - parseFloat(computedParagraphStyle.paddingBottom) - parseFloat(computedParagraphStyle.borderTop) - parseFloat(computedParagraphStyle.borderBottom);
-      }
-      let numLinesInParagraph = 0;
-      const approximateLineHeight = parseInt(computedParagraphStyle.lineHeight);
-      while ((numLinesInParagraph + 1) * approximateLineHeight <= paragraphHeight) numLinesInParagraph++;
-      
-      // Calculate offset between the paragraph y-position and a reference range y-position, to account for differing font metrics
-      let walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
-      let referenceRange;
-      while (node = walker.nextNode()) {
-        if (window.getComputedStyle(node.parentElement).lineHeight == computedParagraphStyle.lineHeight) {
-          referenceRange = document.createRange();
-          referenceRange.selectNode(node);
-          break;
+      // Get line positions (bottom edge of each line)
+      let linePositions = new Set();
+      let lineWalker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      while (textNode = lineWalker.nextNode()) {
+        if (window.getComputedStyle(textNode.parentElement).lineHeight == computedParagraphStyle.lineHeight) {
+          const referenceRange = document.createRange();
+          referenceRange.selectNode(textNode);
+          for (const rangeRect of referenceRange.getClientRects()) linePositions.add(rangeRect.bottom);
         }
       }
-      const lineOffset = referenceRange ? paragraphRect.y - referenceRange.getClientRects()[0].y : 0;
+      linePositions = Array.from(linePositions);
       
       // Create a merged rect for each line
-      const exactLineHeight = paragraphHeight / numLinesInParagraph;
-      for (let ln = 0; ln < numLinesInParagraph; ln++) {
-        const mergedRect = new DOMRect(paragraphRect.right, paragraphRect.top + (ln * exactLineHeight) + lineOffset, 0, exactLineHeight);
+      for (let ln = 0; ln < linePositions.length; ln++) {
+        const linePosition = linePositions[ln];
+        const previousLinePosition = ln == 0 ? paragraphRect.top : linePositions[ln-1];
+        const mergedRect = new DOMRect(paragraphRect.right, previousLinePosition, 0, linePosition - previousLinePosition);
         for (let r = 0; r < unmergedRects.length; r++) {
           const rect = unmergedRects[r];
           const rectVerticalPosition = rect.y + (rect.height / 2);
@@ -773,8 +765,7 @@ function Highlighter(options = hhDefaultOptions) {
             // Process then remove rects that apply to the current line
             mergedRect.x = Math.min(mergedRect.x, rect.x);
             mergedRect.width = Math.max(mergedRect.right, rect.right) - mergedRect.x;
-            unmergedRects.splice(r, 1);
-            r--;
+            unmergedRects.splice(r, 1); r--;
           }
         }
         if (mergedRect.width != 0) mergedRects.push(mergedRect);
@@ -822,7 +813,7 @@ let hhDefaultOptions = {
   styles: {
     'fill': {
       'css': 'background-color: hsl(from {color} h s l / 40%);',
-      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 5)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -10)) translateY(calc({height}px * 0.17));" />',
+      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 5)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -10)) translateY(calc({height}px * 0.14));" />',
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',

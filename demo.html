@@ -23,7 +23,7 @@
       body {
         background-color: var(--page-bg);
         color: var(--text-color);
-        line-height: 1.4em;
+        line-height: 1.4;
       }
       img { width: 120px; height: 120px; float: right; }
       a { color: var(--gray-50); }
@@ -58,28 +58,6 @@
             padding: 0 0.3em;
           }
         }
-      }
-      .slider-start, .slider-end {
-        font-size: 0.5em;
-        width: 0; height: 1em;
-        display: inline-block;
-        -webkit-transform: translate3d(0, 0, 0);
-        &::before {
-          content: "0" / attr(data-accessibility-label);
-          display: inline-block;
-          width: 1ch; height: 2em;
-          color: transparent;
-          background-color: var(--color);
-          opacity: 0.7;
-        }
-        &:hover::before { opacity: 1; }
-      }
-      .slider-start::before {
-        border-radius: 3px 0 0 3px;
-        margin: -1ch;
-      }
-      .slider-end::before {
-        border-radius: 0 3px 3px 0;
       }
       .footnote-marker {
         display: inline-block;
@@ -145,7 +123,6 @@
         <button name="hh-remove">Remove</button>
         <div></div>
         <!--button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="sliders" title="Sliders"><span class="slider-start" data-accessibility-label="Resize highlight (start)" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span><span class="slider-end" data-accessibility-label="Resize highlight (end)" style="--color: hsl(0, 0%, 50%)"></span></button>
         <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" data-accessibility-label="Footnote" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span></button-->
       </div>
       <p>
@@ -198,12 +175,21 @@
           startParagraphId: 'p2', startParagraphOffset: 119,
           endParagraphId: 'p2', endParagraphOffset: 127,
         },
+        {
+          highlightId: 'hh-1729991847301',
+          color: 'orange', style: 'fill',
+          startParagraphId: 'p3', startParagraphOffset: 56,
+          endParagraphId: 'p3', endParagraphOffset: 65,
+        },
       ];
       
       // Set options and initialize Highlight Helper, then load highlights
       options = {
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
+        wrappers: {
+          'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}" style="--color: {color}"></span>', end: '', },
+        },
       }
       const highlighter = new Highlighter(options);
       highlighter.loadHighlights(highlights);

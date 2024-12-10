@@ -5,8 +5,6 @@ function Highlighter(options = hhDefaultOptions) {
   const annotatableContainer = document.querySelector(options.containerSelector);
   const annotatableParagraphs = document.querySelectorAll(options.paragraphSelector);
   const annotatableParagraphIds = Array.from(annotatableParagraphs, paragraph => paragraph.id);
-  const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
-  const isIosSafari = isSafari && navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
   
   // Setting -1 as the tabIndex on <body> is a workaround to avoid "tap to search" in Chrome on Android
   document.body.tabIndex = -1;
@@ -29,14 +27,48 @@ function Highlighter(options = hhDefaultOptions) {
       user-select: text;
     }
     ${options.containerSelector} rt,
-    ${options.containerSelector} img {
+    ${options.containerSelector} img,
+    .hh-wrapper-start, .hh-wrapper-end {
       -webkit-user-select: none;
       user-select: none;
     }
-    .hh-wrapper-start, .hh-wrapper-end {
-      position: relative;
-      -webkit-user-select: none;
-      user-select: none;
+    .hh-selection-handle {
+      background-color: green;
+      position: absolute;
+      width: 0;
+      display: none;
+    }
+    .hh-selection-handle-content {
+      position: absolute;
+      height: 100%;
+    }
+    .hh-selection-handle [draggable] {
+      position: absolute;
+      top: 0;
+      width: 15px;
+      height: calc(100% + 10px);
+      background-color: transparent;
+      z-index: 1;
+    }
+    .hh-selection-handle [draggable]:hover,
+    .hh-selection-handle [draggable]:active { cursor: ew-resize; }
+    .hh-selection-handle[data-position="left"] [draggable] { right: 0; }
+    .hh-selection-handle[data-position="right"] [draggable] { left: 0; }
+    .hh-default-handle {
+      position: absolute;
+      width: 10px;
+      height: calc(100% + 5px);
+      background-color: var(--color);
+      outline: 1px solid white;
+      top: 0;
+    }
+    .hh-selection-handle[data-position="left"] .hh-default-handle {
+      right: 0;
+      border-radius: 10px 0 10px 10px;
+    }
+    .hh-selection-handle[data-position="right"] .hh-default-handle {
+      left: 0;
+      border-radius: 0 10px 10px 10px;
     }
     .hh-svg-background {
       position: absolute;
@@ -52,11 +84,16 @@ function Highlighter(options = hhDefaultOptions) {
     }
   `);
   
-  // Set up SVG background
+  // Set up SVG background and selection handles
   const svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svgBackground.classList.add('hh-svg-background');
   annotatableContainer.appendChild(svgBackground);
-  
+  annotatableContainer.insertAdjacentHTML('beforeend', `
+    <div class="hh-selection-handle" data-position="left"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+    <div class="hh-selection-handle" data-position="right"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+  `);
+  const selectionHandles = document.getElementsByClassName('hh-selection-handle');
+    
   // Check for hyperlinks on the page
   const hyperlinkElements = annotatableContainer.getElementsByTagName('a');
   const hyperlinksByPosition = {}
@@ -74,6 +111,7 @@ function Highlighter(options = hhDefaultOptions) {
   let previousSelectionRange = null;
   let isStylus = false;
   let selectionIsReady = false;
+  let activeSelectionHandle = null;
   
   
   // -------- PUBLIC METHODS --------
@@ -159,7 +197,7 @@ function Highlighter(options = hhDefaultOptions) {
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'svg');
-          let svgBackgroundClientRect = svgBackground.getBoundingClientRect();
+          const svgBackgroundClientRect = svgBackground.getBoundingClientRect();
           const mergedClientRects = getMergedClientRects(range, rangeParagraphs);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
@@ -197,7 +235,6 @@ function Highlighter(options = hhDefaultOptions) {
             const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
             while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
             range.insertNode(htmlElement);
-            
           }
           const startRange = highlightInfo.rangeObj;
           const endRange = document.createRange(); endRange.setStart(highlightInfo.rangeObj.endContainer, highlightInfo.rangeObj.endOffset);
@@ -335,7 +372,6 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
-    // TODO: Show custom selection handles in desktop browser
     const selection = window.getSelection();
     const highlightToActivate = highlightsById[highlightId];
     if (highlightToActivate.readOnly) {
@@ -434,8 +470,10 @@ function Highlighter(options = hhDefaultOptions) {
   document.addEventListener('selectionchange', (event) => respondToSelectionChange(event));
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
+    updateSelectionHandles();
+    
     // Deselect text or deactivate highlights when tapping away
-    if (selection.type == 'Caret' && previousSelectionRange && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
+    if (selection.type == 'Caret' && !activeSelectionHandle && previousSelectionRange && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
       this.deactivateHighlights();
     } else if (selection.type == 'Range') {
       const selectionRange = selection.getRangeAt(0);
@@ -455,11 +493,48 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToPointerDown = (event) => {
     isStylus = event.pointerType == 'pen';
     
-    // Return if it's not a regular click (modifier keys, left click, etc.)
-    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.button != 0) return;
+    // User is dragging a selection handle
+    if (event.target?.draggable) {
+      event.preventDefault();
+      activeSelectionHandle = event.target.parentElement;
+      annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag);
+    }
+    
+    // Return if it's not a regular click (drag, left click, modifier keys, etc.)
+    if (activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     
     const tapRange = getRangeFromTapEvent(event);
     tapResult = checkForTapTargets(tapRange);
+  }
+  
+  // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
+  const respondToSelectionHandleDrag = (event) => {
+    const selection = window.getSelection();
+    const selectionRange = selection.getRangeAt(0);
+    
+    const dragRange = getRangeFromTapEvent(event);
+    // TODO: While dragging, the selection startContainer or endContainer frequently gets set to the parent element. This causes the selection to flicker while dragging. The line below is a workaround, but it would be nice to figure out the root cause.
+    if (dragRange.startContainer.nodeType != Node.TEXT_NODE || dragRange.endContainer.nodeType != Node.TEXT_NODE) return;
+    
+    const dragPositionRelativeToSelectionStart = dragRange.compareBoundaryPoints(Range.START_TO_START, selectionRange);
+    const dragPositionRelativeToSelectionEnd = dragRange.compareBoundaryPoints(Range.END_TO_END, selectionRange);    
+    
+    // TODO: Don't allow Caret (0-width) selections while dragging selection handles
+    if (activeSelectionHandle.dataset.position == 'left' && dragPositionRelativeToSelectionEnd == 1 || activeSelectionHandle.dataset.position == 'right' && dragPositionRelativeToSelectionStart == -1) {
+      for (const selectionHandle of selectionHandles) {
+        selectionHandle.dataset.position = selectionHandle.dataset.position == 'left' ? 'right' : 'left';
+      }
+      // TODO: Switch selection direction and don't deactivate the highlight
+      this.deactivateHighlights();
+      activeSelectionHandle = null;
+      annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
+    } else if (activeSelectionHandle.dataset.position == 'left' && dragPositionRelativeToSelectionStart != 0) {
+      // Left selection handle is before or after the selection start
+      selectionRange.setStart(dragRange.startContainer, dragRange.startOffset);
+    } else if (activeSelectionHandle.dataset.position == 'right' && dragPositionRelativeToSelectionEnd != 0) {
+      // Right selection handle is before or after the selection end
+      selectionRange.setEnd(dragRange.endContainer, dragRange.endOffset);
+    }
   }
   
   // Pointer up in annotatable container
@@ -488,6 +563,10 @@ function Highlighter(options = hhDefaultOptions) {
       selection.addRange(selectionRange);
     }
     tapResult = {};
+    if (activeSelectionHandle) {
+      activeSelectionHandle = null;
+      annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
+    }
   }
   
   // Hyperlink click (for each hyperlink in annotatable container)
@@ -512,14 +591,15 @@ function Highlighter(options = hhDefaultOptions) {
   // See https://stackoverflow.com/a/79261423/1349044
   window.addEventListener('pointerdown', (event) => initializeSelection(event));
   const initializeSelection = (event) => {
-    if (isIosSafari && !selectionIsReady) {
+    if (isTouchDevice && isSafari && !selectionIsReady) {
       const tempInput = document.createElement('input');
       tempInput.style.position = 'fixed';
+      tempInput.style.top = 0;
       tempInput.style.opacity = 0;
       tempInput.style.height = 0;
       tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
       tempInput.inputMode = 'none'; // Don't show keyboard
-      document.body.prepend(tempInput);
+      document.body.append(tempInput);
       tempInput.focus();
       setTimeout(() => {
         tempInput.remove();
@@ -614,6 +694,36 @@ function Highlighter(options = hhDefaultOptions) {
       style: style,
     }}));
   }
+  
+  // Update selection handles
+  function updateSelectionHandles() {
+    const selection = window.getSelection();
+    if (selection.type == 'Range' && options.showSelectionHandles) {
+      const colorKey = highlightsById[activeHighlightId]?.color;
+      const colorString = options.colors[colorKey] ?? 'AccentColor';
+      const selectionRange = selection.getRangeAt(0);
+      const selectionRangeRects = selectionRange.getClientRects();
+      const startRect = selectionRangeRects[0];
+      const endRect = selectionRangeRects[selectionRangeRects.length-1];
+      const annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
+      selectionHandles[0].dataset.position = 'left';
+      selectionHandles[0].style.display = 'block';
+      selectionHandles[0].style.height = startRect.height + 'px';
+      selectionHandles[0].style.left = startRect.left - annotatableContainerClientRect.left + 'px';
+      selectionHandles[0].style.top = startRect.top - annotatableContainerClientRect.top + 'px';
+      selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '').replace('{color}', colorString);
+      selectionHandles[1].dataset.position = 'right';
+      selectionHandles[1].style.display = 'block';
+      selectionHandles[1].style.height = endRect.height + 'px';
+      selectionHandles[1].style.left = endRect.right - annotatableContainerClientRect.left + 'px';
+      selectionHandles[1].style.top = endRect.top - annotatableContainerClientRect.top + 'px';
+      selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '').replace('{color}', colorString);
+    } else {
+      selectionHandles[0].style.display = 'none';
+      selectionHandles[1].style.display = 'none';
+    }
+  }
+  
   
   // Snap the selection or highlight range to the nearest word
   function snapRangeToWord(range) {
@@ -794,6 +904,10 @@ function Highlighter(options = hhDefaultOptions) {
 
 // -------- DEFAULTS --------
 
+// Check browser type
+const isTouchDevice = navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
+const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
+
 // Default function for generating a highlight ID
 const hhGetNewHighlightId = () => {
   return 'hh-' + Date.now().toString();
@@ -832,11 +946,12 @@ let hhDefaultOptions = {
       'svg': '',
     },
   },
-  wrappers: {
-    'none': {},
-    'sliders': { start: '<span class="slider-start" data-accessibility-label="{startAccessibilityLabel}" style="--color: {color}"></span>', end: '<span class="slider-end" data-accessibility-label="{endAccessibilityLabel}" style="--color: {color}"></span>', },
-    'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}" style="--color: {color}"></span>', end: '', },
+  wrappers: {},
+  selectionHandles: {
+    'left': '<div class="hh-default-handle" style="--color: {color}"></div>',
+    'right': '<div class="hh-default-handle" style="--color: {color}"></div>',
   },
+  showSelectionHandles: isTouchDevice ? false : true,
   rememberStyle: true,
   snapToWord: false,
   pointerMode: 'default',

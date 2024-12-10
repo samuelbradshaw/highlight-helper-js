@@ -379,12 +379,12 @@ function Highlighter(options = hhDefaultOptions) {
       return annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
     }
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
+    activeHighlightId = highlightId;
     updateSelectionStyle(highlightToActivate.color, highlightToActivate.style);
     if (selection.type != 'Range') {
       selection.removeAllRanges();
       selection.addRange(highlightRange);
     }
-    activeHighlightId = highlightId;
     annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
   
@@ -488,7 +488,7 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Pointer down in annotatable container
-  tapResult = {};
+  tapResult = null;
   annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event));
   const respondToPointerDown = (event) => {
     isStylus = event.pointerType == 'pen';
@@ -541,13 +541,16 @@ function Highlighter(options = hhDefaultOptions) {
   annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
   const respondToPointerUp = (event) => {
     const selection = window.getSelection();
-    if (tapResult.targetFound && !activeHighlightId && selection.type != 'Range') {
-      if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
-        return this.activateHighlight(tapResult.highlights[0].highlightId);
-      } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1) {
-        return this.activateHyperlink(tapResult.hyperlinks[0].position);
-      } else if (tapResult.highlights.length + tapResult.hyperlinks.length > 1) {
-        return annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
+    if (tapResult && !activeHighlightId && selection.type != 'Range') {
+      annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
+      if (options.autoTapToActivate && tapResult?.targetFound) {
+        if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
+          return this.activateHighlight(tapResult.highlights[0].highlightId);
+        } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1) {
+          return this.activateHyperlink(tapResult.hyperlinks[0].position);
+        } else if (tapResult.highlights.length + tapResult.hyperlinks.length > 1) {
+          return annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
+        }
       }
     }
   }
@@ -562,7 +565,7 @@ function Highlighter(options = hhDefaultOptions) {
       selection.removeAllRanges();
       selection.addRange(selectionRange);
     }
-    tapResult = {};
+    tapResult = null;
     if (activeSelectionHandle) {
       activeSelectionHandle = null;
       annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
@@ -645,7 +648,7 @@ function Highlighter(options = hhDefaultOptions) {
       'tapRange': tapRange,
       'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
-    };
+    }
   }
   
   // Compare new highlight information to old highlight information, returning an object with the properties that changed
@@ -689,6 +692,7 @@ function Highlighter(options = hhDefaultOptions) {
     } else {
       selectionStylesheet.replaceSync(`::selection { background-color: Highlight; color: HighlightText; }`);
     }
+    updateSelectionHandles();
     annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: {
       color: color,
       style: style,
@@ -954,6 +958,7 @@ let hhDefaultOptions = {
   showSelectionHandles: isTouchDevice ? false : true,
   rememberStyle: true,
   snapToWord: false,
+  autoTapToActivate: true,
   pointerMode: 'default',
   drawingMode: CSS.highlights ? 'highlight-api' : 'svg',
   defaultColor: 'yellow',

@@ -494,14 +494,14 @@ function Highlighter(options = hhDefaultOptions) {
     isStylus = event.pointerType == 'pen';
     
     // User is dragging a selection handle
-    if (event.target?.draggable) {
+    if (event.target?.getAttribute('draggable') == 'true') {
       event.preventDefault();
       activeSelectionHandle = event.target.parentElement;
       annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag);
     }
     
-    // Return if it's not a regular click (drag, left click, modifier keys, etc.)
-    if (activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    // Return if there's an active highlight or if it's not a regular click (drag, left click, modifier keys, etc.)
+    if (activeHighlightId || activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     
     const tapRange = getRangeFromTapEvent(event);
     tapResult = checkForTapTargets(tapRange);
@@ -540,8 +540,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Pointer up in annotatable container
   annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
   const respondToPointerUp = (event) => {
-    const selection = window.getSelection();
-    if (tapResult && !activeHighlightId && selection.type != 'Range') {
+    if (tapResult) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
       if (options.autoTapToActivate && tapResult?.targetFound) {
         if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {

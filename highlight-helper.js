@@ -494,7 +494,7 @@ function Highlighter(options = hhDefaultOptions) {
     isStylus = event.pointerType == 'pen';
     
     // User is dragging a selection handle
-    if (event.target?.getAttribute('draggable') == 'true') {
+    if (event.target && event.target.parentElement.classList.contains('hh-selection-handle')) {
       event.preventDefault();
       activeSelectionHandle = event.target.parentElement;
       annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag);
@@ -541,6 +541,7 @@ function Highlighter(options = hhDefaultOptions) {
   annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
   const respondToPointerUp = (event) => {
     if (tapResult) {
+      tapResult.pointerEvent = event;
       annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
       if (options.autoTapToActivate && tapResult?.targetFound) {
         if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {

@@ -1,3 +1,8 @@
+/**
+ * Highlight Helper
+ * https://github.com/samuelbradshaw/highlight-helper-js
+ */
+
 function Highlighter(options = hhDefaultOptions) {
   for (const key of Object.keys(hhDefaultOptions)) {
     options[key] = options[key] ?? hhDefaultOptions[key];
@@ -932,7 +937,7 @@ let hhDefaultOptions = {
   styles: {
     'fill': {
       'css': 'background-color: hsl(from {color} h s l / 40%);',
-      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 5)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -10)) translateY(calc({height}px * 0.14));" />',
+      'svg': '<rect fill="hsl(from {color} h s l / 40%)" x="{x}" y="{y}" rx="4" style="width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: {color}; text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
@@ -960,7 +965,7 @@ let hhDefaultOptions = {
   rememberStyle: true,
   snapToWord: false,
   autoTapToActivate: true,
-  pointerMode: 'default',
+  pointerMode: 'simple',
   drawingMode: CSS.highlights ? 'highlight-api' : 'svg',
   defaultColor: 'yellow',
   defaultStyle: 'fill',

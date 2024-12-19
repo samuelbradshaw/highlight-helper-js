@@ -6,7 +6,7 @@ function Highlighter(options = hhDefaultOptions) {
   const annotatableParagraphs = document.querySelectorAll(options.paragraphSelector);
   const annotatableParagraphIds = Array.from(annotatableParagraphs, paragraph => paragraph.id);
   
-  // Setting -1 as the tabIndex on <body> is a workaround to avoid "tap to search" in Chrome on Android
+  // Setting tabIndex -1 on <body> allows focus to be set programmatically (needed to initialize text selection in iOS Safari). It also prevents "tap to search" from interfering with text selection in Android Chrome.
   document.body.tabIndex = -1;
   
   // Set up stylesheets
@@ -109,7 +109,6 @@ function Highlighter(options = hhDefaultOptions) {
   let activeHighlightId = null;
   let previousSelectionRange = null;
   let isStylus = false;
-  let selectionIsReady = false;
   let activeSelectionHandle = null;
   
   
@@ -592,25 +591,27 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Workaround to allow programmatic text selection on tap in iOS Safari
   // See https://stackoverflow.com/a/79261423/1349044
-  window.addEventListener('pointerdown', (event) => initializeSelection(event));
-  const initializeSelection = (event) => {
-    if (isTouchDevice && isSafari && !selectionIsReady) {
-      const tempInput = document.createElement('input');
-      tempInput.style.position = 'fixed';
-      tempInput.style.top = 0;
-      tempInput.style.opacity = 0;
-      tempInput.style.height = 0;
-      tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
-      tempInput.inputMode = 'none'; // Don't show keyboard
+  if (isTouchDevice && isSafari) {
+    const tempInput = document.createElement('input');
+    tempInput.style.position = 'fixed';
+    tempInput.style.top = 0;
+    tempInput.style.opacity = 0;
+    tempInput.style.height = 0;
+    tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
+    tempInput.inputMode = 'none'; // Don't show keyboard
+    tempInput.tabIndex = -1; // Prevent user from tabbing to input
+    const initializeSelection = (event) => {
       document.body.append(tempInput);
       tempInput.focus();
       setTimeout(() => {
         tempInput.remove();
-        selectionIsReady = true;
       }, 100);
     }
+    initializeSelection();
+    document.addEventListener('visibilitychange', (event) => {
+      if (document.visibilityState == 'visible') initializeSelection();
+    });
   }
-  window.addEventListener('blur', (event) => selectionIsReady = false);
   
   
   // -------- UTILITY FUNCTIONS --------

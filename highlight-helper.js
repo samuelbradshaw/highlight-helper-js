@@ -33,7 +33,6 @@ function Highlighter(options = hhDefaultOptions) {
       user-select: none;
     }
     .hh-selection-handle {
-      background-color: green;
       position: absolute;
       width: 0;
       display: none;
@@ -329,7 +328,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // If there are no changes, return
-    if (isNewHighlight && boundsChanges.length == 0 || appearanceChanges.length + boundsChanges.length == 0) return;
+    if (appearanceChanges.length + boundsChanges.length == 0) return;
     
     // Update saved highlight info    
     const newHighlightInfo = {
@@ -471,14 +470,15 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     updateSelectionHandles();
+    if (selection.type == 'None') return;
+    const selectionRange = selection.getRangeAt(0);
     
-    // Deselect text or deactivate highlights when tapping away
-    if (selection.type == 'Caret' && !activeSelectionHandle && previousSelectionRange && previousSelectionRange.comparePoint(selection.getRangeAt(0).startContainer, selection.getRangeAt(0).startOffset) != 0) {
+    // Deselect text or deactivate highlights when tapping away, or when long-pressing to select text outside of the previous selection range
+    if (!activeSelectionHandle && previousSelectionRange && (previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
       this.deactivateHighlights();
-    } else if (selection.type == 'Range') {
-      const selectionRange = selection.getRangeAt(0);
-      let color = highlightsById[activeHighlightId]?.color ?? options.defaultColor;
-      let style = highlightsById[activeHighlightId]?.style ?? options.defaultStyle;
+    }
+    
+    if (selection.type == 'Range') {
       if (!activeHighlightId && (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
         this.createOrUpdateHighlight();
       }
@@ -500,8 +500,8 @@ function Highlighter(options = hhDefaultOptions) {
       annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag);
     }
     
-    // Return if there's an active highlight or if it's not a regular click (drag, left click, modifier keys, etc.)
-    if (activeHighlightId || activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    // Return if it's not a regular click, or if the user is tapping away from an existing selection
+    if (previousSelectionRange || activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     
     const tapRange = getRangeFromTapEvent(event);
     tapResult = checkForTapTargets(tapRange);

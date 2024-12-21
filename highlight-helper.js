@@ -743,24 +743,26 @@ function Highlighter(options = hhDefaultOptions) {
     let startOffset = range.startOffset;
     let endOffset = range.endOffset;
     
-    // Trim whitespace at range start and end
-    while (/\s/.test(startOffset < startNode.wholeText.length && startNode.wholeText[startOffset])) startOffset += 1;
-    while (endOffset - 1 >= 0 && /\s/.test(endNode.wholeText[endOffset - 1])) endOffset -= 1;
-    
     // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
     if (startOffset == startNode.wholeText.length) {
       let parentElement = range.commonAncestorContainer;
       let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
-      let textNode = null;
-      while (!textNode || textNode !== startNode) textNode = walker.nextNode();
-      textNode = walker.nextNode();
-      startNode = textNode;
-      startOffset = 1;
+      let nextTextNode = walker.nextNode();
+      while (nextTextNode !== startNode) nextTextNode = walker.nextNode();
+      nextTextNode = walker.nextNode();
+      if (nextTextNode) {
+        startNode = nextTextNode;
+        startOffset = 0;
+      }
     }
     
+    // Trim whitespace and dashes at range start and end
+    while (/\s|\p{Pd}/u.test(startOffset < startNode.wholeText.length && startNode.wholeText[startOffset])) startOffset += 1;
+    while (endOffset - 1 >= 0 && /\s|\p{Pd}/u.test(endNode.wholeText[endOffset - 1])) endOffset -= 1;
+    
     // Expand range to word boundaries
-    while (startOffset > 0 && /\S/.test(startNode.wholeText[startOffset - 1])) startOffset -= 1;
-    while (endOffset + 1 <= endNode.wholeText.length && /\S/.test(endNode.wholeText[endOffset])) endOffset += 1;
+    while (startOffset > 0 && /[^\s|\p{Pd}]/u.test(startNode.wholeText[startOffset - 1])) startOffset -= 1;
+    while (endOffset + 1 <= endNode.wholeText.length && /[^\s|\p{Pd}]/u.test(endNode.wholeText[endOffset])) endOffset += 1;
     
     let newRange = document.createRange();
     newRange.setStart(startNode, startOffset);

@@ -102,7 +102,7 @@
     <main>
       <h1 id="title1">Highlight Helper Demo</h1>
       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/CMYK_color_model.svg/180px-CMYK_color_model.svg.png">
-      <p id="p1"><b>Highlight Helper</b> is a JavaScript tool that enables highlighting or underlining text in an HTML page (such as a digital book or article). Behind the scenes, it uses the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, which makes it easy to highlight <b>various <i>combinations</i></b> of <b>formatted</b> text.</p>
+      <p id="p1"><b>Highlight Helper</b> enables highlighting or underlining text in an HTML page. Highlights are drawn via <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/SVG">SVG shapes</a>, the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, or inserted HTML spans. Highlights can be drawn across multiple paragraphs or <b>inline <i>style</i></b> elements—they can even overlap!</p>
       <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images (right) and Japanese ruby/furigana (below) are highlighted around.</p>
       <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
     </main>
@@ -137,8 +137,9 @@
       </p>
       <p>
         Drawing mode:<br>
-        <label><input type="radio" name="hh-drawing-mode" value="highlight-api" checked> Custom Highlight API</label><br>
-        <label><input type="radio" name="hh-drawing-mode" value="svg"> SVG shapes</label><br>
+        <label><input type="radio" name="hh-drawing-mode" value="svg" checked> SVG shapes</label><br>
+        <label><input type="radio" name="hh-drawing-mode" value="highlight-api"> Custom Highlight API</label><br>
+        <label><input type="radio" name="hh-drawing-mode" value="inserted-spans"> Inserted spans (read-only)</label><br>
       </p>
       <b>Active highlight:</b>
       <p id="selection-text">N/A</p>
@@ -158,8 +159,8 @@
         {
           highlightId: 'hh-1729991847207',
           color: 'green', style: 'fill',
-          startParagraphId: 'p1', startParagraphOffset: 51,
-          endParagraphId: 'p1', endParagraphOffset: 83,
+          startParagraphId: 'p1', startParagraphOffset: 25,
+          endParagraphId: 'p1', endParagraphOffset: 57,
         },
         {
           highlightId: 'hh-1729991847300',
@@ -183,15 +184,14 @@
         },
       ];
       
-      // Set options and initialize Highlight Helper, then load highlights
-      options = {
+      // Initialize Highlight Helper, then load highlights
+      const highlighter = new Highlighter({
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
         wrappers: {
           'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}" style="--color: {color}"></span>', end: '', },
         },
-      }
-      const highlighter = new Highlighter(options);
+      });
       highlighter.loadHighlights(highlights);
       
       // Call Highlight Helper methods when color, style, wrapper, or remove buttons on this demo page are tapped
@@ -227,16 +227,19 @@
           highlighter.setOption('pointerMode', pointerMode);
         });
       }
-      if (!CSS.highlights) document.querySelector('[name="hh-drawing-mode"][value="svg"]').checked = true;
       for (const drawingModeRadioButton of drawingModeRadioButtons) {
         drawingModeRadioButton.addEventListener('change', (event) => {
           let drawingMode = document.querySelector('[name="hh-drawing-mode"]:checked').value;
-          highlighter.setOption('drawingMode', drawingMode);
+          if (drawingMode == 'highlight-api' && !CSS.highlights) {
+            alert('Your browser doesn’t support the Custom Highlight API.');
+          } else {
+            highlighter.setOption('drawingMode', drawingMode);
+          }
         });
       }
       
       // Listen for and respond to highlight info sent back from Highlight Helper
-      const container = document.querySelector(options.containerSelector);
+      const container = document.querySelector(highlighter.getOptions().containerSelector);
       const selectionTextDiv = document.getElementById('selection-text');
       const selectionInfoDiv = document.getElementById('selection-info');
       container.addEventListener('hh:highlightactivate', updateHighlightInfo);
@@ -266,7 +269,7 @@
       function handleAmbiguousAction(event) {
         disambiguationButtonsDiv.innerHTML = '';
         for (const highlight of event.detail.highlights) {
-          let buttonStyle = options.styles[highlight.style]['css'].replace('{color}', options.colors[highlight.color])
+          let buttonStyle = highlighter.getOptions().styles[highlight.style]['css'].replace('{color}', highlighter.getOptions().colors[highlight.color])
           let buttonHtml = `
             <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.rangeHtml}</button>
           `;

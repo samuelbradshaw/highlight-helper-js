@@ -8,7 +8,7 @@ function Highlighter(options = hhDefaultOptions) {
     options[key] = options[key] ?? hhDefaultOptions[key];
   }
   const annotatableContainer = document.querySelector(options.containerSelector);
-  const annotatableParagraphs = document.querySelectorAll(options.paragraphSelector);
+  const annotatableParagraphs = annotatableContainer.querySelectorAll(options.paragraphSelector);
   const annotatableParagraphIds = Array.from(annotatableParagraphs, paragraph => paragraph.id);
   
   // Setting tabIndex -1 on <body> allows focus to be set programmatically (needed to initialize text selection in iOS Safari). It also prevents "tap to search" from interfering with text selection in Android Chrome.
@@ -151,13 +151,14 @@ function Highlighter(options = hhDefaultOptions) {
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
       const range = getRestoredHighlightRange(highlightInfo);
-      const rangeParagraphs = document.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-      const wasDrawnAsReadOnly = document.querySelector(`.hh-read-only[data-highlight-id="${highlightId}"]`);
+      const rangeParagraphs = annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
+      const isReadOnly = (options.drawingMode == 'inserted-spans') || highlightInfo.readOnly;
+      const wasDrawnAsReadOnly = annotatableContainer.querySelector(`.hh-read-only[data-highlight-id="${highlightId}"]`);
       
       // Remove old highlight elements and styles
-      if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !highlightInfo.readOnly)) undrawHighlight(highlightInfo);
+      if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !isReadOnly)) undrawHighlight(highlightInfo);
       
-      if (highlightInfo.readOnly) {
+      if (isReadOnly) {
         let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'css');
         highlightsStylesheet.insertRule(`.hh-read-only[data-highlight-id="${highlightId}"] { ${styleTemplate} }`);
         
@@ -223,7 +224,7 @@ function Highlighter(options = hhDefaultOptions) {
       
       // Update wrapper
       // TODO: Enable wrappers for editable highlights
-      if (highlightInfo.readOnly && !wasDrawnAsReadOnly) {
+      if (isReadOnly && !wasDrawnAsReadOnly) {
         if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
           function addWrapper(edge, range, htmlString) {
             htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
@@ -247,7 +248,6 @@ function Highlighter(options = hhDefaultOptions) {
           rangeParagraphs.forEach(p => { p.normalize(); });
         }
       }
-      
     }
   }
   
@@ -312,11 +312,6 @@ function Highlighter(options = hhDefaultOptions) {
       highlightRange.setEnd(endNode, endOffset);
       if (options.snapToWord) highlightRange = snapRangeToWord(highlightRange);
       
-      // If there are any issues with the range, set the highlight back to how it was
-      if (startNode == null || startOffset == null || endNode == null || endOffset == null || startParagraphId == null || startParagraphOffset == null || endParagraphId == null || endParagraphOffset == null || highlightRange.toString() == '') {
-        return isNewHighlight ? null : this.createOrUpdateHighlight(oldHighlightInfo);
-      }
-      
       // Check which bounds properties changed
       for (const key of ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset']) {
         if (isNewHighlight || eval(key) != oldHighlightInfo[key]) boundsChanges.push(key);
@@ -331,8 +326,8 @@ function Highlighter(options = hhDefaultOptions) {
       rangeParagraphIds = annotatableParagraphIds.slice(annotatableParagraphIds.indexOf(startParagraphId), annotatableParagraphIds.indexOf(endParagraphId) + 1);
     }
     
-    // If there are no changes, return
-    if (appearanceChanges.length + boundsChanges.length == 0) return;
+    // If there are no valid changes, return
+    if (!highlightRange || highlightRange.toString() == '' || appearanceChanges.length + boundsChanges.length == 0) return;
     
     // Update saved highlight info    
     const newHighlightInfo = {
@@ -375,12 +370,14 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
-    const selection = window.getSelection();
     const highlightToActivate = highlightsById[highlightId];
-    if (highlightToActivate.readOnly) {
-      // If the highlight is read-only, return an event, but don't actually activate it
-      return annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
+    if (options.drawingMode == 'inserted-spans' || highlightToActivate.readOnly) {
+      // If the highlight is read-only, return events, but don't actually activate it
+      annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
+      annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: highlightToActivate } }));
+      return;
     }
+    const selection = window.getSelection();
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
     activeHighlightId = highlightId;
     updateSelectionStyle(highlightToActivate.color, highlightToActivate.style);
@@ -478,11 +475,14 @@ function Highlighter(options = hhDefaultOptions) {
     const selectionRange = selection.getRangeAt(0);
     
     // Deselect text or deactivate highlights when tapping away, or when long-pressing to select text outside of the previous selection range
-    if (!activeSelectionHandle && previousSelectionRange && (previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
+    if (!activeSelectionHandle && previousSelectionRange && (selection.type == 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
       this.deactivateHighlights();
     }
     
     if (selection.type == 'Range') {
+      // Clear tap result (prevents hh:tap event from being sent when long-pressing or dragging to select text)
+      tapResult = null;
+      
       if (!activeHighlightId && (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
         this.createOrUpdateHighlight();
       }
@@ -586,13 +586,14 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Window resize
   let previousWindowWidth = window.innerWidth;
-  window.addEventListener('resize', (event) => respondToWindowResize(event));
-  const respondToWindowResize = (event) => {
+  const respondToWindowResize = () => {
     // Only respond if the width changed (ignore height changes)
     if (window.innerWidth == previousWindowWidth) return;
     if (options.drawingMode == 'svg') this.drawHighlights();
     previousWindowWidth = window.innerWidth;
   }
+  const debouncedRespondToWindowResize = debounce(() => respondToWindowResize(), Math.floor(Object.keys(highlightsById).length / 20));
+  window.addEventListener('resize', debouncedRespondToWindowResize);
   
   // Workaround to allow programmatic text selection on tap in iOS Safari
   // See https://stackoverflow.com/a/79261423/1349044
@@ -673,8 +674,8 @@ function Highlighter(options = hhDefaultOptions) {
   const undrawHighlight = (highlightInfo) => {
     const highlightId = highlightInfo.highlightId;
     for (const svgGroup of svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`)) svgGroup.remove();
-    document.querySelectorAll(`.hh-wrapper-start[data-highlight-id="${highlightId}"], .hh-wrapper-end[data-highlight-id="${highlightId}"]`).forEach(el => el.remove());
-    document.querySelectorAll(`.hh-read-only[data-highlight-id="${highlightId}"]`).forEach(span => {
+    annotatableContainer.querySelectorAll(`.hh-wrapper-start[data-highlight-id="${highlightId}"], .hh-wrapper-end[data-highlight-id="${highlightId}"]`).forEach(el => el.remove());
+    annotatableContainer.querySelectorAll(`.hh-read-only[data-highlight-id="${highlightId}"]`).forEach(span => {
       const parentParagraph = span.closest(options.paragraphSelector);
       const textNode = span.firstChild;
       span.outerHTML = span.innerHTML;
@@ -897,7 +898,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Debounce a function to prevent it from being executed too frequently
   // Adapted from https://levelup.gitconnected.com/debounce-in-javascript-improve-your-applications-performance-5b01855e086
-  const debounce = (func, wait) => {
+  function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
       const later = () => {
@@ -917,6 +918,7 @@ function Highlighter(options = hhDefaultOptions) {
 // Check browser type
 const isTouchDevice = navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
 const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
+const supportsHighlightApi = CSS.highlights;
 
 // Default function for generating a highlight ID
 const hhGetNewHighlightId = () => {
@@ -926,7 +928,7 @@ const hhGetNewHighlightId = () => {
 // Default options
 let hhDefaultOptions = {
   containerSelector: 'body',
-  paragraphSelector: 'h1, h2, h3, h4, h5, h6, p, ol, ul, dl, tr',
+  paragraphSelector: 'h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]',
   colors: {
     'red': 'hsl(352, 99%, 65%)',
     'orange': 'hsl(31, 99%, 58%)',
@@ -966,7 +968,7 @@ let hhDefaultOptions = {
   snapToWord: false,
   autoTapToActivate: true,
   pointerMode: 'auto',
-  drawingMode: CSS.highlights ? 'highlight-api' : 'svg',
+  drawingMode: 'svg',
   defaultColor: 'yellow',
   defaultStyle: 'fill',
   defaultWrapper: 'none',

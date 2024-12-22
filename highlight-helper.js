@@ -62,7 +62,7 @@ function Highlighter(options = hhDefaultOptions) {
       position: absolute;
       width: 10px;
       height: calc(100% + 5px);
-      background-color: var(--color);
+      background-color: var(--hh-color);
       outline: 1px solid white;
       top: 0;
     }
@@ -90,6 +90,9 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Set up SVG background and selection handles
   const svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const svgActiveOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  svgActiveOverlay.dataset.activeOverlay = '';
+  svgBackground.appendChild(svgActiveOverlay);
   svgBackground.classList.add('hh-svg-background');
   annotatableContainer.appendChild(svgBackground);
   annotatableContainer.insertAdjacentHTML('beforeend', `
@@ -121,8 +124,9 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Load highlights
   this.loadHighlights = (highlights) => {
-    // Don't load highlights in SVG mode until the document is ready (otherwise, highlights may be offset)
-    if (options.drawingMode == 'svg' && document.readyState !== 'complete') return setTimeout(this.loadHighlights, 10, highlights);
+    // Don't load highlights until the document is ready (otherwise, highlights may be offset)
+    if (document.readyState !== 'complete') return setTimeout(this.loadHighlights, 10, highlights);
+    const startTimestamp = Date.now();
     
     // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
     const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
@@ -143,7 +147,12 @@ function Highlighter(options = hhDefaultOptions) {
       }
     }
     if (knownHighlightIds.length > 0) this.removeHighlights(knownHighlightIds);
-    annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: { addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount, totalCount: Object.keys(highlightsById).length } }));
+    
+    annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
+      addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount,
+      totalCount: Object.keys(highlightsById).length,
+      timeToLoad: Date.now() - startTimestamp,
+    } }));
   }
   
   // Draw (or redraw) specified highlights, or all highlights on the page
@@ -159,7 +168,7 @@ function Highlighter(options = hhDefaultOptions) {
       if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !isReadOnly)) undrawHighlight(highlightInfo);
       
       if (isReadOnly) {
-        let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'css');
+        let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, null, 'css');
         highlightsStylesheet.insertRule(`.hh-read-only[data-highlight-id="${highlightId}"] { ${styleTemplate} }`);
         
         // Don't redraw a read-only highlight
@@ -193,29 +202,19 @@ function Highlighter(options = hhDefaultOptions) {
             CSS.highlights.set(highlightId, highlightObj);
           }
           highlightObj.add(range);
-          let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'css');
+          let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, null, 'css');
           highlightsStylesheet.insertRule(`::highlight(${highlightInfo.escapedHighlightId}) { ${styleTemplate} }`);
           highlightsStylesheet.insertRule(`rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
           highlightsStylesheet.insertRule(`img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
         
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
-          let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, 'svg');
-          const svgBackgroundClientRect = svgBackground.getBoundingClientRect();
-          const mergedClientRects = getMergedClientRects(range, rangeParagraphs);
+          const clientRects = getMergedClientRects(range, rangeParagraphs);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
-          svgContent = '';
-          for (const clientRect of mergedClientRects) {
-            svgContent += styleTemplate
-            .replaceAll('{x}', clientRect.x - svgBackgroundClientRect.x)
-            .replaceAll('{y}', clientRect.y - svgBackgroundClientRect.y)
-            .replaceAll('{width}', clientRect.width)
-            .replaceAll('{height}', clientRect.height)
-            .replaceAll('{top}', clientRect.top - svgBackgroundClientRect.top)
-            .replaceAll('{right}', clientRect.right - svgBackgroundClientRect.right)
-            .replaceAll('{bottom}', clientRect.bottom - svgBackgroundClientRect.bottom)
-            .replaceAll('{left}', clientRect.left - svgBackgroundClientRect.left);
+          let svgContent = '';
+          for (const clientRect of clientRects) {
+            svgContent += getStyleTemplate(highlightInfo.color, highlightInfo.style, clientRect, 'svg');
           }
           group.innerHTML = svgContent;
           svgBackground.appendChild(group);
@@ -354,18 +353,19 @@ function Highlighter(options = hhDefaultOptions) {
       highlight: newHighlightInfo,
       changes: appearanceChanges.concat(boundsChanges),
     }
+    
+    this.drawHighlights([highlightId]);
+    if (highlightId == activeHighlightId && appearanceChanges.length > 0) {
+      updateSelectionUi('appearance');
+    } else if (triggeredByUserAction && highlightId != activeHighlightId) {
+      this.activateHighlight(highlightId);
+    }
+    
     if (isNewHighlight) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightcreate', { detail: detail }));
     } else {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
     }
-    
-    this.drawHighlights([highlightId]);
-    if (triggeredByUserAction) {
-      if (appearanceChanges.length > 0) updateSelectionStyle(newHighlightInfo.color, newHighlightInfo.style);
-      if (highlightId != activeHighlightId) this.activateHighlight(highlightId);
-    }
-    return newHighlightInfo;
   }
   
   // Activate a highlight by ID
@@ -380,7 +380,7 @@ function Highlighter(options = hhDefaultOptions) {
     const selection = window.getSelection();
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
     activeHighlightId = highlightId;
-    updateSelectionStyle(highlightToActivate.color, highlightToActivate.style);
+    updateSelectionUi('appearance');
     if (selection.type != 'Range') {
       selection.removeAllRanges();
       selection.addRange(highlightRange);
@@ -401,9 +401,8 @@ function Highlighter(options = hhDefaultOptions) {
   this.deactivateHighlights = () => {
     const deactivatedHighlight = highlightsById[activeHighlightId];
     activeHighlightId = null;
-    previousSelectionRange = null;
+    updateSelectionUi('appearance');
     window.getSelection().removeAllRanges();
-    updateSelectionStyle();
     if (deactivatedHighlight) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
         highlight: deactivatedHighlight,
@@ -470,25 +469,26 @@ function Highlighter(options = hhDefaultOptions) {
   document.addEventListener('selectionchange', (event) => respondToSelectionChange(event));
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
-    updateSelectionHandles();
     if (selection.type == 'None') return;
     const selectionRange = selection.getRangeAt(0);
     
     // Deselect text or deactivate highlights when tapping away, or when long-pressing to select text outside of the previous selection range
     if (!activeSelectionHandle && previousSelectionRange && (selection.type == 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
       this.deactivateHighlights();
+      previousSelectionRange = null;
     }
     
     if (selection.type == 'Range') {
       // Clear tap result (prevents hh:tap event from being sent when long-pressing or dragging to select text)
       tapResult = null;
       
-      if (!activeHighlightId && (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
-        this.createOrUpdateHighlight();
+      if (activeHighlightId || (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
+        this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
       }
-      if (activeHighlightId) this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
       previousSelectionRange = selectionRange.cloneRange();
     }
+    
+    updateSelectionUi('bounds');
   }
   
   // Pointer down in annotatable container
@@ -589,7 +589,10 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToWindowResize = () => {
     // Only respond if the width changed (ignore height changes)
     if (window.innerWidth == previousWindowWidth) return;
-    if (options.drawingMode == 'svg') this.drawHighlights();
+    if (options.drawingMode == 'svg') {
+      this.drawHighlights();
+      if (activeHighlightId) updateSelectionUi('appearance');
+    }
     previousWindowWidth = window.innerWidth;
   }
   const debouncedRespondToWindowResize = debounce(() => respondToWindowResize(), Math.floor(Object.keys(highlightsById).length / 20));
@@ -691,50 +694,68 @@ function Highlighter(options = hhDefaultOptions) {
     if (CSS.highlights && CSS.highlights.has(highlightId)) CSS.highlights.delete(highlightId);
   }
   
-  // Update the text selection color (to match the highlight color, when a highlight is selected for editing; or, to reset to the default text selection color)
-  const updateSelectionStyle = (color, style) => {
-    if (color && style) {
-      let styleTemplate = getStyleTemplate(color, style, 'css');
-      selectionStylesheet.replaceSync(`::selection { ${styleTemplate} }`);
-    } else {
-      selectionStylesheet.replaceSync(`::selection { background-color: Highlight; color: HighlightText; }`);
-    }
-    updateSelectionHandles();
-    annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: {
-      color: color,
-      style: style,
-    }}));
-  }
-  
-  // Update selection handles
-  function updateSelectionHandles() {
+  // Update selection background and handles
+  function updateSelectionUi(changeType = 'appearance') {
     const selection = window.getSelection();
-    if (selection.type == 'Range' && options.showSelectionHandles) {
-      const colorKey = highlightsById[activeHighlightId]?.color;
-      const colorString = options.colors[colorKey] ?? 'AccentColor';
-      const selectionRange = selection.getRangeAt(0);
-      const selectionRangeRects = selectionRange.getClientRects();
-      const startRect = selectionRangeRects[0];
-      const endRect = selectionRangeRects[selectionRangeRects.length-1];
-      const annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
-      selectionHandles[0].dataset.position = 'left';
-      selectionHandles[0].style.display = 'block';
-      selectionHandles[0].style.height = startRect.height + 'px';
-      selectionHandles[0].style.left = startRect.left - annotatableContainerClientRect.left + 'px';
-      selectionHandles[0].style.top = startRect.top - annotatableContainerClientRect.top + 'px';
-      selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '').replace('{color}', colorString);
-      selectionHandles[1].dataset.position = 'right';
-      selectionHandles[1].style.display = 'block';
-      selectionHandles[1].style.height = endRect.height + 'px';
-      selectionHandles[1].style.left = endRect.right - annotatableContainerClientRect.left + 'px';
-      selectionHandles[1].style.top = endRect.top - annotatableContainerClientRect.top + 'px';
-      selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '').replace('{color}', colorString);
-    } else {
-      selectionHandles[0].style.display = 'none';
-      selectionHandles[1].style.display = 'none';
+    const color = highlightsById[activeHighlightId]?.color;
+    const colorString = options.colors[color] ?? 'AccentColor';
+    const style = highlightsById[activeHighlightId]?.style;
+    
+    // Update SVG shapes for the active highlight (bring shape group to front, and duplicate it to make the highlight darker)
+    svgActiveOverlay.innerHTML = '';
+    if (activeHighlightId && options.drawingMode == 'svg') {
+      const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
+      svgActiveOverlay.style = `--hh-color: ${colorString}`;
+      svgActiveOverlay.innerHTML = svgHighlight.innerHTML;
+      svgBackground.appendChild(svgHighlight);
+      svgBackground.appendChild(svgActiveOverlay);
+    }
+    
+    if (changeType == 'appearance') {
+      
+      // Update selection background
+      if (activeHighlightId && options.drawingMode == 'svg') {
+        selectionStylesheet.replaceSync(`::selection { background-color: transparent; }`);
+      } else if (activeHighlightId) {
+        const styleTemplate = getStyleTemplate(color, style, null, 'css');
+        selectionStylesheet.replaceSync(`::selection { ${styleTemplate} }`);
+      } else {
+        selectionStylesheet.replaceSync(`::selection { background-color: Highlight; color: HighlightText; }`);
+      }
+      
+      // Update selection handles
+      if (options.showSelectionHandles) {
+        selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '').replace('{color}', colorString);
+        selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '').replace('{color}', colorString);
+      }
+      
+      // Send event
+      annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: { color: color, style: style, }}));
+      
+    } else if (changeType == 'bounds') {
+      // Update selection handle location and visibility
+      if (selection.type == 'Range' && options.showSelectionHandles) {
+        const selectionRange = selection.getRangeAt(0);
+        const selectionRangeRects = selectionRange.getClientRects();
+        const startRect = selectionRangeRects[0];
+        const endRect = selectionRangeRects[selectionRangeRects.length-1];
+        const annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
+        selectionHandles[0].dataset.position = 'left';
+        selectionHandles[0].style.display = 'block';
+        selectionHandles[0].style.height = startRect.height + 'px';
+        selectionHandles[0].style.left = startRect.left - annotatableContainerClientRect.left + 'px';
+        selectionHandles[0].style.top = startRect.top - annotatableContainerClientRect.top + 'px';
+        selectionHandles[1].dataset.position = 'right';
+        selectionHandles[1].style.display = 'block';
+        selectionHandles[1].style.height = endRect.height + 'px';
+        selectionHandles[1].style.left = endRect.right - annotatableContainerClientRect.left + 'px';
+        selectionHandles[1].style.top = endRect.top - annotatableContainerClientRect.top + 'px';
+      } else {
+        selectionHandles[0].style.display = 'none';
+        selectionHandles[1].style.display = 'none';
+      }
     }
   }
-  
   
   // Snap the selection or highlight range to the nearest word
   function snapRangeToWord(range) {
@@ -798,12 +819,23 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Get style template for a given highlight style
-  const getStyleTemplate = (color, style, type) => {
+  const getStyleTemplate = (color, style, clientRect, type) => {
+    const svgBackgroundClientRect = svgBackground.getBoundingClientRect();
     color = color in options.colors ? color : options.defaultColor;
     style = style in options.styles ? style : options.defaultStyle;
-    let cssColorString = options.colors[color];
-    let cssStyleString = options.styles[style][type].replaceAll('{color}', cssColorString);
-    return cssStyleString;
+    let styleTemplate = options.styles[style][type].replaceAll('{color}', options.colors[color]);
+    if (type == 'svg' && clientRect) {
+      styleTemplate = styleTemplate
+        .replaceAll('{x}', clientRect.x - svgBackgroundClientRect.x)
+        .replaceAll('{y}', clientRect.y - svgBackgroundClientRect.y)
+        .replaceAll('{width}', clientRect.width)
+        .replaceAll('{height}', clientRect.height)
+        .replaceAll('{top}', clientRect.top - svgBackgroundClientRect.top)
+        .replaceAll('{right}', clientRect.right - svgBackgroundClientRect.right)
+        .replaceAll('{bottom}', clientRect.bottom - svgBackgroundClientRect.bottom)
+        .replaceAll('{left}', clientRect.left - svgBackgroundClientRect.left);
+    }
+    return styleTemplate;
   }      
   
   // Restore the previous selection range in case the browser clears the selection
@@ -850,7 +882,7 @@ function Highlighter(options = hhDefaultOptions) {
     return range;
   }
   
-  // Get merged DOMRects from the highlight range
+  // Get merged client rects from the highlight range
   const getMergedClientRects = (range, paragraphs) => {
     const unmergedRects = Array.from(range.getClientRects());
     const mergedRects = [];
@@ -962,8 +994,8 @@ let hhDefaultOptions = {
   },
   wrappers: {},
   selectionHandles: {
-    'left': '<div class="hh-default-handle" style="--color: {color}"></div>',
-    'right': '<div class="hh-default-handle" style="--color: {color}"></div>',
+    'left': '<div class="hh-default-handle" style="--hh-color: {color}"></div>',
+    'right': '<div class="hh-default-handle" style="--hh-color: {color}"></div>',
   },
   showSelectionHandles: false,
   rememberStyle: true,

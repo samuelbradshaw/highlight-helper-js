@@ -265,6 +265,7 @@
       const disambiguationPanel = document.getElementById('disambiguation-panel');
       const disambiguationButtonsDiv = document.getElementById('disambiguation-buttons');
       const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
+      disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
       container.addEventListener('hh:ambiguousaction', handleAmbiguousAction);
       function handleAmbiguousAction(event) {
         disambiguationButtonsDiv.innerHTML = '';
@@ -282,9 +283,9 @@
           `;
           disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
         }
-        disambiguationPanel.showModal();
+        // TODO: Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:ambiguousaction. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
+        setTimeout(function() { disambiguationPanel.showModal(); }, 10);
       }
-      disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
       
       // Log events for debugging
       container.addEventListener('hh:highlightcreate', console.log)

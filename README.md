@@ -5,12 +5,12 @@
 Behind the scenes, Highlight Helper supports three different mechanisms for drawing highlights:
 
 1. [SVG shapes](https://developer.mozilla.org/en-US/docs/Web/SVG) drawn behind text (default).
-2. The [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) (experimental*).
+2. The [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) (experimental&ast;).
 3. Inserted HTML span elements (for read-only highlights).
 
 An HTML demo page that shows basic functionality can be found here: [Highlight Helper Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html). Source code for the demo is in **demo.html**. Highlight Helper itself is in **highlight-helper.js**.
 
-*Custom Highlight API requires Safari 17.2+ or Chrome 105+, and may hang when rendering a large number of highlights. Additionally, only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). Browser support and loading speed will hopefully improve in the future.
+*&ast;Custom Highlight API requires Safari 17.2+ or Chrome 105+, and may hang when rendering a large number of highlights. Additionally, only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). Browser support and loading speed will hopefully improve in the future. See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html) for Highlight Helper.*
 
 ### Documentation:
 - [Known issues](#known-issues)
@@ -87,7 +87,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 
 Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the container element (defined in the `containerSelector` option) that can be listened for and responded to:
 
-- **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added, removed, or updated, and the total number of loaded highlights.
+- **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added, removed, or updated, the total number of loaded highlights, and the time they took to load (in milliseconds).
 - **hh:highlightcreate** – Sent when a new highlight is created. Includes information about the highlight.
 - **hh:highlightupdate** – Sent when the highlight changes. Includes information about the highlight, and a list of the attributes that changed.
 - **hh:highlightactivate** – Sent when a highlight is activated. Includes information about the activated highlight.

@@ -16,10 +16,12 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Set up stylesheets
   const generalStylesheet = new CSSStyleSheet();
-  const highlightsStylesheet = new CSSStyleSheet();
+  const appearanceStylesheet = new CSSStyleSheet();
+  const highlightApiStylesheet = new CSSStyleSheet();
   const selectionStylesheet = new CSSStyleSheet();
   document.adoptedStyleSheets.push(generalStylesheet);
-  document.adoptedStyleSheets.push(highlightsStylesheet);
+  document.adoptedStyleSheets.push(appearanceStylesheet);
+  document.adoptedStyleSheets.push(highlightApiStylesheet);
   document.adoptedStyleSheets.push(selectionStylesheet);
   generalStylesheet.replaceSync(`
     body {
@@ -86,7 +88,18 @@ function Highlighter(options = hhDefaultOptions) {
       fill: transparent;
       stroke: none;
     }
+    span[data-highlight-id][data-style="fill"][data-start] {
+      border-top-left-radius: 0.25em;
+      border-bottom-left-radius: 0.25em;
+      margin-left: -0.13em; padding-left: 0.13em;
+    }
+    span[data-highlight-id][data-style="fill"][data-end] {
+      border-top-right-radius: 0.25em;
+      border-bottom-right-radius: 0.25em;
+      margin-right: -0.13em; padding-right: 0.13em;
+    }
   `);
+  updateAppearanceStylesheet();
   
   // Set up SVG background and selection handles
   const svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -128,6 +141,9 @@ function Highlighter(options = hhDefaultOptions) {
     if (document.readyState !== 'complete') return setTimeout(this.loadHighlights, 10, highlights);
     const startTimestamp = Date.now();
     
+    // Hide container (repeated DOM manipulations is faster if the container is hidden)
+    if (highlights.length > 1) (options.drawingMode == 'svg' ? svgBackground : annotatableContainer).style.display = 'none';
+    
     // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
     const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
     
@@ -148,6 +164,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     if (knownHighlightIds.length > 0) this.removeHighlights(knownHighlightIds);
     
+    (options.drawingMode == 'svg' ? svgBackground : annotatableContainer).style.display = '';
     annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
       addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount,
       totalCount: Object.keys(highlightsById).length,
@@ -157,20 +174,20 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Draw (or redraw) specified highlights, or all highlights on the page
   this.drawHighlights = (highlightIds = Object.keys(highlightsById)) => {
+    // Hide container (repeated DOM manipulations is faster if the container is hidden)
+    if (highlightIds.length > 1) (options.drawingMode == 'svg' ? svgBackground : annotatableContainer).style.display = 'none';
+    
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
       const range = getRestoredHighlightRange(highlightInfo);
       const rangeParagraphs = annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
       const isReadOnly = (options.drawingMode == 'inserted-spans') || highlightInfo.readOnly;
-      const wasDrawnAsReadOnly = annotatableContainer.querySelector(`.hh-read-only[data-highlight-id="${highlightId}"]`);
+      const wasDrawnAsReadOnly = annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
       
       // Remove old highlight elements and styles
       if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !isReadOnly)) undrawHighlight(highlightInfo);
       
       if (isReadOnly) {
-        let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, null, 'css');
-        highlightsStylesheet.insertRule(`.hh-read-only[data-highlight-id="${highlightId}"] { ${styleTemplate} }`);
-        
         // Don't redraw a read-only highlight
         if (wasDrawnAsReadOnly) continue;
         
@@ -180,20 +197,26 @@ function Highlighter(options = hhDefaultOptions) {
         const textNodeIter = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
         const relevantTextNodes = [];
         while (node = textNodeIter.nextNode()) {
-          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent != '') relevantTextNodes.push(node);
+          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent != '' && !node.parentElement.closest('rt')) relevantTextNodes.push(node);
           if (node === range.endContainer) break;
         }
-        for (const textNode of relevantTextNodes) {
+        for (let tn = 0; tn < relevantTextNodes.length; tn++) {
+          const textNode = relevantTextNodes[tn];
           const styledSpan = document.createElement('span');
-          styledSpan.classList.add('hh-read-only');
           styledSpan.dataset.highlightId = highlightId;
+          styledSpan.dataset.readOnly = '';
+          styledSpan.dataset.color = highlightInfo.color;
+          styledSpan.dataset.style = highlightInfo.style;
+          styledSpan.style = `--hh-color: ${options.colors[highlightInfo.color]}`;
+          if (tn == 0) styledSpan.dataset.start = '';
+          if (tn == relevantTextNodes.length - 1) styledSpan.dataset.end = '';
           textNode.before(styledSpan);
           styledSpan.appendChild(textNode);
         }
         rangeParagraphs.forEach(p => { p.normalize(); });
       } else {        
         // Draw highlights with Custom Highlight API
-        if (options.drawingMode == 'highlight-api') {
+        if (options.drawingMode == 'highlight-api' && supportsHighlightApi) {
           if (CSS.highlights.has(highlightId)) {
             highlightObj = CSS.highlights.get(highlightId);
             highlightObj.clear();
@@ -203,15 +226,18 @@ function Highlighter(options = hhDefaultOptions) {
           }
           highlightObj.add(range);
           let styleTemplate = getStyleTemplate(highlightInfo.color, highlightInfo.style, null, 'css');
-          highlightsStylesheet.insertRule(`::highlight(${highlightInfo.escapedHighlightId}) { ${styleTemplate} }`);
-          highlightsStylesheet.insertRule(`rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
-          highlightsStylesheet.insertRule(`img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+          highlightApiStylesheet.insertRule(`::highlight(${highlightInfo.escapedHighlightId}) { ${styleTemplate} }`);
+          highlightApiStylesheet.insertRule(`rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+          highlightApiStylesheet.insertRule(`img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
         
         // Draw highlights with SVG shapes
         } else if (options.drawingMode == 'svg') {
           const clientRects = getMergedClientRects(range, rangeParagraphs);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
+          group.dataset.color = highlightInfo.color;
+          group.dataset.style = highlightInfo.style;
+          group.style = `--hh-color: ${options.colors[highlightInfo.color]}`;
           let svgContent = '';
           for (const clientRect of clientRects) {
             svgContent += getStyleTemplate(highlightInfo.color, highlightInfo.style, clientRect, 'svg');
@@ -226,7 +252,7 @@ function Highlighter(options = hhDefaultOptions) {
       if (isReadOnly && !wasDrawnAsReadOnly) {
         if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
           function addWrapper(edge, range, htmlString) {
-            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}">${htmlString}</span>`
+            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}" style="--hh-color: ${options.colors[highlightInfo.color]}">${htmlString}</span>`
             htmlString = htmlString.replaceAll('{color}', options.colors[highlightInfo.color]);
             for (const key of Object.keys(highlightInfo.wrapperVariables)) {
               htmlString = htmlString.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
@@ -248,6 +274,9 @@ function Highlighter(options = hhDefaultOptions) {
         }
       }
     }
+    
+    // Show container
+    (options.drawingMode == 'svg' ? svgBackground : annotatableContainer).style.display = '';
   }
   
   // Create a new highlight, or update an existing highlight when it changes
@@ -452,8 +481,10 @@ function Highlighter(options = hhDefaultOptions) {
   this.setOption = (key, value) => {
     options[key] = value ?? options[key];
     if (key == 'drawingMode') {
-      if (CSS.highlights) CSS.highlights.clear();
+      if (supportsHighlightApi) CSS.highlights.clear();
       this.drawHighlights();
+    } else if (key == 'colors' || key == 'styles') {
+      updateAppearanceStylesheet();
     }
   }
   
@@ -591,7 +622,7 @@ function Highlighter(options = hhDefaultOptions) {
     if (window.innerWidth == previousWindowWidth) return;
     if (options.drawingMode == 'svg') {
       this.drawHighlights();
-      if (activeHighlightId) updateSelectionUi('appearance');
+      if (previousSelectionRange) updateSelectionUi('bounds');
     }
     previousWindowWidth = window.innerWidth;
   }
@@ -676,22 +707,30 @@ function Highlighter(options = hhDefaultOptions) {
   // Undraw the specified highlight
   const undrawHighlight = (highlightInfo) => {
     const highlightId = highlightInfo.highlightId;
-    for (const svgGroup of svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`)) svgGroup.remove();
-    annotatableContainer.querySelectorAll(`.hh-wrapper-start[data-highlight-id="${highlightId}"], .hh-wrapper-end[data-highlight-id="${highlightId}"]`).forEach(el => el.remove());
-    annotatableContainer.querySelectorAll(`.hh-read-only[data-highlight-id="${highlightId}"]`).forEach(span => {
-      const parentParagraph = span.closest(options.paragraphSelector);
-      const textNode = span.firstChild;
-      span.outerHTML = span.innerHTML;
-      parentParagraph.normalize();
-    });
-    if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.rangeObj = getRestoredHighlightRange(highlightInfo);
-    const highlightCssRules = highlightsStylesheet.cssRules;
-    const ruleIndexesToDelete = [];
-    for (let r = 0; r < highlightCssRules.length; r++) {
-      if (highlightCssRules[r].selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`) || highlightCssRules[r].selectorText.includes(`[data-highlight-id="${highlightId}"]`)) ruleIndexesToDelete.push(r);
+    
+    // Remove HTML and SVG elements
+    if (document.querySelector('[data-highlight-id]')) {
+      annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]`).forEach(element => {
+        if (element.hasAttribute('data-read-only')) {
+          element.outerHTML = element.innerHTML;
+        } else {
+          element.remove();
+        }
+      });
+      const rangeParagraphs = annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
+      rangeParagraphs.forEach(p => { p.normalize(); });
+      if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.rangeObj = getRestoredHighlightRange(highlightInfo);
     }
-    for (const index of ruleIndexesToDelete.reverse()) highlightsStylesheet.deleteRule(index);
-    if (CSS.highlights && CSS.highlights.has(highlightId)) CSS.highlights.delete(highlightId);
+    
+    // Remove Highlight API highlights
+    if (supportsHighlightApi && CSS.highlights.has(highlightId)) {
+      const ruleIndexesToDelete = [];
+      for (let r = 0; r < highlightApiStylesheet.cssRules.length; r++) {
+        if (highlightApiStylesheet.cssRules[r].selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`)) ruleIndexesToDelete.push(r);
+      }
+      for (const index of ruleIndexesToDelete.reverse()) highlightApiStylesheet.deleteRule(index);
+      CSS.highlights.delete(highlightId);
+    }
   }
   
   // Update selection background and handles
@@ -705,6 +744,8 @@ function Highlighter(options = hhDefaultOptions) {
     svgActiveOverlay.innerHTML = '';
     if (activeHighlightId && options.drawingMode == 'svg') {
       const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
+      svgActiveOverlay.dataset.color = color;
+      svgActiveOverlay.dataset.style = style;
       svgActiveOverlay.style = `--hh-color: ${colorString}`;
       svgActiveOverlay.innerHTML = svgHighlight.innerHTML;
       svgBackground.appendChild(svgHighlight);
@@ -818,25 +859,40 @@ function Highlighter(options = hhDefaultOptions) {
     return [ textNode, relativeOffset ];
   }
   
+  // Update appearance stylesheet (user-defined colors and styles)
+  function updateAppearanceStylesheet() {
+    const ruleIndexesToDelete = [];
+    for (let r = 0; r < appearanceStylesheet.cssRules.length; r++) {
+      if (appearanceStylesheet.cssRules[r].selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`)) ruleIndexesToDelete.push(r);
+    }
+    for (const index of ruleIndexesToDelete.reverse()) highlightApiStylesheet.deleteRule(index);
+    for (const color of Object.keys(options.colors)) {
+      for (const style of Object.keys(options.styles)) {
+        const styleTemplate = getStyleTemplate(color, style, null, 'css');
+        appearanceStylesheet.insertRule(`span[data-highlight-id][data-color="${color}"][data-style="${style}"] { ${styleTemplate} }`);
+      }
+    }
+  }
+  
   // Get style template for a given highlight style
-  const getStyleTemplate = (color, style, clientRect, type) => {
-    const svgBackgroundClientRect = svgBackground.getBoundingClientRect();
+  function getStyleTemplate(color, style, clientRect, type) {
     color = color in options.colors ? color : options.defaultColor;
     style = style in options.styles ? style : options.defaultStyle;
     let styleTemplate = options.styles[style][type].replaceAll('{color}', options.colors[color]);
     if (type == 'svg' && clientRect) {
+      const annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
       styleTemplate = styleTemplate
-        .replaceAll('{x}', clientRect.x - svgBackgroundClientRect.x)
-        .replaceAll('{y}', clientRect.y - svgBackgroundClientRect.y)
+        .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x)
+        .replaceAll('{y}', clientRect.y - annotatableContainerClientRect.y)
         .replaceAll('{width}', clientRect.width)
         .replaceAll('{height}', clientRect.height)
-        .replaceAll('{top}', clientRect.top - svgBackgroundClientRect.top)
-        .replaceAll('{right}', clientRect.right - svgBackgroundClientRect.right)
-        .replaceAll('{bottom}', clientRect.bottom - svgBackgroundClientRect.bottom)
-        .replaceAll('{left}', clientRect.left - svgBackgroundClientRect.left);
+        .replaceAll('{top}', clientRect.top - annotatableContainerClientRect.top)
+        .replaceAll('{right}', clientRect.right - annotatableContainerClientRect.right)
+        .replaceAll('{bottom}', clientRect.bottom - annotatableContainerClientRect.bottom)
+        .replaceAll('{left}', clientRect.left - annotatableContainerClientRect.left);
     }
     return styleTemplate;
-  }      
+  }
   
   // Restore the previous selection range in case the browser clears the selection
   const getRestoredSelectionOrCaret = (selection, pointerEvent = null) => {

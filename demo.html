@@ -64,7 +64,6 @@
         vertical-align: super;
         font-size: smaller;
         line-height: 0.5em;
-        color: var(--color);
         &::before {
           content: attr(data-marker) / attr(data-accessibility-label);
         }
@@ -123,7 +122,7 @@
         <button name="hh-remove">Remove</button>
         <div></div>
         <!--button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" data-accessibility-label="Footnote" style="--color: hsl(0, 0%, 50%)"></span><span class="highlight-placeholder">…</span></button-->
+        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" data-accessibility-label="Footnote"></span><span class="highlight-placeholder">…</span></button-->
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
@@ -189,7 +188,7 @@
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
         wrappers: {
-          'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}" style="--color: {color}"></span>', end: '', },
+          'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}"></span>', end: '', },
         },
       });
       highlighter.loadHighlights(highlights);

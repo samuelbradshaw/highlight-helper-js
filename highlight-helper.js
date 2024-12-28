@@ -99,7 +99,6 @@ function Highlighter(options = hhDefaultOptions) {
       margin-right: -0.13em; padding-right: 0.13em;
     }
   `);
-  updateAppearanceStylesheet();
   
   // Set up SVG background and selection handles
   const svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -127,10 +126,9 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   const highlightsById = {};
-  let activeHighlightId = null;
-  let previousSelectionRange = null;
-  let isStylus = false;
-  let activeSelectionHandle = null;
+  let activeHighlightId, previousSelectionRange, activeSelectionHandle, isStylus;
+  updateAppearanceStylesheet();
+  updateSelectionUi('appearance');
   
   
   // -------- PUBLIC METHODS --------
@@ -514,7 +512,6 @@ function Highlighter(options = hhDefaultOptions) {
       if (activeHighlightId || (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
         this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
       }
-      if (!previousSelectionRange) updateSelectionUi('appearance');
       previousSelectionRange = selectionRange.cloneRange();
     }
     
@@ -1015,16 +1012,16 @@ let hhDefaultOptions = {
   containerSelector: 'body',
   paragraphSelector: 'h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]',
   colors: {
-    'red': 'hsl(352, 99%, 65%)',
-    'orange': 'hsl(31, 99%, 58%)',
-    'yellow': 'hsl(50, 98%, 61%)',
-    'green': 'hsl(75, 70%, 49%)',
-    'blue': 'hsl(182, 86%, 47%)',
+    'red': 'hsl(360, 100%, 70%)',
+    'orange': 'hsl(30, 100%, 60%)',
+    'yellow': 'hsl(50, 100%, 60%)',
+    'green': 'hsl(80, 100%, 45%)',
+    'blue': 'hsl(180, 100%, 45%)',
   },
   styles: {
     'fill': {
-      'css': 'background-color: hsl(from var(--hh-color) h s l / 40%);',
-      'svg': '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 40%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
+      'css': 'background-color: hsl(from var(--hh-color) h s l / 50%);',
+      'svg': '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',

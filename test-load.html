@@ -20,6 +20,9 @@
         font-size: inherit;
         text-align: inherit;
         margin-bottom: 1em;
+        & * {
+          display: inline;
+        }
       }
     }
     &::backdrop {
@@ -190,16 +193,20 @@
   function handleAmbiguousAction(event) {
     disambiguationButtonsDiv.innerHTML = '';
     for (const highlight of event.detail.highlights) {
-      let buttonStyle = highlighter.getOptions().styles[highlight.style]['css'].replace('{color}', highlighter.getOptions().colors[highlight.color])
+      let buttonStyle = highlighter.getOptions().styles[highlight.style]['css']
       let buttonHtml = `
-        <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">${highlight.rangeHtml}</button>
+        <button data-color="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
+          <span style="${buttonStyle}">${highlight.rangeHtml}</span>
+        </button>
       `;
       disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
     }
     for (const hyperlink of event.detail.hyperlinks) {
       let buttonStyle = 'color: var(--gray-50); text-decoration: underline;'
       let buttonHtml = `
-        <button style="${buttonStyle}" onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">${hyperlink.text}</button>
+        <button onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">
+          <span style="${buttonStyle}">${hyperlink.text}</span>
+        </button>
       `;
       disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
     }

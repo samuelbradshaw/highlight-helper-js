@@ -147,7 +147,7 @@ function Highlighter(options = hhDefaultOptions) {
     const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
     
     const knownHighlightIds = Object.keys(highlightsById);
-    let addedCount = 0; let updatedCount = 0;
+    let addedCount = 0, updatedCount = 0;
     for (const highlight of sortedHighlights) {
       const highlightInfo = diffHighlight(highlight, highlightsById[highlight.highlightId]);
       highlightInfo.highlightId = highlight.highlightId;
@@ -290,6 +290,17 @@ function Highlighter(options = hhDefaultOptions) {
     
     // If a different highlight is active, deactivate it
     if (activeHighlightId && highlightId != activeHighlightId) this.deactivateHighlights();
+    
+    // Warn if color, style, or wrapper attributes are invalid
+    if (attributes.color && !options.colors.hasOwnProperty(attributes.color)) {
+      console.warn(`Highlight color "${attributes.color}" is not defined in options (highlightId: ${highlightId}).`);
+    }
+    if (attributes.style && !options.styles.hasOwnProperty(attributes.style)) {
+      console.warn(`Highlight style "${attributes.style}" is not defined in options (highlightId: ${highlightId}).`);
+    }
+    if (attributes.wrapper && !options.wrappers.hasOwnProperty(attributes.wrapper)) {
+      console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
+    }
     
     // Update defaults
     if (options.rememberStyle && triggeredByUserAction) {
@@ -881,8 +892,12 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Get style template for a given highlight style
   function getStyleTemplate(style, type, clientRect) {
-    style = style in options.styles ? style : options.defaultStyle;
-    let styleTemplate = options.styles[style][type];
+    style = options.styles.hasOwnProperty(style) ? style : options.defaultStyle;
+    let styleTemplate = options.styles[style]?.[type] ?? '';
+    if (!styleTemplate) {
+      console.warn(`Highlight style "${style}" in options does not have a defined "${type}" value.`);
+      return;
+    }
     if (type == 'svg' && clientRect) {
       const annotatableContainerClientRect = annotatableContainer.getBoundingClientRect();
       styleTemplate = styleTemplate
@@ -1070,4 +1085,4 @@ let hhDefaultOptions = {
   highlightIdFunction: hhGetNewHighlightId,
 }
 
-console.log('Highlighter loaded');
+console.info('Highlighter loaded');

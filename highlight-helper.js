@@ -65,17 +65,18 @@ function Highlighter(options = hhDefaultOptions) {
       position: absolute;
       width: 10px;
       height: calc(100% + 5px);
-      background-color: var(--hh-color);
+      background-color: hsl(from var(--hh-color) h 80% 50% / 1);
       outline: 1px solid white;
+      outline-offset: -1px;
       top: 0;
     }
     .hh-selection-handle[data-position="left"] .hh-default-handle {
       right: 0;
-      border-radius: 10px 0 10px 10px;
+      border-radius: 20px 0 10px 10px;
     }
     .hh-selection-handle[data-position="right"] .hh-default-handle {
       left: 0;
-      border-radius: 0 10px 10px 10px;
+      border-radius: 0 20px 10px 10px;
     }
     .hh-svg-background {
       position: absolute;
@@ -140,7 +141,7 @@ function Highlighter(options = hhDefaultOptions) {
     if (document.readyState !== 'complete') return setTimeout(this.loadHighlights, 10, highlights);
     const startTimestamp = Date.now();
     
-    // Hide container (repeated DOM manipulations is faster if the container is hidden)
+    // Hide container (repeated DOM manipulations are faster if the container is hidden)
     if (highlights.length > 1) (options.drawingMode == 'svg' ? svgBackground : annotatableContainer).style.display = 'none';
     
     // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
@@ -597,7 +598,7 @@ function Highlighter(options = hhDefaultOptions) {
       tapResult.isLongPress = isLongPress;
       annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
       if (options.autoTapToActivate && tapResult?.targetFound) {
-        if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
+        if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0 && !isLongPress) {
           return this.activateHighlight(tapResult.highlights[0].highlightId);
         } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1 && !isLongPress) {
           return this.activateHyperlink(tapResult.hyperlinks[0].position);

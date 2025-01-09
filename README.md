@@ -102,7 +102,7 @@ Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/
 
 ## <a name="highlight-attributes"></a>Highlight attributes
 
-These are the attributes that Highlight Helper stores for each highlight. Most of the attributes can be changed by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
+These are the attributes that Highlight Helper stores for each highlight. You can update a highlight by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
 
 - **highlightId** (read-only after creation) – The ID of the highlight.
 - **color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
@@ -114,7 +114,7 @@ These are the attributes that Highlight Helper stores for each highlight. Most o
 - **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the paragraph. Example: 12.
 - **endParagraphId** – ID of the paragraph where the highlight ends. Example: `p1`.
 - **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the paragraph. Example: 14.
-- **escapedHighlightId** (read-only) – Escaped highlight ID used as a CSS identifier.
+- **escapedHighlightId** (read-only) – Escaped highlight ID used as a CSS identifier (this is used internally by Highlight Helper).
 - **rangeText** (read-only) – Text content in the highlighted range.
 - **rangeHtml** (read-only) – HTML content in the highlighted range.
 - **rangeParagraphIds** (read-only) – IDs of paragraphs in the highlighted range.

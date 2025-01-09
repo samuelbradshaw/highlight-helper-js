@@ -10,7 +10,7 @@ Behind the scenes, Highlight Helper supports three different mechanisms for draw
 
 An HTML demo page that shows basic functionality can be found here: [Highlight Helper Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html). Source code for the demo is in **demo.html**. Highlight Helper itself is in **highlight-helper.js**.
 
-*&ast;Custom Highlight API requires Safari 17.2+ or Chrome 105+, and may hang when rendering a large number of highlights. Additionally, only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). Browser support and loading speed will hopefully improve in the future. See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html) for Highlight Helper.*
+&ast;The Custom Highlight API requires Safari 17.2+ or Chrome 105+, and may hang when rendering a large number of highlights. Additionally, only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). Browser support and loading speed will hopefully improve in the future. See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html) for Highlight Helper.
 
 ### Documentation:
 - [Known issues](#known-issues)
@@ -75,6 +75,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 - **rememberStyle** – Whether the most recent color, style, and wrapper should be remembered and used by default the next time the user creates a highlight. Boolean. Default: `true`.
 - **snapToWord** – Whether text selection and highlights should snap to the nearest word boundary. Boolean. Default: `false`.
 - **autoTapToActivate** – Whether Highlight Helper should automatically activate highlights and hyperlinks when they’re tapped. If set to false, you’ll need to listen for the `hh:tap` event and call `activateHighlight()` or `activateHyperlink()` manually when needed. Boolean. Default: `true`.
+- **longPressTimeout** – Duration in milliseconds before a tap turns into a long-press. On long-press, Highlight Helper will send an `hh:tap` event with `isLongPress: true`. If this option is set to 0, Highlight Helper will treat long-presses the same as regular taps, sending the `hh:tap` event after the user lifts their finger. If you have access to system APIs (such as in a mobile app), you may be able to get the system long-press duration to use for this value (which may vary based on accessibility settings). Default: `500`.
 - **pointerMode** – Mode for responding to pointer events. Options are `simple` (create highlights by selecting text, then tapping a color or style); `live` (create highlights immediately when selecting text, without needing to tap a button); and `auto` (`simple` for touch and mouse input, but `live` when a stylus or Apple Pencil is detected). Default: `simple`.
 - **drawingMode** – Mode for drawing highlights on the page. Options are `svg` (SVG shapes), `highlight-api` (Custom Highlight API), and `inserted-spans` (HTML span elements). For faster performance, read-only highlights will always be drawn as inserted spans, even if a different drawing mode is set. Default: `svg`.
 - **defaultColor** – Key of the default highlight color. Default: `yellow`.
@@ -90,12 +91,13 @@ Highlight Helper sends [custom events](https://developer.mozilla.org/en-US/docs/
 - **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added, removed, or updated, the total number of loaded highlights, and the time they took to load (in milliseconds).
 - **hh:highlightcreate** – Sent when a new highlight is created. Includes information about the highlight.
 - **hh:highlightupdate** – Sent when the highlight changes. Includes information about the highlight, and a list of the attributes that changed.
+- **hh:highlightremove** – Sent when a highlight is removed. Includes the ID of the removed highlight.
+- **hh:tap** – Sent when a user taps in the annotatable container (potentially trying to activate a highlight or link). This will only be sent if there isn’t currently an active highlight. Includes the location of the tap, the highlight(s) that were tapped, and the hyperlink(s) that were tapped, if any.
+- **hh:selectionupdate** – Sent when the selection color or style changes. Can be used to update custom selection UI, such as the color of selection handles. Includes the key of the color and style.
 - **hh:highlightactivate** – Sent when a highlight is activated. Includes information about the activated highlight.
 - **hh:highlightdeactivate** – Sent when a highlight is deactivated. Includes the ID of the deactivated highlight.
-- **hh:highlightremove** – Sent when a highlight is removed. Includes the ID of the removed highlight.
-- **hh:selectionupdate** – Sent when the selection color or style changes. Includes the key of the color and style.
 - **hh:ambiguousaction** – Sent when a user taps on overlapping highlights or an overlapping highlight and link. Includes the location of the tap, the highlight(s) that were tapped, and the hyperlink(s) that were tapped. This event will not be sent if `autoTapToActivate` is set to `false`.
-- **hh:tap** – Sent when a user taps in the annotatable container and there isn’t currently an active highlight. Includes the location of the tap, the highlight(s) that were tapped, and the hyperlink(s) that were tapped.
+- **selectionchange** – This is a [standard JavaScript event](https://developer.mozilla.org/en-US/docs/Web/API/Document/selectionchange_event) (not specific to Highlight Helper), but it’s worth mentioning here because it can be useful for adding custom selection UI around the selected text (such as a floating annotation menu). When this sends, you can call `window.getSelection()` to get the current [Selection object](https://developer.mozilla.org/en-US/docs/Web/API/Selection).
 
 
 ## <a name="highlight-attributes"></a>Highlight attributes

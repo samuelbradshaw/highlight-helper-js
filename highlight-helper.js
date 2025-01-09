@@ -30,6 +30,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     ${options.containerSelector} {
       position: relative;
+      -webkit-tap-highlight-color: transparent;
       -webkit-user-select: text;
       user-select: text;
     }
@@ -126,7 +127,7 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   const highlightsById = {};
-  let activeHighlightId, previousSelectionRange, activeSelectionHandle, isStylus;
+  let activeHighlightId, previousSelectionRange, activeSelectionHandle, isStylus, longPressTimeoutId;
   updateAppearanceStylesheet();
   updateSelectionUi('appearance');
   
@@ -422,11 +423,11 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Deactivate any highlights that are currently active/selected
-  this.deactivateHighlights = () => {
+  this.deactivateHighlights = (removeSelectionRanges = true) => {
     const deactivatedHighlight = highlightsById[activeHighlightId];
     activeHighlightId = null;
     updateSelectionUi('appearance');
-    window.getSelection().removeAllRanges();
+    if (removeSelectionRanges) window.getSelection().removeAllRanges();
     if (deactivatedHighlight) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
         highlight: deactivatedHighlight,
@@ -499,9 +500,9 @@ function Highlighter(options = hhDefaultOptions) {
     if (selection.type == 'None') return;
     const selectionRange = selection.getRangeAt(0);
     
-    // Deselect text or deactivate highlights when tapping away, or when long-pressing to select text outside of the previous selection range
+    // Deactivate highlights when tapping or creating a selection outside of the previous selection range
     if (!activeSelectionHandle && previousSelectionRange && (selection.type == 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
-      this.deactivateHighlights();
+      this.deactivateHighlights(false);
       previousSelectionRange = null;
     }
     
@@ -533,6 +534,9 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Return if it's not a regular click, or if the user is tapping away from an existing selection
     if (previousSelectionRange || activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    
+    // Trigger a long-press event if the user doesn't lift their finger within the specified time
+    if (options.longPressTimeout) longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
     
     const tapRange = getRangeFromTapEvent(event);
     tapResult = checkForTapTargets(tapRange);
@@ -568,16 +572,23 @@ function Highlighter(options = hhDefaultOptions) {
     }
   }
   
+  // Long press in annotatable container (triggered by setTimeout() in pointerdown event)
+  const respondToLongPress = (event) => {
+    respondToPointerUp(event, isLongPress = true);
+    tapResult = null;
+  }
+  
   // Pointer up in annotatable container
   annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event));
-  const respondToPointerUp = (event) => {
+  const respondToPointerUp = (event, isLongPress = false) => {
     if (tapResult) {
       tapResult.pointerEvent = event;
+      tapResult.isLongPress = isLongPress;
       annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
       if (options.autoTapToActivate && tapResult?.targetFound) {
         if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0) {
           return this.activateHighlight(tapResult.highlights[0].highlightId);
-        } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1) {
+        } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1 && !isLongPress) {
           return this.activateHyperlink(tapResult.hyperlinks[0].position);
         } else if (tapResult.highlights.length + tapResult.hyperlinks.length > 1) {
           return annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
@@ -597,6 +608,7 @@ function Highlighter(options = hhDefaultOptions) {
       selection.addRange(selectionRange);
     }
     tapResult = null;
+    clearTimeout(longPressTimeoutId);
     if (activeSelectionHandle) {
       activeSelectionHandle = null;
       annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
@@ -1049,6 +1061,7 @@ let hhDefaultOptions = {
   rememberStyle: true,
   snapToWord: false,
   autoTapToActivate: true,
+  longPressTimeout: 500,
   pointerMode: 'auto',
   drawingMode: 'svg',
   defaultColor: 'yellow',

@@ -171,10 +171,10 @@ function Highlighter(options = hhDefaultOptions) {
     const startTimestamp = Date.now();
     
     // Hide container (repeated DOM manipulations are faster if the container is hidden)
-    if (highlights.length > 1) (options.drawingMode == 'svg' ? svgBackground : this.annotatableContainer).style.display = 'none';
+    if (highlights.length > 1) (options.drawingMode === 'svg' ? svgBackground : this.annotatableContainer).style.display = 'none';
     
     // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
-    const sortedHighlights = highlights.sort((a,b) => a.readOnly == b.readOnly ? 0 : a.readOnly ? -1 : 1);
+    const sortedHighlights = highlights.sort((a,b) => a.readOnly === b.readOnly ? 0 : a.readOnly ? -1 : 1);
     
     const knownHighlightIds = Object.keys(highlightsById);
     let addedCount = 0, updatedCount = 0;
@@ -193,7 +193,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     if (knownHighlightIds.length > 0) this.removeHighlights(knownHighlightIds);
     
-    (options.drawingMode == 'svg' ? svgBackground : this.annotatableContainer).style.display = '';
+    (options.drawingMode === 'svg' ? svgBackground : this.annotatableContainer).style.display = '';
     this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
       addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount,
       totalCount: Object.keys(highlightsById).length,
@@ -204,13 +204,13 @@ function Highlighter(options = hhDefaultOptions) {
   // Draw (or redraw) specified highlights, or all highlights on the page
   this.drawHighlights = (highlightIds = Object.keys(highlightsById)) => {
     // Hide container (repeated DOM manipulations is faster if the container is hidden)
-    if (highlightIds.length > 1) (options.drawingMode == 'svg' ? svgBackground : this.annotatableContainer).style.display = 'none';
+    if (highlightIds.length > 1) (options.drawingMode === 'svg' ? svgBackground : this.annotatableContainer).style.display = 'none';
     
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
       const range = getRestoredHighlightRange(highlightInfo);
       const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-      const isReadOnly = (options.drawingMode == 'inserted-spans') || highlightInfo.readOnly;
+      const isReadOnly = (options.drawingMode === 'inserted-spans') || highlightInfo.readOnly;
       const wasDrawnAsReadOnly = this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
       
       // Remove old highlight elements and styles
@@ -226,7 +226,7 @@ function Highlighter(options = hhDefaultOptions) {
         const textNodeIter = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
         const relevantTextNodes = [];
         while (node = textNodeIter.nextNode()) {
-          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent != '' && !node.parentElement.closest('rt')) relevantTextNodes.push(node);
+          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent !== '' && !node.parentElement.closest('rt')) relevantTextNodes.push(node);
           if (node === range.endContainer) break;
         }
         for (let tn = 0; tn < relevantTextNodes.length; tn++) {
@@ -236,15 +236,15 @@ function Highlighter(options = hhDefaultOptions) {
           styledSpan.dataset.readOnly = '';
           styledSpan.dataset.color = highlightInfo.color;
           styledSpan.dataset.style = highlightInfo.style;
-          if (tn == 0) styledSpan.dataset.start = '';
-          if (tn == relevantTextNodes.length - 1) styledSpan.dataset.end = '';
+          if (tn === 0) styledSpan.dataset.start = '';
+          if (tn === relevantTextNodes.length - 1) styledSpan.dataset.end = '';
           textNode.before(styledSpan);
           styledSpan.appendChild(textNode);
         }
         rangeParagraphs.forEach(p => { p.normalize(); });
       } else {
         // Draw highlights with Custom Highlight API
-        if (options.drawingMode == 'highlight-api' && supportsHighlightApi) {
+        if (options.drawingMode === 'highlight-api' && supportsHighlightApi) {
           if (CSS.highlights.has(highlightId)) {
             highlightObj = CSS.highlights.get(highlightId);
             highlightObj.clear();
@@ -259,7 +259,7 @@ function Highlighter(options = hhDefaultOptions) {
           highlightApiStylesheet.insertRule(`${options.containerSelector} img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
           
         // Draw highlights with SVG shapes
-        } else if (options.drawingMode == 'svg') {
+        } else if (options.drawingMode === 'svg') {
           const clientRects = getMergedClientRects(range, rangeParagraphs);
           let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           group.dataset.highlightId = highlightId;
@@ -302,7 +302,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // Show container
-    (options.drawingMode == 'svg' ? svgBackground : this.annotatableContainer).style.display = '';
+    (options.drawingMode === 'svg' ? svgBackground : this.annotatableContainer).style.display = '';
   }
   
   // Create a new highlight, or update an existing highlight when it changes
@@ -319,7 +319,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // If a different highlight is active, deactivate it
-    if (activeHighlightId && highlightId != activeHighlightId) this.deactivateHighlights();
+    if (activeHighlightId && highlightId !== activeHighlightId) this.deactivateHighlights();
     
     // Warn if color, style, or wrapper attributes are invalid
     if (attributes.color && !options.colors.hasOwnProperty(attributes.color)) {
@@ -341,7 +341,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Check which appearance properties changed
     for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
-      if (isNewHighlight || (attributes[key] != null && attributes[key] != oldHighlightInfo[key])) appearanceChanges.push(key);
+      if (isNewHighlight || (attributes[key] != null && attributes[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
     }
     
     // If the highlight was and still is read-only, return
@@ -352,7 +352,7 @@ function Highlighter(options = hhDefaultOptions) {
     let rangeText, rangeHtml, rangeParagraphIds;
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = getRestoredSelectionOrCaret(window.getSelection());
-    if (selection.type == 'Range') selectionRange = selection.getRangeAt(0);
+    if (selection.type === 'Range') selectionRange = selection.getRangeAt(0);
     if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || selectionRange) {
       let startNode, startOffset, endNode, endOffset;
       if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
@@ -379,7 +379,7 @@ function Highlighter(options = hhDefaultOptions) {
       
       // Check which bounds properties changed
       for (const key of ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset']) {
-        if (isNewHighlight || eval(key) != oldHighlightInfo[key]) boundsChanges.push(key);
+        if (isNewHighlight || eval(key) !== oldHighlightInfo[key]) boundsChanges.push(key);
       }
       
       // Set variables that depend on the range
@@ -390,13 +390,13 @@ function Highlighter(options = hhDefaultOptions) {
       rangeHtml = temporaryHtmlElement.innerHTML;
       let startParagraphIndex = annotatableParagraphIds.indexOf(startParagraphId);
       let endParagraphIndex = annotatableParagraphIds.indexOf(endParagraphId);
-      if (startParagraphIndex == -1) startParagraphIndex = 0;
-      if (endParagraphIndex == -1) endParagraphIndex = annotatableParagraphIds.length - 1;
+      if (startParagraphIndex === -1) startParagraphIndex = 0;
+      if (endParagraphIndex === -1) endParagraphIndex = annotatableParagraphIds.length - 1;
       rangeParagraphIds = annotatableParagraphIds.slice(startParagraphIndex, endParagraphIndex + 1);
     }
     
     // If there are no valid changes, return
-    if (!highlightRange || highlightRange.toString() == '' || appearanceChanges.length + boundsChanges.length == 0) return;
+    if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) return;
     
     // Update saved highlight info
     const newHighlightInfo = {
@@ -425,9 +425,9 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     this.drawHighlights([highlightId]);
-    if (highlightId == activeHighlightId && appearanceChanges.length > 0) {
+    if (highlightId === activeHighlightId && appearanceChanges.length > 0) {
       updateSelectionUi('appearance');
-    } else if (triggeredByUserAction && highlightId != activeHighlightId) {
+    } else if (triggeredByUserAction && highlightId !== activeHighlightId) {
       this.activateHighlight(highlightId);
     }
     
@@ -441,7 +441,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
     const highlightToActivate = highlightsById[highlightId];
-    if (options.drawingMode == 'inserted-spans' || highlightToActivate.readOnly) {
+    if (options.drawingMode === 'inserted-spans' || highlightToActivate.readOnly) {
       // If the highlight is read-only, return events, but don't actually activate it
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: highlightToActivate } }));
@@ -451,7 +451,7 @@ function Highlighter(options = hhDefaultOptions) {
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
-    if (selection.type != 'Range') {
+    if (selection.type !== 'Range') {
       selection.removeAllRanges();
       selection.addRange(highlightRange);
     }
@@ -509,7 +509,7 @@ function Highlighter(options = hhDefaultOptions) {
     let filteredHighlights = []
     for (highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
-      if (!paragraphId || paragraphId == highlightInfo.startParagraphId) {
+      if (!paragraphId || paragraphId === highlightInfo.startParagraphId) {
         filteredHighlights.push(highlightInfo);
       }
     }
@@ -526,13 +526,13 @@ function Highlighter(options = hhDefaultOptions) {
   this.setOption = (key, value) => {
     const containerSelector = options.containerSelector;
     options[key] = value ?? options[key];
-    if (key == 'drawingMode' || key == 'styles') {
+    if (key === 'drawingMode' || key === 'styles') {
       updateAppearanceStylesheet();
       if (supportsHighlightApi) CSS.highlights.clear();
       this.drawHighlights();
-    } else if (key == 'colors') {
+    } else if (key === 'colors') {
       updateAppearanceStylesheet();
-    } else if (key == 'containerSelector' || key == 'paragraphSelector') {
+    } else if (key === 'containerSelector' || key === 'paragraphSelector') {
       initializeHighlighter(containerSelector);
     }
   }
@@ -554,7 +554,7 @@ function Highlighter(options = hhDefaultOptions) {
     controller.abort();
     
     this.annotatableContainer.highlighter = undefined;
-    hhHighlighters = hhHighlighters.filter(hhHighlighter => hhHighlighter.annotatableContainer != this.annotatableContainer);
+    hhHighlighters = hhHighlighters.filter(hhHighlighter => hhHighlighter.annotatableContainer !== this.annotatableContainer);
     delete hhHighlighters[options.containerSelector];
   }
     
@@ -565,19 +565,19 @@ function Highlighter(options = hhDefaultOptions) {
   document.addEventListener('selectionchange', (event) => respondToSelectionChange(event), { signal: controller.signal });
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
-    if (selection.type == 'None') return;
+    if (selection.type === 'None') return;
     const selectionRange = selection.getRangeAt(0);
     
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
-    if (!activeSelectionHandle && previousSelectionRange && (selection.type == 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
+    if (!activeSelectionHandle && previousSelectionRange && (selection.type === 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
       this.deactivateHighlights(false);
     }
     
-    if (selection.type == 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
+    if (selection.type === 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
       // Clear tap result (prevents hh:tap event from being sent when long-pressing or dragging to select text)
       tapResult = null;
       
-      if (activeHighlightId || (options.pointerMode == 'live' || (options.pointerMode == 'auto' && isStylus == true))) {
+      if (activeHighlightId || (options.pointerMode === 'live' || (options.pointerMode === 'auto' && isStylus === true))) {
         this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
       }
       previousSelectionRange = selectionRange.cloneRange();
@@ -589,7 +589,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Pointer down in annotatable container
   this.annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: controller.signal });
   const respondToPointerDown = (event) => {
-    isStylus = event.pointerType == 'pen';
+    isStylus = event.pointerType === 'pen';
     
     // User is dragging a selection handle
     if (event.target && event.target.parentElement.classList.contains('hh-selection-handle')) {
@@ -599,7 +599,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // Return if it's not a regular click, or if the user is tapping away from an existing selection
-    if (previousSelectionRange || activeSelectionHandle || event.button != 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (previousSelectionRange || activeSelectionHandle || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     
     // Trigger a long-press event if the user doesn't lift their finger within the specified time
     if (options.longPressTimeout) longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
@@ -615,24 +615,24 @@ function Highlighter(options = hhDefaultOptions) {
     
     const dragRange = getRangeFromTapEvent(event);
     // TODO: While dragging, the selection startContainer or endContainer frequently gets set to the parent element. This causes the selection to flicker while dragging. The line below is a workaround, but it would be nice to figure out the root cause.
-    if (dragRange.startContainer.nodeType != Node.TEXT_NODE || dragRange.endContainer.nodeType != Node.TEXT_NODE) return;
+    if (dragRange.startContainer.nodeType !== Node.TEXT_NODE || dragRange.endContainer.nodeType !== Node.TEXT_NODE) return;
     
     const dragPositionRelativeToSelectionStart = dragRange.compareBoundaryPoints(Range.START_TO_START, selectionRange);
     const dragPositionRelativeToSelectionEnd = dragRange.compareBoundaryPoints(Range.END_TO_END, selectionRange);
     
     // TODO: Don't allow Caret (0-width) selections while dragging selection handles
-    if (activeSelectionHandle.dataset.position == 'left' && dragPositionRelativeToSelectionEnd == 1 || activeSelectionHandle.dataset.position == 'right' && dragPositionRelativeToSelectionStart == -1) {
+    if (activeSelectionHandle.dataset.position === 'left' && dragPositionRelativeToSelectionEnd === 1 || activeSelectionHandle.dataset.position === 'right' && dragPositionRelativeToSelectionStart === -1) {
       for (const selectionHandle of selectionHandles) {
-        selectionHandle.dataset.position = selectionHandle.dataset.position == 'left' ? 'right' : 'left';
+        selectionHandle.dataset.position = selectionHandle.dataset.position === 'left' ? 'right' : 'left';
       }
       // TODO: Switch selection direction and don't deactivate the highlight
       this.deactivateHighlights();
       activeSelectionHandle = null;
       this.annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
-    } else if (activeSelectionHandle.dataset.position == 'left' && dragPositionRelativeToSelectionStart != 0) {
+    } else if (activeSelectionHandle.dataset.position === 'left' && dragPositionRelativeToSelectionStart !== 0) {
       // Left selection handle is before or after the selection start
       selectionRange.setStart(dragRange.startContainer, dragRange.startOffset);
-    } else if (activeSelectionHandle.dataset.position == 'right' && dragPositionRelativeToSelectionEnd != 0) {
+    } else if (activeSelectionHandle.dataset.position === 'right' && dragPositionRelativeToSelectionEnd !== 0) {
       // Right selection handle is before or after the selection end
       selectionRange.setEnd(dragRange.endContainer, dragRange.endOffset);
     }
@@ -652,9 +652,9 @@ function Highlighter(options = hhDefaultOptions) {
       tapResult.isLongPress = isLongPress;
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
       if (options.autoTapToActivate && tapResult?.targetFound) {
-        if (tapResult.highlights.length == 1 && tapResult.hyperlinks.length == 0 && !isLongPress) {
+        if (tapResult.highlights.length === 1 && tapResult.hyperlinks.length === 0 && !isLongPress) {
           return this.activateHighlight(tapResult.highlights[0].highlightId);
-        } else if (tapResult.highlights.length == 0 && tapResult.hyperlinks.length == 1 && !isLongPress) {
+        } else if (tapResult.highlights.length === 0 && tapResult.hyperlinks.length === 1 && !isLongPress) {
           return this.activateHyperlink(tapResult.hyperlinks[0].position);
         } else if (tapResult.highlights.length + tapResult.hyperlinks.length > 1) {
           return this.annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
@@ -668,7 +668,7 @@ function Highlighter(options = hhDefaultOptions) {
   window.addEventListener('pointercancel', (event) => respondToWindowPointerUp(event), { signal: controller.signal });
   const respondToWindowPointerUp = (event) => {
     const selection = window.getSelection();
-    if (selection.type == 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
+    if (selection.type === 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
       const selectionRange = snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode).cloneRange();
       selection.removeAllRanges();
       selection.addRange(selectionRange);
@@ -693,8 +693,8 @@ function Highlighter(options = hhDefaultOptions) {
   let previousWindowWidth = window.innerWidth;
   const respondToWindowResize = () => {
     // Only respond if the width changed (ignore height changes)
-    if (window.innerWidth == previousWindowWidth) return;
-    if (options.drawingMode == 'svg') {
+    if (window.innerWidth === previousWindowWidth) return;
+    if (options.drawingMode === 'svg') {
       this.drawHighlights();
       if (previousSelectionRange) updateSelectionUi('bounds');
     }
@@ -723,7 +723,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     initializeSelection();
     document.addEventListener('visibilitychange', (event) => {
-      if (document.visibilityState == 'visible') initializeSelection();
+      if (document.visibilityState === 'visible') initializeSelection();
     }, { signal: controller.signal });
   }
   
@@ -739,7 +739,7 @@ function Highlighter(options = hhDefaultOptions) {
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
       const highlightRange = highlightInfo.rangeObj;
-      if (highlightRange.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
+      if (highlightRange.comparePoint(tapRange.startContainer, tapRange.startOffset) === 0) {
         tappedHighlights.push(highlightInfo);
       }
     }
@@ -748,7 +748,7 @@ function Highlighter(options = hhDefaultOptions) {
       const hyperlinkInfo = hyperlinksByPosition[hyperlinkPosition];
       const hyperlinkRange = document.createRange()
       hyperlinkRange.selectNodeContents(hyperlinkInfo.hyperlinkElement);
-      if (hyperlinkRange.comparePoint(tapRange.startContainer, tapRange.startOffset) == 0) {
+      if (hyperlinkRange.comparePoint(tapRange.startContainer, tapRange.startOffset) === 0) {
         tappedHyperlinks.push(hyperlinkInfo);
       }
     }
@@ -771,7 +771,7 @@ function Highlighter(options = hhDefaultOptions) {
     if (!oldHighlightInfo) return newHighlightInfo;
     const changedHighlightInfo = {}
     for (const key of Object.keys(newHighlightInfo)) {
-      if (oldHighlightInfo.hasOwnProperty(key) && oldHighlightInfo[key] != newHighlightInfo[key]) {
+      if (oldHighlightInfo.hasOwnProperty(key) && oldHighlightInfo[key] !== newHighlightInfo[key]) {
         changedHighlightInfo[key] = newHighlightInfo[key];
       }
     }
@@ -816,7 +816,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Update SVG shapes for the active highlight (bring shape group to front, and duplicate it to make the highlight darker)
     svgActiveOverlay.innerHTML = '';
-    if (activeHighlightId && options.drawingMode == 'svg') {
+    if (activeHighlightId && options.drawingMode === 'svg') {
       const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
       svgActiveOverlay.dataset.color = color;
       svgActiveOverlay.dataset.style = style;
@@ -825,11 +825,11 @@ function Highlighter(options = hhDefaultOptions) {
       svgBackground.appendChild(svgActiveOverlay);
     }
     
-    if (changeType == 'appearance') {
+    if (changeType === 'appearance') {
       this.annotatableContainer.style = `--hh-color: ${colorString}`;
       
       // Update selection background
-      if (activeHighlightId && options.drawingMode == 'svg') {
+      if (activeHighlightId && options.drawingMode === 'svg') {
         selectionStylesheet.replaceSync(`${options.containerSelector} ::selection { background-color: transparent; }`);
       } else if (activeHighlightId) {
         const styleTemplate = getStyleTemplate(style, 'css', null);
@@ -847,9 +847,9 @@ function Highlighter(options = hhDefaultOptions) {
       // Send event
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: { color: color, style: style, }}));
       
-    } else if (changeType == 'bounds') {
+    } else if (changeType === 'bounds') {
       // Update selection handle location and visibility
-      if (selection.type == 'Range' && options.showSelectionHandles) {
+      if (selection.type === 'Range' && options.showSelectionHandles) {
         const selectionRange = selection.getRangeAt(0);
         const selectionRangeRects = selectionRange.getClientRects();
         const startRect = selectionRangeRects[0];
@@ -885,13 +885,13 @@ function Highlighter(options = hhDefaultOptions) {
         // Range is from a selection, and the selection anchor is outside of the container
         window.getSelection().collapseToStart();
         return window.getSelection().getRangeAt(0).cloneRange();
-      } else if (anchorNode == startNode || this.annotatableContainer.contains(startNode)) {
+      } else if (anchorNode === startNode || this.annotatableContainer.contains(startNode)) {
         // Range starts in the container but ends outside
         const lastParagraphTextNodesIter = document.createNodeIterator(this.annotatableParagraphs[this.annotatableParagraphs.length - 1], NodeFilter.SHOW_TEXT);
         let nextNode;
         while (nextNode = lastParagraphTextNodesIter.nextNode()) endNode = nextNode;
         endOffset = endNode.length;
-      } else if (anchorNode == endNode || this.annotatableContainer.contains(endNode)) {
+      } else if (anchorNode === endNode || this.annotatableContainer.contains(endNode)) {
         // Range starts outside of the container but ends inside
         const firstParagraphTextNodesIter = document.createNodeIterator(this.annotatableParagraphs[0], NodeFilter.SHOW_TEXT);
         startNode = firstParagraphTextNodesIter.nextNode();
@@ -902,11 +902,11 @@ function Highlighter(options = hhDefaultOptions) {
     // Snap to the nearest word
     if (options.snapToWord) {
       // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
-      if (startOffset == startNode.textContent.length) {
+      if (startOffset === startNode.textContent.length) {
         let parentElement = range.commonAncestorContainer;
         let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
         let nextTextNode = walker.nextNode();
-        while (nextTextNode != startNode) nextTextNode = walker.nextNode();
+        while (nextTextNode !== startNode) nextTextNode = walker.nextNode();
         nextTextNode = walker.nextNode();
         if (nextTextNode) {
           startNode = nextTextNode;
@@ -976,7 +976,7 @@ function Highlighter(options = hhDefaultOptions) {
       console.warn(`Highlight style "${style}" in options does not have a defined "${type}" value.`);
       return;
     }
-    if (type == 'svg' && clientRect) {
+    if (type === 'svg' && clientRect) {
       const annotatableContainerClientRect = this.annotatableContainer.getBoundingClientRect();
       styleTemplate = styleTemplate
         .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x)
@@ -993,12 +993,12 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Restore the previous selection range in case the browser clears the selection
   const getRestoredSelectionOrCaret = (selection, pointerEvent = null) => {
-    if (selection.type == 'None') {
+    if (selection.type === 'None') {
       if (previousSelectionRange) {
         // iOS Safari deselects text when a button is tapped. This restores the selection.
         selection.addRange(previousSelectionRange);
       } else if (pointerEvent) {
-        // In most browsers, tapping or clicking somewhere on the page creates a selection of 0 character length (selection.type == "Caret"). iOS Safari instead clears the selection (selection.type == "None"). This restores a Caret selection if the selection type is None.
+        // In most browsers, tapping or clicking somewhere on the page creates a selection of 0 character length (selection.type === "Caret"). iOS Safari instead clears the selection (selection.type === "None"). This restores a Caret selection if the selection type is None.
         let range = getRangeFromTapEvent(pointerEvent);
         selection.addRange(range);
       }
@@ -1009,7 +1009,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Fix highlight range if the DOM changed and made the previous highlight range invalid
   const getRestoredHighlightRange = (highlightInfo) => {
     const highlightRange = highlightInfo.rangeObj;
-    if (highlightRange.startContainer.nodeType != Node.TEXT_NODE || highlightRange.endContainer.nodeType != Node.TEXT_NODE) {
+    if (highlightRange.startContainer.nodeType !== Node.TEXT_NODE || highlightRange.endContainer.nodeType !== Node.TEXT_NODE) {
       ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.startParagraphId), highlightInfo.startParagraphOffset));
       ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.endParagraphId), highlightInfo.endParagraphOffset));
       highlightRange.setStart(startNode, startOffset);
@@ -1044,7 +1044,7 @@ function Highlighter(options = hhDefaultOptions) {
     for (const paragraph of paragraphs) {
       const paragraphRect = paragraph.getBoundingClientRect();
       const computedParagraphStyle = window.getComputedStyle(paragraph);
-      const paragraphLineHeight = parseInt((computedParagraphStyle.lineHeight == 'normal' ? computedParagraphStyle.fontSize : computedParagraphStyle.lineHeight).replace('px', ''));
+      const paragraphLineHeight = parseInt((computedParagraphStyle.lineHeight === 'normal' ? computedParagraphStyle.fontSize : computedParagraphStyle.lineHeight).replace('px', ''));
       const paragraphTopPadding = parseInt(computedParagraphStyle.getPropertyValue('padding-top').replace('px', ''));
       
       // Get line positions (bottom edge of each line)
@@ -1052,7 +1052,7 @@ function Highlighter(options = hhDefaultOptions) {
       let lineWalker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
       while (textNode = lineWalker.nextNode()) {
         const computedStyle = window.getComputedStyle(textNode.parentElement);
-        const lineHeight = parseInt((computedStyle.lineHeight == 'normal' ? computedStyle.fontSize : computedStyle.lineHeight).replace('px', ''));
+        const lineHeight = parseInt((computedStyle.lineHeight === 'normal' ? computedStyle.fontSize : computedStyle.lineHeight).replace('px', ''));
         if (lineHeight >= paragraphLineHeight) {
           const referenceRange = document.createRange();
           referenceRange.selectNode(textNode);
@@ -1064,9 +1064,9 @@ function Highlighter(options = hhDefaultOptions) {
       // Create a merged rect for each line
       for (let ln = 0; ln < linePositions.length; ln++) {
         const linePosition = linePositions[ln];
-        const previousLinePosition = ln == 0 ? paragraphRect.top + paragraphTopPadding : linePositions[ln-1];
+        const previousLinePosition = ln === 0 ? paragraphRect.top + paragraphTopPadding : linePositions[ln-1];
         const mergedRect = new DOMRect(paragraphRect.right, previousLinePosition, 0, linePosition - previousLinePosition);
-        if (mergedRects.length > 0 && ln == 1 && mergedRects[mergedRects.length-1].height < mergedRect.height) {
+        if (mergedRects.length > 0 && ln === 1 && mergedRects[mergedRects.length-1].height < mergedRect.height) {
           // Increase the row height for the first line in the paragraph to match the second line
           mergedRects[mergedRects.length-1].y += mergedRects[mergedRects.length-1].height - mergedRect.height;
           mergedRects[mergedRects.length-1].height = mergedRect.height;
@@ -1074,7 +1074,7 @@ function Highlighter(options = hhDefaultOptions) {
         for (let r = 0; r < unmergedRects.length; r++) {
           const rect = unmergedRects[r];
           const rectVerticalPosition = rect.y + (rect.height / 2);
-          if (Math.round(paragraphRect.width) == Math.round(rect.width) && Math.round(paragraphRect.height) == Math.round(rect.height) && Math.round(paragraphRect.top) == Math.round(rect.top) && Math.round(paragraphRect.left) == Math.round(rect.left)) {
+          if (Math.round(paragraphRect.width) === Math.round(rect.width) && Math.round(paragraphRect.height) === Math.round(rect.height) && Math.round(paragraphRect.top) === Math.round(rect.top) && Math.round(paragraphRect.left) === Math.round(rect.left)) {
             // Remove rects that are the same size as the paragraph rect (the highlight range gives us these unneeded rects for "middle" paragraphs between the start and end paragraph)
             unmergedRects.splice(r, 1);
             r--;

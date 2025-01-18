@@ -246,7 +246,7 @@
       for (const drawingModeRadioButton of drawingModeRadioButtons) {
         drawingModeRadioButton.addEventListener('change', (event) => {
           let drawingMode = document.querySelector('[name="hh-drawing-mode"]:checked').value;
-          if (drawingMode == 'highlight-api' && !CSS.highlights) {
+          if (drawingMode === 'highlight-api' && !CSS.highlights) {
             alert('Your browser doesn’t support the Custom Highlight API.');
           } else {
             highlighter.setOption('drawingMode', drawingMode);
@@ -279,7 +279,7 @@
         }
         const snippetHighlights = [
           {
-            highlightId: event.detail.highlight.highlightId,
+            highlightId: event.detail.highlight.highlightId + '_snippet',
             readOnly: true,
             color: event.detail.highlight.color, style: event.detail.highlight.style,
             startParagraphId: `${event.detail.highlight.startParagraphId}_${event.detail.highlight.highlightId}`, startParagraphOffset: event.detail.highlight.startParagraphOffset,

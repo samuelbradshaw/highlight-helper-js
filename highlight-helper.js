@@ -703,30 +703,6 @@ function Highlighter(options = hhDefaultOptions) {
   const debouncedRespondToWindowResize = debounce(() => respondToWindowResize(), Math.floor(Object.keys(highlightsById).length / 20));
   window.addEventListener('resize', debouncedRespondToWindowResize, { signal: controller.signal });
   
-  // Workaround to allow programmatic text selection on tap in iOS Safari
-  // See https://stackoverflow.com/a/79261423/1349044
-  if (isTouchDevice && isSafari) {
-    const tempInput = document.createElement('input');
-    tempInput.style.position = 'fixed';
-    tempInput.style.top = 0;
-    tempInput.style.opacity = 0;
-    tempInput.style.height = 0;
-    tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
-    tempInput.inputMode = 'none'; // Don't show keyboard
-    tempInput.tabIndex = -1; // Prevent user from tabbing to input
-    const initializeSelection = (event) => {
-      this.annotatableContainer.append(tempInput);
-      tempInput.focus();
-      setTimeout(() => {
-        tempInput.remove();
-      }, 100);
-    }
-    initializeSelection();
-    document.addEventListener('visibilitychange', (event) => {
-      if (document.visibilityState === 'visible') initializeSelection();
-    }, { signal: controller.signal });
-  }
-  
   
   // -------- UTILITY FUNCTIONS --------
   
@@ -1120,6 +1096,30 @@ let hhHighlighters = [];
 const isTouchDevice = navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
 const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
 const supportsHighlightApi = CSS.highlights;
+
+// Workaround to allow programmatic text selection on tap in iOS Safari
+// See https://stackoverflow.com/a/79261423/1349044
+if (isTouchDevice && isSafari) {
+  const tempInput = document.createElement('input');
+  tempInput.style.position = 'fixed';
+  tempInput.style.top = 0;
+  tempInput.style.opacity = 0;
+  tempInput.style.height = 0;
+  tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
+  tempInput.inputMode = 'none'; // Don't show keyboard
+  tempInput.tabIndex = -1; // Prevent user from tabbing to input
+  const initializeSelection = (event) => {
+    document.body.append(tempInput);
+    tempInput.focus();
+    setTimeout(() => {
+      tempInput.remove();
+    }, 100);
+  }
+  initializeSelection();
+  document.addEventListener('visibilitychange', (event) => {
+    if (document.visibilityState === 'visible') initializeSelection();
+  });
+}
 
 // Default function for generating a highlight ID
 const hhGetNewHighlightId = () => {

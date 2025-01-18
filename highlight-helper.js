@@ -439,6 +439,7 @@ function Highlighter(options = hhDefaultOptions) {
     const deactivatedHighlight = highlightsById[activeHighlightId];
     activeHighlightId = null;
     updateSelectionUi('appearance');
+    previousSelectionRange = null;
     if (removeSelectionRanges) window.getSelection().removeAllRanges();
     if (deactivatedHighlight) {
       annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
@@ -515,7 +516,6 @@ function Highlighter(options = hhDefaultOptions) {
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
     if (!activeSelectionHandle && previousSelectionRange && (selection.type == 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) == 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) == -1)) {
       this.deactivateHighlights(false);
-      previousSelectionRange = null;
     }
     
     if (selection.type == 'Range') {

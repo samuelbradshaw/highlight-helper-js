@@ -26,7 +26,9 @@ An HTML demo page that shows basic functionality can be found here: [Highlight H
 There are a few known issues:
 
 - **Desktop browsers** don’t show selection handles for changing the bounds of a highlight or selection. Selection handles do show on iOS and Android. In the future it would be nice to have fallback selection handles for desktop browsers, like the ones on [this page](https://www.churchofjesuschrist.org/study/scriptures/bofm/1-ne/1?lang=eng).
+- **Chrome on Android** doesn’t set focus (and therefore doesn’t show text selection handles) when text is programmatically selected (such as from a disambiguation panel), unless the selection is initiated directly by a user’s tap. However, if you’re working in a native app with a webview, you may be able to focus the webview from Android (see [StackOverflow](https://stackoverflow.com/a/6372903/1349044) and [GitHub](https://github.com/lawlsausage/save_gfy/pull/1)).
 - **Safari on iOS** doesn’t respect the text selection color set via CSS, so when a highlight is active for editing it has a blue overlay. However, if you’re working in a native app with a webview, you may be able to set colors natively with [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
+- **Safari on iOS** loses focus and doesn’t send a `visibilitychange` event if the device screen locks after a period of inactivity. This can cause selection handles to not show when unlocking your device and tapping on an existing highlight. Going to another app and back or manually triggering a `visibilitychange` event will allow Highlight Helper to set focus again. Focus will also be set again if the user long-presses to select text.
 - **Safari on iOS and macOS** doesn’t allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)). This will hopefully be fixed in a future version of Safari.
 
 
@@ -36,7 +38,7 @@ The easiest way to get started is to download demo.html and highlight-helper.js,
 
 In the source of demo.html, you’ll see CSS styles, followed by the HTML body, followed by JavaScript code. The JavaScript code does the following:
 1. Links to highlight-helper.js,
-2. Initializes Highlight Helper with options,
+2. Initializes a “Highlighter” instance with options,
 3. Pre-loads and draws a few existing highlights,
 3. Sets up logic to call Highlight Helper methods when buttons on the demo page are tapped, and
 4. Sets up listeners to respond to custom event messages that come back from Highlight Helper.
@@ -59,6 +61,7 @@ All of the available methods, options, and custom events are documented below.
 - **getHighlightInfo(highlightIds, paragraphId)** – Get highlight information for an array of highlight IDs. If no highlight IDs are passed, information for all relevant highlights will be returned. If `paragraphId` is provided, only highlights that start in the specified paragraph will be returned. Highlights will be sorted based on their position on the page.
 - **setOption(key, value)** – Change one of the initialized options. Available options are described below.
 - **getOptions()** – Get the initialized options, including defaults for any options that weren’t explicitly set.
+- **removeHighlighter()** – Removes the current Highlighter instance and all of its highlights from the page. If a new Highlighter instance is created with the same container (as defined by the `containerSelector` option), the previous instance for that container will be removed automatically (there can be multiple Highlighter instances on a page, but each one needs to have a different container).
 
 
 ### <a name="options"></a>Options
@@ -73,7 +76,7 @@ Options can be provided when Highlight Helper is initialized. They can also be s
 - **selectionHandles** (work in progress) – Object that describes custom selection handles that a user can drag to resize a selection or highlight. There are two properties: `left` (HTML string to be used for the left selection handle) and `right` (HTML string to be used for the right selection handle). `var(--hh-color)` can be used to reference the highlight color value. See default values at the bottom of highlight-helper.js.
 - **showSelectionHandles** (work in progress) – Whether custom selection handles should be shown. Boolean. Default: `false` on touch devices, otherwise `true`.
 - **rememberStyle** – Whether the most recent color, style, and wrapper should be remembered and used by default the next time the user creates a highlight. Boolean. Default: `true`.
-- **snapToWord** – Whether text selection and highlights should snap to the nearest word boundary. Boolean. Default: `false`.
+- **snapToWord** – Whether text selection and highlights should snap to the nearest word boundary. Spaces and dashes are considered word boundaries (this option may not work correctly in all languages). Boolean. Default: `false`.
 - **autoTapToActivate** – Whether Highlight Helper should automatically activate highlights and hyperlinks when they’re tapped. If set to false, you’ll need to listen for the `hh:tap` event and call `activateHighlight()` or `activateHyperlink()` manually when needed. Boolean. Default: `true`.
 - **longPressTimeout** – Duration in milliseconds before a tap turns into a long-press. On long-press, Highlight Helper will send an `hh:tap` event with `isLongPress: true`. If this option is set to 0, Highlight Helper will treat long-presses the same as regular taps, sending the `hh:tap` event after the user lifts their finger. If you have access to system APIs (such as in a mobile app), you may be able to get the system long-press duration to use for this value (which may vary based on accessibility settings). Default: `500`.
 - **pointerMode** – Mode for responding to pointer events. Options are `simple` (create highlights by selecting text, then tapping a color or style); `live` (create highlights immediately when selecting text, without needing to tap a button); and `auto` (`simple` for touch and mouse input, but `live` when a stylus or Apple Pencil is detected). Default: `simple`.

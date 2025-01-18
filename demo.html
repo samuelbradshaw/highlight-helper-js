@@ -144,8 +144,10 @@
         <label><input type="radio" name="hh-drawing-mode" value="inserted-spans"> Inserted spans (read-only)</label><br>
       </p>
       <b>Active highlight:</b>
-      <p id="selection-text">N/A</p>
-      <p id="selection-info"></p>
+      <div id="snippet-container">
+        <div id="snippet">N/A</div>
+      </div>
+      <p id="highlight-info"></p>
     </aside>
     <dialog id="disambiguation-panel">
       <h1>Select One</h1>
@@ -198,7 +200,7 @@
         },
       ];
       
-      // Initialize Highlight Helper, then load highlights
+      // Initialize a Highlighter instance, then load highlights
       const highlighter = new Highlighter({
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
@@ -252,30 +254,53 @@
         });
       }
       
-      // Listen for and respond to highlight info sent back from Highlight Helper
       const container = document.querySelector(highlighter.getOptions().containerSelector);
-      const selectionTextDiv = document.getElementById('selection-text');
-      const selectionInfoDiv = document.getElementById('selection-info');
+      const snippetDiv = document.getElementById('snippet');
+      const infoDiv = document.getElementById('highlight-info');
+      
+      // Respond to highlight update and highlight activate event
+      container.addEventListener('hh:highlightupdate', updateHighlightInfo);
       container.addEventListener('hh:highlightactivate', updateHighlightInfo);
-      container.addEventListener('hh:highlightdeactivate', updateHighlightInfo);
       function updateHighlightInfo(event) {
-        if (event.type == 'hh:highlightactivate') {
-          selectionTextDiv.innerHTML = event.detail.highlight.rangeText;
-          selectionInfoDiv.innerHTML = `
-            <b>Highlight:</b> ${event.detail.highlight.highlightId}<br>
-            <b>Color and style:</b> ${event.detail.highlight.color}, ${event.detail.highlight.style}<br>
-            <b>Wrapper:</b> ${event.detail.highlight.wrapper}, ${JSON.stringify(event.detail.highlight.wrapperVariables)}<br>
-            <b>Read-only:</b> ${event.detail.highlight.readOnly}<br>
-            <b>Start:</b> #${event.detail.highlight.startParagraphId}, offset ${event.detail.highlight.startParagraphOffset}<br>
-            <b>End:</b> #${event.detail.highlight.endParagraphId}, offset ${event.detail.highlight.endParagraphOffset}
-          `;
-        } else {
-          selectionTextDiv.innerHTML = '';
-          selectionInfoDiv.innerHTML = 'N/A'
+        clearHighlightInfo();
+        infoDiv.innerHTML = `
+          <b>Highlight:</b> ${event.detail.highlight.highlightId}<br>
+          <b>Color and style:</b> ${event.detail.highlight.color}, ${event.detail.highlight.style}<br>
+          <b>Wrapper:</b> ${event.detail.highlight.wrapper}, ${JSON.stringify(event.detail.highlight.wrapperVariables)}<br>
+          <b>Read-only:</b> ${event.detail.highlight.readOnly}<br>
+          <b>Start:</b> #${event.detail.highlight.startParagraphId}, offset ${event.detail.highlight.startParagraphOffset}<br>
+          <b>End:</b> #${event.detail.highlight.endParagraphId}, offset ${event.detail.highlight.endParagraphOffset}
+        `;
+        const annotatedParagraphs = container.querySelectorAll(`#${event.detail.highlight.rangeParagraphIds.join(', #')}`);
+        for (const annotatedParagraph of annotatedParagraphs) {
+          const snippetParagraph = annotatedParagraph.cloneNode(true);
+          snippetParagraph.id = `${snippetParagraph.id}_${event.detail.highlight.highlightId}`;
+          snippetDiv.append(snippetParagraph);
         }
+        const snippetHighlights = [
+          {
+            highlightId: event.detail.highlight.highlightId,
+            readOnly: true,
+            color: event.detail.highlight.color, style: event.detail.highlight.style,
+            startParagraphId: `${event.detail.highlight.startParagraphId}_${event.detail.highlight.highlightId}`, startParagraphOffset: event.detail.highlight.startParagraphOffset,
+            endParagraphId: `${event.detail.highlight.endParagraphId}_${event.detail.highlight.highlightId}`, endParagraphOffset: event.detail.highlight.endParagraphOffset,
+          },
+        ];
+        const snippetHighlighter = new Highlighter({
+          containerSelector: '#snippet-container',
+          paragraphSelector: '#snippet [id]',
+        });
+        snippetHighlighter.loadHighlights(snippetHighlights);
       }
       
-      // Listen for and respond to ambiguous actions sent back from Highlight Helper (when a user taps on overlapping highlights, or an overlapping link and highlight)
+      // Respond to highlight deactivate event
+      container.addEventListener('hh:highlightdeactivate', clearHighlightInfo);
+      function clearHighlightInfo(event) {
+        snippetDiv.innerHTML = '';
+        infoDiv.innerHTML = 'N/A';
+      }
+      
+      // Respond to ambiguous action events (when a user taps on overlapping highlights, or an overlapping link and highlight)
       const disambiguationPanel = document.getElementById('disambiguation-panel');
       const disambiguationButtonsDiv = document.getElementById('disambiguation-buttons');
       const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
@@ -306,15 +331,15 @@
       }
       
       // Log events for debugging
-      container.addEventListener('hh:highlightcreate', console.log)
-      container.addEventListener('hh:highlightupdate', console.log)
-      container.addEventListener('hh:highlightremove', console.log)
-      container.addEventListener('hh:highlightsload', console.log)
-      container.addEventListener('hh:highlightactivate', console.log)
-      container.addEventListener('hh:highlightdeactivate', console.log)
-      container.addEventListener('hh:selectionupdate', console.log)
-      container.addEventListener('hh:ambiguousaction', console.log)
-      container.addEventListener('hh:tap', console.log)
+      container.addEventListener('hh:highlightcreate', console.info)
+      container.addEventListener('hh:highlightupdate', console.info)
+      container.addEventListener('hh:highlightremove', console.info)
+      container.addEventListener('hh:highlightsload', console.info)
+      container.addEventListener('hh:highlightactivate', console.info)
+      container.addEventListener('hh:highlightdeactivate', console.info)
+      container.addEventListener('hh:selectionupdate', console.info)
+      container.addEventListener('hh:ambiguousaction', console.info)
+      container.addEventListener('hh:tap', console.info)
     </script>
   </body>
 </html>

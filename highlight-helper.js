@@ -965,14 +965,18 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Loop through the highlight's paragraphs
     for (const paragraph of paragraphs) {
-      const paragraphRect = paragraph.getClientRects()[0];
+      const paragraphRect = paragraph.getBoundingClientRect();
       const computedParagraphStyle = window.getComputedStyle(paragraph);
+      const paragraphLineHeight = parseInt((computedParagraphStyle.lineHeight == 'normal' ? computedParagraphStyle.fontSize : computedParagraphStyle.lineHeight).replace('px', ''));
+      const paragraphTopPadding = parseInt(computedParagraphStyle.getPropertyValue('padding-top').replace('px', ''));
       
       // Get line positions (bottom edge of each line)
       let linePositions = new Set();
       let lineWalker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
       while (textNode = lineWalker.nextNode()) {
-        if (window.getComputedStyle(textNode.parentElement).lineHeight == computedParagraphStyle.lineHeight) {
+        const computedStyle = window.getComputedStyle(textNode.parentElement);
+        const lineHeight = parseInt((computedStyle.lineHeight == 'normal' ? computedStyle.fontSize : computedStyle.lineHeight).replace('px', ''));
+        if (lineHeight >= paragraphLineHeight) {
           const referenceRange = document.createRange();
           referenceRange.selectNode(textNode);
           for (const rangeRect of referenceRange.getClientRects()) linePositions.add(rangeRect.bottom);
@@ -983,12 +987,17 @@ function Highlighter(options = hhDefaultOptions) {
       // Create a merged rect for each line
       for (let ln = 0; ln < linePositions.length; ln++) {
         const linePosition = linePositions[ln];
-        const previousLinePosition = ln == 0 ? paragraphRect.top : linePositions[ln-1];
+        const previousLinePosition = ln == 0 ? paragraphRect.top + paragraphTopPadding : linePositions[ln-1];
         const mergedRect = new DOMRect(paragraphRect.right, previousLinePosition, 0, linePosition - previousLinePosition);
+        if (mergedRects.length > 0 && ln == 1 && mergedRects[mergedRects.length-1].height < mergedRect.height) {
+          // Increase the row height for the first line in the paragraph to match the second line
+          mergedRects[mergedRects.length-1].y += mergedRects[mergedRects.length-1].height - mergedRect.height;
+          mergedRects[mergedRects.length-1].height = mergedRect.height;
+        }
         for (let r = 0; r < unmergedRects.length; r++) {
           const rect = unmergedRects[r];
           const rectVerticalPosition = rect.y + (rect.height / 2);
-          if (paragraphRect.width == rect.width && paragraphRect.height == rect.height && paragraphRect.top == rect.top && paragraphRect.left == rect.left) {
+          if (Math.round(paragraphRect.width) == Math.round(rect.width) && Math.round(paragraphRect.height) == Math.round(rect.height) && Math.round(paragraphRect.top) == Math.round(rect.top) && Math.round(paragraphRect.left) == Math.round(rect.left)) {
             // Remove rects that are the same size as the paragraph rect (the highlight range gives us these unneeded rects for "middle" paragraphs between the start and end paragraph)
             unmergedRects.splice(r, 1);
             r--;
@@ -999,7 +1008,7 @@ function Highlighter(options = hhDefaultOptions) {
             unmergedRects.splice(r, 1); r--;
           }
         }
-        if (mergedRect.width != 0) mergedRects.push(mergedRect);
+        if (mergedRect.width > 0) mergedRects.push(mergedRect);
       }
     }
     

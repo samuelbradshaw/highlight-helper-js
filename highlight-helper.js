@@ -52,11 +52,7 @@ function Highlighter(options = hhDefaultOptions) {
       ${options.containerSelector} {
         position: relative;
         -webkit-tap-highlight-color: transparent;
-        -webkit-user-select: text;
-        user-select: text;
       }
-      ${options.containerSelector} rt,
-      ${options.containerSelector} img,
       .hh-wrapper-start, .hh-wrapper-end {
         -webkit-user-select: none;
         user-select: none;
@@ -208,7 +204,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
-      const range = getRestoredHighlightRange(highlightInfo);
+      const range = getCorrectedRangeObj(highlightId);
       const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
       const isReadOnly = (options.drawingMode === 'inserted-spans') || highlightInfo.readOnly;
       const wasDrawnAsReadOnly = this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
@@ -242,6 +238,8 @@ function Highlighter(options = hhDefaultOptions) {
           styledSpan.appendChild(textNode);
         }
         rangeParagraphs.forEach(p => { p.normalize(); });
+        // Update the highlight's stored range object (because the DOM changed)
+        range = getCorrectedRangeObj(highlightId);
       } else {
         // Draw highlights with Custom Highlight API
         if (options.drawingMode === 'highlight-api' && supportsHighlightApi) {
@@ -348,26 +346,25 @@ function Highlighter(options = hhDefaultOptions) {
     if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) return this.deactivateHighlights();
     
     // Calculate the bounds of the highlight range, if it's changed
-    let selectionRange, highlightRange;
+    let adjustedSelectionRange, highlightRange;
     let rangeText, rangeHtml, rangeParagraphIds;
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
-    const selection = getRestoredSelectionOrCaret(window.getSelection());
-    if (selection.type === 'Range') selectionRange = selection.getRangeAt(0);
-    if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || selectionRange) {
+    const selection = window.getSelection();
+    if (selection.type === 'Range') adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0));
+    if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || adjustedSelectionRange) {
       let startNode, startOffset, endNode, endOffset;
       if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
         startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
         startParagraphOffset = parseInt(attributes.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
         endParagraphId = attributes.endParagraphId ?? oldHighlightInfo?.endParagraphId;
         endParagraphOffset = parseInt(attributes.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
-        ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(startParagraphId), startParagraphOffset));
-        ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(endParagraphId), endParagraphOffset));
-      } else if (selectionRange) {
-        selectionRange = snapRangeToBoundaries(selectionRange);
-        startNode = selectionRange.startContainer;
-        startOffset = selectionRange.startOffset;
-        endNode = selectionRange.endContainer;
-        endOffset = selectionRange.endOffset;
+        ([ startNode, startOffset ] = getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset));
+        ([ endNode, endOffset ] = getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset));
+      } else if (adjustedSelectionRange) {
+        startNode = adjustedSelectionRange.startContainer;
+        startOffset = adjustedSelectionRange.startOffset;
+        endNode = adjustedSelectionRange.endContainer;
+        endOffset = adjustedSelectionRange.endOffset;
         ([ startParagraphId, startParagraphOffset ] = getParagraphOffset(startNode, startOffset));
         ([ endParagraphId, endParagraphOffset ] = getParagraphOffset(endNode, endOffset));
       }
@@ -565,22 +562,23 @@ function Highlighter(options = hhDefaultOptions) {
   document.addEventListener('selectionchange', (event) => respondToSelectionChange(event), { signal: controller.signal });
   const respondToSelectionChange = (event) => {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
-    if (selection.type === 'None') return;
-    const selectionRange = selection.getRangeAt(0);
+    const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
     
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
-    if (!activeSelectionHandle && previousSelectionRange && (selection.type === 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
+    if (!activeSelectionHandle && selectionRange && previousSelectionRange && (selection.type === 'Caret' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
       this.deactivateHighlights(false);
     }
     
-    if (selection.type === 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
+    if (selection.type === 'Range') {
       // Clear tap result (prevents hh:tap event from being sent when long-pressing or dragging to select text)
       tapResult = null;
       
-      if (activeHighlightId || (options.pointerMode === 'live' || (options.pointerMode === 'auto' && isStylus === true))) {
-        this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
+      if (this.annotatableContainer.contains(selection.anchorNode)) {
+        if (activeHighlightId || (options.pointerMode === 'live' || (options.pointerMode === 'auto' && isStylus === true))) {
+          this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
+        }
+        previousSelectionRange = selectionRange.cloneRange();
       }
-      previousSelectionRange = selectionRange.cloneRange();
     }
     
     updateSelectionUi('bounds');
@@ -669,9 +667,9 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToWindowPointerUp = (event) => {
     const selection = window.getSelection();
     if (selection.type === 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
-      const selectionRange = snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode).cloneRange();
+      const adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);
       selection.removeAllRanges();
-      selection.addRange(selectionRange);
+      selection.addRange(adjustedSelectionRange);
     }
     tapResult = null;
     clearTimeout(longPressTimeoutId);
@@ -769,7 +767,7 @@ function Highlighter(options = hhDefaultOptions) {
       });
       const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
       rangeParagraphs.forEach(p => { p.normalize(); });
-      if (highlightsById.hasOwnProperty(highlightId)) highlightInfo.rangeObj = getRestoredHighlightRange(highlightInfo);
+      getCorrectedRangeObj(highlightId);
     }
     
     // Remove Highlight API highlights
@@ -786,6 +784,9 @@ function Highlighter(options = hhDefaultOptions) {
   // Update selection background and handles
   const updateSelectionUi = (changeType = 'appearance') => {
     const selection = window.getSelection();
+    const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
+    if (selection.anchorNode && !this.annotatableContainer.contains(selection.anchorNode)) return;
+    
     const color = highlightsById[activeHighlightId]?.color;
     const colorString = options.colors[color] ?? 'AccentColor';
     const style = highlightsById[activeHighlightId]?.style;
@@ -809,9 +810,15 @@ function Highlighter(options = hhDefaultOptions) {
         selectionStylesheet.replaceSync(`${options.containerSelector} ::selection { background-color: transparent; }`);
       } else if (activeHighlightId) {
         const styleTemplate = getStyleTemplate(style, 'css', null);
-        selectionStylesheet.replaceSync(`${options.containerSelector} ::selection { ${styleTemplate} }`);
+        selectionStylesheet.replaceSync(`
+          ${options.containerSelector} ::selection { ${styleTemplate} }
+          ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
+        `);
       } else {
-        selectionStylesheet.replaceSync(`${options.containerSelector} ::selection { background-color: Highlight; color: HighlightText; }`);
+        selectionStylesheet.replaceSync(`
+          ${options.containerSelector} ::selection { background-color: Highlight; color: HighlightText; }
+          ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
+        `);
       }
       
       // Update selection handles
@@ -826,7 +833,6 @@ function Highlighter(options = hhDefaultOptions) {
     } else if (changeType === 'bounds') {
       // Update selection handle location and visibility
       if (selection.type === 'Range' && options.showSelectionHandles) {
-        const selectionRange = selection.getRangeAt(0);
         const selectionRangeRects = selectionRange.getClientRects();
         const startRect = selectionRangeRects[0];
         const endRect = selectionRangeRects[selectionRangeRects.length-1];
@@ -863,14 +869,15 @@ function Highlighter(options = hhDefaultOptions) {
         return window.getSelection().getRangeAt(0).cloneRange();
       } else if (anchorNode === startNode || this.annotatableContainer.contains(startNode)) {
         // Range starts in the container but ends outside
-        const lastParagraphTextNodesIter = document.createNodeIterator(this.annotatableParagraphs[this.annotatableParagraphs.length - 1], NodeFilter.SHOW_TEXT);
+        const lastParagraphTextNodeWalker = document.createTreeWalker(this.annotatableParagraphs[this.annotatableParagraphs.length - 1], NodeFilter.SHOW_TEXT);
         let nextNode;
-        while (nextNode = lastParagraphTextNodesIter.nextNode()) endNode = nextNode;
+        while (nextNode = lastParagraphTextNodeWalker.nextNode());
+        endNode = lastParagraphTextNodeWalker.previousNode();
         endOffset = endNode.length;
       } else if (anchorNode === endNode || this.annotatableContainer.contains(endNode)) {
         // Range starts outside of the container but ends inside
-        const firstParagraphTextNodesIter = document.createNodeIterator(this.annotatableParagraphs[0], NodeFilter.SHOW_TEXT);
-        startNode = firstParagraphTextNodesIter.nextNode();
+        const firstParagraphTextNodeWalker = document.createTreeWalker(this.annotatableParagraphs[0], NodeFilter.SHOW_TEXT);
+        startNode = firstParagraphTextNodeWalker.nextNode();
         startOffset = 0;
       }
     }
@@ -920,15 +927,23 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Get the character offset relative to the deepest relevant text node
-  const getTextNodeOffset = (parentElement, targetOffset) => {
-    let textNode, currentOffset = 0;
-    const textNodesIter = document.createNodeIterator(parentElement, NodeFilter.SHOW_TEXT);
-    while (textNode = textNodesIter.nextNode()) {
+  const getTextNodeAndOffset = (parentElement, targetOffset) => {
+    let textNode, firstTextNode, currentOffset = 0;
+    const walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
+    while (textNode = walker.nextNode()) {
+      if (!firstTextNode) firstTextNode = walker.currentNode;
       currentOffset += textNode.textContent.length;
       if (currentOffset >= targetOffset) {
         const relativeOffset = textNode.textContent.length - currentOffset + targetOffset
         return [ textNode, relativeOffset ];
       }
+    }
+    const direction = window.getSelection().direction;
+    if (direction == 'backward') {
+      return [ firstTextNode, 0 ];
+    } else {
+      const lastTextNode = walker.previousNode();
+      return [ lastTextNode, lastTextNode.textContent.length ];
     }
   }
   
@@ -983,11 +998,16 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Fix highlight range if the DOM changed and made the previous highlight range invalid
-  const getRestoredHighlightRange = (highlightInfo) => {
-    const highlightRange = highlightInfo.rangeObj;
-    if (highlightRange.startContainer.nodeType !== Node.TEXT_NODE || highlightRange.endContainer.nodeType !== Node.TEXT_NODE) {
-      ([ startNode, startOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.startParagraphId), highlightInfo.startParagraphOffset));
-      ([ endNode, endOffset ] = getTextNodeOffset(document.getElementById(highlightInfo.endParagraphId), highlightInfo.endParagraphOffset));
+  const getCorrectedRangeObj = (highlightId) => {
+    const highlightInfo = highlightsById[highlightId];
+    const highlightRange = highlightInfo?.rangeObj;
+    if (highlightRange && (
+      highlightRange.startContainer.nodeType !== Node.TEXT_NODE || highlightRange.endContainer.nodeType !== Node.TEXT_NODE ||
+      highlightRange.startOffset > highlightRange.startContainer.textContent.length - 1 ||
+      highlightRange.endOffset > highlightRange.endContainer.textContent.length
+    )) {
+      const [ startNode, startOffset ] = getTextNodeAndOffset(document.getElementById(highlightInfo.startParagraphId), highlightInfo.startParagraphOffset);
+      const [ endNode, endOffset ] = getTextNodeAndOffset(document.getElementById(highlightInfo.endParagraphId), highlightInfo.endParagraphOffset);
       highlightRange.setStart(startNode, startOffset);
       highlightRange.setEnd(endNode, endOffset);
     }

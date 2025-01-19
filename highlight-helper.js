@@ -204,7 +204,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
-      const range = getCorrectedRangeObj(highlightId);
+      let range = getCorrectedRangeObj(highlightId);
       const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
       const isReadOnly = (options.drawingMode === 'inserted-spans') || highlightInfo.readOnly;
       const wasDrawnAsReadOnly = this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
@@ -913,17 +913,14 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Get the character offset relative to the annotatable paragraph
-  // Adapted from https://stackoverflow.com/a/48812529/1349044
-  const getParagraphOffset = (currentNode, currentOffset, annotatableParagraph = null) => {
-    if (!currentNode.parentElement) return [ null, currentOffset ]
-    if (!annotatableParagraph) annotatableParagraph = currentNode.parentElement.closest(options.paragraphSelector);
-    if (currentNode === annotatableParagraph) return [ annotatableParagraph.id, currentOffset ];
-    let prevSibling;
-    while (prevSibling = (prevSibling || currentNode).previousSibling) {
-      let nodeContent = prevSibling.innerText || prevSibling.nodeValue || '';
-      currentOffset += nodeContent.length;
-    }
-    return getParagraphOffset(currentNode.parentElement, currentOffset, annotatableParagraph);
+  // Adapted from https://stackoverflow.com/a/4812022/1349044
+  const getParagraphOffset = (referenceTextNode, referenceTextNodeOffset) => {
+    const paragraph = referenceTextNode.parentElement.closest(options.paragraphSelector);
+    const referenceRange = document.createRange();
+    referenceRange.selectNodeContents(paragraph);
+    referenceRange.setEnd(referenceTextNode, referenceTextNodeOffset);
+    const paragraphOffset = referenceRange.toString().length;
+    return [ paragraph.id, paragraphOffset ];
   }
   
   // Get the character offset relative to the deepest relevant text node
@@ -938,6 +935,7 @@ function Highlighter(options = hhDefaultOptions) {
         return [ textNode, relativeOffset ];
       }
     }
+    // TODO: Direction isn't always accurate (maybe it resets when selection is cleared and set to a new range programmatically?)
     const direction = window.getSelection().direction;
     if (direction == 'backward') {
       return [ firstTextNode, 0 ];

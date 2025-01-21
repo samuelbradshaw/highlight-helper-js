@@ -1127,6 +1127,7 @@ if (isTouchDevice && isSafari) {
   tempInput.inputMode = 'none'; // Don't show keyboard
   tempInput.tabIndex = -1; // Prevent user from tabbing to input
   const initializeSelection = (event) => {
+    if (document.readyState !== 'complete') return setTimeout(initializeSelection, 10);
     document.body.append(tempInput);
     tempInput.focus();
     setTimeout(() => {

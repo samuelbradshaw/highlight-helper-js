@@ -785,7 +785,9 @@ function Highlighter(options = hhDefaultOptions) {
   const updateSelectionUi = (changeType = 'appearance') => {
     const selection = window.getSelection();
     const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
-    if (selection.anchorNode && !this.annotatableContainer.contains(selection.anchorNode)) return;
+    
+    // If the selection starts in another annotatable container, let the other container handle it
+    if (selection.anchorNode && selection.anchorNode.parentElement.closest('[data-hh-container]') && !this.annotatableContainer.contains(selection.anchorNode)) return;
     
     const color = highlightsById[activeHighlightId]?.color;
     const colorString = options.colors[color] ?? 'AccentColor';

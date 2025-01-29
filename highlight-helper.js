@@ -349,7 +349,7 @@ function Highlighter(options = hhDefaultOptions) {
     let adjustedSelectionRange, highlightRange;
     let rangeText, rangeHtml, rangeParagraphIds;
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
-    const selection = window.getSelection();
+    const selection = getRestoredSelectionOrCaret(window.getSelection());
     if (selection.type === 'Range') adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0));
     if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || adjustedSelectionRange) {
       let startNode, startOffset, endNode, endOffset;

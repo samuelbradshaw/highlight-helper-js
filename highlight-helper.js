@@ -131,6 +131,8 @@ function Highlighter(options = hhDefaultOptions) {
       <div class="hh-selection-handle" data-position="right"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
     `);
     selectionHandles = this.annotatableContainer.getElementsByClassName('hh-selection-handle');
+    selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '');
+    selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '');
     
     // Check for hyperlinks on the page
     hyperlinkElements = this.annotatableContainer.getElementsByTagName('a');
@@ -155,7 +157,7 @@ function Highlighter(options = hhDefaultOptions) {
   const isInitialized = initializeHighlighter();
   if (!isInitialized) return;
   
-  let activeHighlightId, previousSelectionRange, activeSelectionHandle, isStylus, tapResult, doubleTapTimeoutId, longPressTimeoutId;
+  let activeHighlightId, previousSelectionRange, activeSelectionHandle, dragAnchorNode, dragAnchorOffset, pointerType, tapResult, doubleTapTimeoutId, longPressTimeoutId;
   
   
   // -------- PUBLIC METHODS --------
@@ -272,8 +274,7 @@ function Highlighter(options = hhDefaultOptions) {
         }
       }
       
-      // Update wrapper
-      // TODO: Enable wrappers for editable highlights
+      // Update wrapper (for read-only highlights only)
       if (isReadOnly && !wasDrawnAsReadOnly) {
         if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
           const addWrapper = (edge, range, htmlString) => {
@@ -448,10 +449,8 @@ function Highlighter(options = hhDefaultOptions) {
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
-    if (selection.type !== 'Range') {
-      selection.removeAllRanges();
-      selection.addRange(highlightRange);
-    }
+    selection.removeAllRanges();
+    selection.addRange(highlightRange);
     this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
   
@@ -531,6 +530,9 @@ function Highlighter(options = hhDefaultOptions) {
       updateAppearanceStylesheet();
     } else if (key === 'containerSelector' || key === 'paragraphSelector') {
       initializeHighlighter(containerSelector);
+    } else if (key === 'selectionHandles') {
+      selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '');
+      selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '');
     }
   }
   
@@ -565,7 +567,7 @@ function Highlighter(options = hhDefaultOptions) {
     const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
     
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
-    if (!activeSelectionHandle && previousSelectionRange && (selection.type !== 'Range' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
+    if (previousSelectionRange && (selection.type !== 'Range' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
       this.deactivateHighlights(false);
     }
     
@@ -574,7 +576,7 @@ function Highlighter(options = hhDefaultOptions) {
       tapResult = null;
       
       if (this.annotatableContainer.contains(selection.anchorNode)) {
-        if (activeHighlightId || (options.pointerMode === 'live' || (options.pointerMode === 'auto' && isStylus === true))) {
+        if (activeHighlightId || (options.pointerMode === 'live' || (options.pointerMode === 'auto' && pointerType === 'pen'))) {
           this.createOrUpdateHighlight({ highlightId: activeHighlightId, });
         }
         previousSelectionRange = selectionRange.cloneRange();
@@ -587,12 +589,15 @@ function Highlighter(options = hhDefaultOptions) {
   // Pointer down in annotatable container
   this.annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: controller.signal });
   const respondToPointerDown = (event) => {
-    isStylus = event.pointerType === 'pen';
+    pointerType = event.pointerType;
     
     // User is dragging a selection handle
-    if (event.target && event.target.parentElement.classList.contains('hh-selection-handle')) {
+    if (event.target && event.target.closest('.hh-selection-handle')) {
       event.preventDefault();
-      activeSelectionHandle = event.target.parentElement;
+      activeSelectionHandle = event.target.parentElement.closest('.hh-selection-handle');
+      const selectionRange = window.getSelection().getRangeAt(0);
+      dragAnchorNode = activeSelectionHandle.dataset.position === 'left' ? selectionRange.endContainer : selectionRange.startContainer;
+      dragAnchorOffset = activeSelectionHandle.dataset.position === 'left' ? selectionRange.endOffset : selectionRange.startOffset;
       this.annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag, { signal: controller.signal });
     }
     
@@ -616,29 +621,31 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToSelectionHandleDrag = (event) => {
     const selection = window.getSelection();
     const selectionRange = selection.getRangeAt(0);
+    const dragCaret = getCaretFromPointerEvent(event);
     
-    const dragRange = getRangeFromTapEvent(event);
-    // TODO: While dragging, the selection startContainer or endContainer frequently gets set to the parent element. This causes the selection to flicker while dragging. The line below is a workaround, but it would be nice to figure out the root cause.
-    if (!dragRange || dragRange.startContainer.nodeType !== Node.TEXT_NODE || dragRange.endContainer.nodeType !== Node.TEXT_NODE) return;
+    // Return if there's no drag caret, or if the caret is invalid
+    if (!dragCaret || dragCaret.startContainer.nodeType !== Node.TEXT_NODE || dragCaret.endContainer.nodeType !== Node.TEXT_NODE) return;
     
-    const dragPositionRelativeToSelectionStart = dragRange.compareBoundaryPoints(Range.START_TO_START, selectionRange);
-    const dragPositionRelativeToSelectionEnd = dragRange.compareBoundaryPoints(Range.END_TO_END, selectionRange);
-    
-    // TODO: Don't allow Caret (0-width) selections while dragging selection handles
+    const dragPositionRelativeToSelectionStart = dragCaret.compareBoundaryPoints(Range.START_TO_START, selectionRange);
+    const dragPositionRelativeToSelectionEnd = dragCaret.compareBoundaryPoints(Range.END_TO_END, selectionRange);
     if (activeSelectionHandle.dataset.position === 'left' && dragPositionRelativeToSelectionEnd === 1 || activeSelectionHandle.dataset.position === 'right' && dragPositionRelativeToSelectionStart === -1) {
+      // Left and right selection handles switched positions
       for (const selectionHandle of selectionHandles) {
         selectionHandle.dataset.position = selectionHandle.dataset.position === 'left' ? 'right' : 'left';
       }
-      // TODO: Switch selection direction and don't deactivate the highlight
-      this.deactivateHighlights();
-      activeSelectionHandle = null;
-      this.annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
+      if (activeSelectionHandle.dataset.position === 'left') {
+        selectionRange.setEnd(dragAnchorNode, dragAnchorOffset);
+        selectionRange.setStart(dragCaret.startContainer, dragCaret.startOffset);
+      } else {
+        selectionRange.setStart(dragAnchorNode, dragAnchorOffset);
+        selectionRange.setEnd(dragCaret.endContainer, dragCaret.endOffset);
+      }
     } else if (activeSelectionHandle.dataset.position === 'left' && dragPositionRelativeToSelectionStart !== 0) {
       // Left selection handle is before or after the selection start
-      selectionRange.setStart(dragRange.startContainer, dragRange.startOffset);
+      selectionRange.setStart(dragCaret.startContainer, dragCaret.startOffset);
     } else if (activeSelectionHandle.dataset.position === 'right' && dragPositionRelativeToSelectionEnd !== 0) {
       // Right selection handle is before or after the selection end
-      selectionRange.setEnd(dragRange.endContainer, dragRange.endOffset);
+      selectionRange.setEnd(dragCaret.endContainer, dragCaret.endOffset);
     }
   }
   
@@ -671,7 +678,7 @@ function Highlighter(options = hhDefaultOptions) {
   window.addEventListener('pointercancel', (event) => respondToWindowPointerUp(event), { signal: controller.signal });
   const respondToWindowPointerUp = (event) => {
     const selection = window.getSelection();
-    if (selection.type === 'Range' && this.annotatableContainer.contains(selection.anchorNode)) {
+    if (selection.type === 'Range' && activeHighlightId && this.annotatableContainer.contains(selection.anchorNode)) {
       const adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);
       selection.removeAllRanges();
       selection.addRange(adjustedSelectionRange);
@@ -739,7 +746,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     return {
       'targetFound': sortedTappedHighlights.length > 0 || tappedHyperlinks.length > 0,
-      'tapRange': getRangeFromTapEvent(pointerEvent),
+      'tapRange': getCaretFromPointerEvent(pointerEvent),
       'pointerEvent': pointerEvent,
       'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
@@ -829,18 +836,12 @@ function Highlighter(options = hhDefaultOptions) {
         `);
       }
       
-      // Update selection handles
-      if (options.showSelectionHandles) {
-        selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '');
-        selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '');
-      }
-      
       // Send event
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: { color: color, style: style, }}));
       
     } else if (changeType === 'bounds') {
       // Update selection handle location and visibility
-      if (selection.type === 'Range' && options.showSelectionHandles) {
+      if (selection.type === 'Range' && activeHighlightId && pointerType === 'mouse' && !activeSelectionHandle) {
         const selectionRangeRects = selectionRange.getClientRects();
         const startRect = selectionRangeRects[0];
         const endRect = selectionRangeRects[selectionRangeRects.length-1];
@@ -996,7 +997,7 @@ function Highlighter(options = hhDefaultOptions) {
         selection.addRange(previousSelectionRange);
       } else if (pointerEvent) {
         // In most browsers, tapping or clicking somewhere on the page creates a selection of 0 character length (selection.type === "Caret"). iOS Safari instead clears the selection (selection.type === "None"). This restores a Caret selection if the selection type is None.
-        let range = getRangeFromTapEvent(pointerEvent);
+        let range = getCaretFromPointerEvent(pointerEvent);
         selection.addRange(range);
       }
     }
@@ -1022,7 +1023,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Convert tap or click to a selection range
   // Adapted from https://stackoverflow.com/a/12924488/1349044
-  const getRangeFromTapEvent = (pointerEvent) => {
+  const getCaretFromPointerEvent = (pointerEvent) => {
     let range;
     if (document.caretPositionFromPoint) {
       // Most browsers
@@ -1034,8 +1035,6 @@ function Highlighter(options = hhDefaultOptions) {
       // Safari
       range = document.caretRangeFromPoint(pointerEvent.clientX, pointerEvent.clientY);
     }
-    const tapIsInExpandedRangeRect = isPointInRect(pointerEvent.clientX, pointerEvent.clientY, range.getBoundingClientRect(), 5);
-    if (!tapIsInExpandedRangeRect) range = null;
     return range;
   }
   
@@ -1201,7 +1200,6 @@ let hhDefaultOptions = {
     'left': '<div class="hh-default-handle"></div>',
     'right': '<div class="hh-default-handle"></div>',
   },
-  showSelectionHandles: false,
   rememberStyle: true,
   snapToWord: false,
   autoTapToActivate: true,

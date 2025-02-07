@@ -129,7 +129,7 @@
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
-        <label><input type="checkbox" id="hh-snap-to-word"> Snap selection to the nearest word</label><br>
+        <label><input type="checkbox" id="hh-snap-to-word"> Snap highlights to the nearest word</label><br>
       </p>
       <p>
         Pointer mode:<br>
@@ -340,6 +340,16 @@
       container.addEventListener('hh:selectionupdate', console.info)
       container.addEventListener('hh:ambiguousaction', console.info)
       container.addEventListener('hh:tap', console.info)
+      
+//       snippetDiv.addEventListener('hh:highlightcreate', console.warn)
+//       snippetDiv.addEventListener('hh:highlightupdate', console.warn)
+//       snippetDiv.addEventListener('hh:highlightremove', console.warn)
+//       snippetDiv.addEventListener('hh:highlightsload', console.warn)
+//       snippetDiv.addEventListener('hh:highlightactivate', console.warn)
+//       snippetDiv.addEventListener('hh:highlightdeactivate', console.warn)
+//       snippetDiv.addEventListener('hh:selectionupdate', console.warn)
+//       snippetDiv.addEventListener('hh:ambiguousaction', console.warn)
+//       snippetDiv.addEventListener('hh:tap', console.warn)
     </script>
   </body>
 </html>

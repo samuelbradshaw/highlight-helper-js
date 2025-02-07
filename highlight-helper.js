@@ -609,8 +609,7 @@ function Highlighter(options = hhDefaultOptions) {
     // Trigger a long-press event if the user doesn't lift their finger within the specified time
     if (options.longPressTimeout) longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
     
-    const tapRange = getRangeFromTapEvent(event);
-    tapResult = checkForTapTargets(tapRange);
+    tapResult = checkForTapTargets(event);
   }
   
   // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
@@ -620,7 +619,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     const dragRange = getRangeFromTapEvent(event);
     // TODO: While dragging, the selection startContainer or endContainer frequently gets set to the parent element. This causes the selection to flicker while dragging. The line below is a workaround, but it would be nice to figure out the root cause.
-    if (dragRange.startContainer.nodeType !== Node.TEXT_NODE || dragRange.endContainer.nodeType !== Node.TEXT_NODE) return;
+    if (!dragRange || dragRange.startContainer.nodeType !== Node.TEXT_NODE || dragRange.endContainer.nodeType !== Node.TEXT_NODE) return;
     
     const dragPositionRelativeToSelectionStart = dragRange.compareBoundaryPoints(Range.START_TO_START, selectionRange);
     const dragPositionRelativeToSelectionEnd = dragRange.compareBoundaryPoints(Range.END_TO_END, selectionRange);
@@ -653,7 +652,6 @@ function Highlighter(options = hhDefaultOptions) {
   this.annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event), { signal: controller.signal });
   const respondToPointerUp = (event, isLongPress = false) => {
     if (tapResult) {
-      tapResult.pointerEvent = event;
       tapResult.isLongPress = isLongPress;
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
       if (options.autoTapToActivate && tapResult?.targetFound && !isLongPress) {
@@ -712,36 +710,37 @@ function Highlighter(options = hhDefaultOptions) {
   // -------- UTILITY FUNCTIONS --------
   
   // Check if the tap is in the range of an existing highlight or link
-  const checkForTapTargets = (tapRange) => {
-    if (!tapRange) return;
+  const checkForTapTargets = (pointerEvent) => {
+    if (!pointerEvent) return;
     
     // Check for tapped highlights and hyperlinks
     const tappedHighlights = [];
     for (const highlightId of Object.keys(highlightsById)) {
       const highlightInfo = highlightsById[highlightId];
       const highlightRange = highlightInfo.rangeObj;
-      if (highlightRange.comparePoint(tapRange.startContainer, tapRange.startOffset) === 0) {
-        tappedHighlights.push(highlightInfo);
+      for (const rangeRect of highlightRange.getClientRects()) {
+        if (isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rangeRect, 5)) {
+          tappedHighlights.push(highlightInfo);
+          break;
+        }
       }
     }
     const tappedHyperlinks = [];
-    for (const hyperlinkPosition of Object.keys(hyperlinksByPosition)) {
-      const hyperlinkInfo = hyperlinksByPosition[hyperlinkPosition];
-      const hyperlinkRange = document.createRange()
-      hyperlinkRange.selectNodeContents(hyperlinkInfo.hyperlinkElement);
-      if (hyperlinkRange.comparePoint(tapRange.startContainer, tapRange.startOffset) === 0) {
+    for (const hyperlinkInfo of Object.values(hyperlinksByPosition)) {
+      if (pointerEvent.target === hyperlinkInfo.hyperlinkElement) {
         tappedHyperlinks.push(hyperlinkInfo);
       }
     }
     
     // Sort highlights (hyperlinks should already be sorted)
-    const tappedHyperlinkIds = [];
-    for (const highlightInfo of tappedHighlights) tappedHyperlinkIds.push(highlightInfo.highlightId);
-    const sortedTappedHighlights = this.getHighlightInfo(tappedHyperlinkIds);
+    const tappedHighlightIds = [];
+    for (const highlightInfo of tappedHighlights) tappedHighlightIds.push(highlightInfo.highlightId);
+    const sortedTappedHighlights = this.getHighlightInfo(tappedHighlightIds);
     
     return {
       'targetFound': sortedTappedHighlights.length > 0 || tappedHyperlinks.length > 0,
-      'tapRange': tapRange,
+      'tapRange': getRangeFromTapEvent(pointerEvent),
+      'pointerEvent': pointerEvent,
       'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
     }
@@ -1023,19 +1022,29 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Convert tap or click to a selection range
   // Adapted from https://stackoverflow.com/a/12924488/1349044
-  const getRangeFromTapEvent = (event) => {
+  const getRangeFromTapEvent = (pointerEvent) => {
     let range;
     if (document.caretPositionFromPoint) {
       // Most browsers
-      let caretPosition = document.caretPositionFromPoint(event.clientX, event.clientY);
+      let caretPosition = document.caretPositionFromPoint(pointerEvent.clientX, pointerEvent.clientY);
       range = document.createRange();
       range.setStart(caretPosition.offsetNode, caretPosition.offset);
       range.collapse(true);
     } else if (document.caretRangeFromPoint) {
       // Safari
-      range = document.caretRangeFromPoint(event.clientX, event.clientY);
+      range = document.caretRangeFromPoint(pointerEvent.clientX, pointerEvent.clientY);
     }
+    const tapIsInExpandedRangeRect = isPointInRect(pointerEvent.clientX, pointerEvent.clientY, range.getBoundingClientRect(), 5);
+    if (!tapIsInExpandedRangeRect) range = null;
     return range;
+  }
+  
+  // Check if a point is in a DOMRect
+  const isPointInRect = (x, y, rect, padding = 0) => {
+    return (
+      x >= rect.x - padding && x <= rect.x + rect.width + padding &&
+      y >= rect.y - padding && y <= rect.y + rect.height + padding
+    )
   }
   
   // Get merged client rects from the highlight range

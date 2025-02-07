@@ -155,7 +155,7 @@ function Highlighter(options = hhDefaultOptions) {
   const isInitialized = initializeHighlighter();
   if (!isInitialized) return;
   
-  let activeHighlightId, previousSelectionRange, activeSelectionHandle, isStylus, tapResult, longPressTimeoutId;
+  let activeHighlightId, previousSelectionRange, activeSelectionHandle, isStylus, tapResult, doubleTapTimeoutId, longPressTimeoutId;
   
   
   // -------- PUBLIC METHODS --------
@@ -594,6 +594,13 @@ function Highlighter(options = hhDefaultOptions) {
       event.preventDefault();
       activeSelectionHandle = event.target.parentElement;
       this.annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag, { signal: controller.signal });
+    }
+    
+    // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
+    if (doubleTapTimeoutId) {
+      return this.deactivateHighlights();
+    } else {
+      doubleTapTimeoutId = setTimeout(() => doubleTapTimeoutId = clearTimeout(doubleTapTimeoutId), 500);
     }
     
     // Return if it's not a regular click, or if the user is tapping away from an existing selection

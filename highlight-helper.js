@@ -656,10 +656,10 @@ function Highlighter(options = hhDefaultOptions) {
       tapResult.pointerEvent = event;
       tapResult.isLongPress = isLongPress;
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: tapResult, }));
-      if (options.autoTapToActivate && tapResult?.targetFound) {
-        if (tapResult.highlights.length === 1 && tapResult.hyperlinks.length === 0 && !isLongPress) {
+      if (options.autoTapToActivate && tapResult?.targetFound && !isLongPress) {
+        if (tapResult.highlights.length === 1 && tapResult.hyperlinks.length === 0) {
           return this.activateHighlight(tapResult.highlights[0].highlightId);
-        } else if (tapResult.highlights.length === 0 && tapResult.hyperlinks.length === 1 && !isLongPress) {
+        } else if (tapResult.highlights.length === 0 && tapResult.hyperlinks.length === 1) {
           return this.activateHyperlink(tapResult.hyperlinks[0].position);
         } else if (tapResult.highlights.length + tapResult.hyperlinks.length > 1) {
           return this.annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: tapResult, }));
@@ -679,7 +679,7 @@ function Highlighter(options = hhDefaultOptions) {
       selection.addRange(adjustedSelectionRange);
     }
     tapResult = null;
-    clearTimeout(longPressTimeoutId);
+    longPressTimeoutId = clearTimeout(longPressTimeoutId);
     if (activeSelectionHandle) {
       activeSelectionHandle = null;
       this.annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);

@@ -734,7 +734,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     const tappedHyperlinks = [];
     for (const hyperlinkInfo of Object.values(hyperlinksByPosition)) {
-      if (pointerEvent.target === hyperlinkInfo.hyperlinkElement) {
+      if (pointerEvent.target.closest('a') === hyperlinkInfo.hyperlinkElement) {
         tappedHyperlinks.push(hyperlinkInfo);
       }
     }

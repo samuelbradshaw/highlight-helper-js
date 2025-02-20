@@ -53,7 +53,7 @@ function Highlighter(options = hhDefaultOptions) {
         position: relative;
         -webkit-tap-highlight-color: transparent;
       }
-      .hh-wrapper-start, .hh-wrapper-end {
+      .hh-wrapper-start, .hh-wrapper-end, .hh-selection-handle {
         -webkit-user-select: none;
         user-select: none;
       }
@@ -81,11 +81,11 @@ function Highlighter(options = hhDefaultOptions) {
       .hh-default-handle {
         position: absolute;
         width: 10px;
-        height: calc(100% + 5px);
+        height: min(20px, 100%);
         background-color: hsl(from var(--hh-color) h 80% 50% / 1);
         outline: 1px solid white;
         outline-offset: -1px;
-        top: 0;
+        bottom: -2px;
       }
       .hh-selection-handle[data-position="left"] .hh-default-handle {
         right: 0;
@@ -621,7 +621,7 @@ function Highlighter(options = hhDefaultOptions) {
   const respondToSelectionHandleDrag = (event) => {
     const selection = window.getSelection();
     const selectionRange = selection.getRangeAt(0);
-    const dragCaret = getCaretFromPointerEvent(event);
+    const dragCaret = getCaretFromCoordinates(event.clientX, event.clientY);
     
     // Return if there's no drag caret, or if the caret is invalid
     if (!dragCaret || dragCaret.startContainer.nodeType !== Node.TEXT_NODE || dragCaret.endContainer.nodeType !== Node.TEXT_NODE) return;
@@ -746,7 +746,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     return {
       'targetFound': sortedTappedHighlights.length > 0 || tappedHyperlinks.length > 0,
-      'tapRange': getCaretFromPointerEvent(pointerEvent),
+      'tapRange': getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
       'pointerEvent': pointerEvent,
       'highlights': sortedTappedHighlights,
       'hyperlinks': tappedHyperlinks,
@@ -997,7 +997,7 @@ function Highlighter(options = hhDefaultOptions) {
         selection.addRange(previousSelectionRange);
       } else if (pointerEvent) {
         // In most browsers, tapping or clicking somewhere on the page creates a selection of 0 character length (selection.type === "Caret"). iOS Safari instead clears the selection (selection.type === "None"). This restores a Caret selection if the selection type is None.
-        let range = getCaretFromPointerEvent(pointerEvent);
+        let range = getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY);
         selection.addRange(range);
       }
     }
@@ -1023,17 +1023,17 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Convert tap or click to a selection range
   // Adapted from https://stackoverflow.com/a/12924488/1349044
-  const getCaretFromPointerEvent = (pointerEvent) => {
+  const getCaretFromCoordinates = (clientX, clientY) => {
     let range;
     if (document.caretPositionFromPoint) {
       // Most browsers
-      let caretPosition = document.caretPositionFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+      let caretPosition = document.caretPositionFromPoint(clientX, clientY);
       range = document.createRange();
       range.setStart(caretPosition.offsetNode, caretPosition.offset);
       range.collapse(true);
     } else if (document.caretRangeFromPoint) {
       // Safari
-      range = document.caretRangeFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+      range = document.caretRangeFromPoint(clientX, clientY);
     }
     return range;
   }

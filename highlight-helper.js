@@ -874,20 +874,35 @@ function Highlighter(options = hhDefaultOptions) {
     if (!this.annotatableContainer.contains(range.commonAncestorContainer)) {
       if (anchorNode && !this.annotatableContainer.contains(anchorNode)) {
         // Range is from a selection, and the selection anchor is outside of the container
-        window.getSelection().collapseToStart();
-        return window.getSelection().getRangeAt(0).cloneRange();
+        return range.cloneRange().collapse(true);
       } else if (anchorNode === startNode || this.annotatableContainer.contains(startNode)) {
         // Range starts in the container but ends outside
-        const lastParagraphTextNodeWalker = document.createTreeWalker(this.annotatableParagraphs[this.annotatableParagraphs.length - 1], NodeFilter.SHOW_TEXT);
-        let nextNode;
-        while (nextNode = lastParagraphTextNodeWalker.nextNode());
-        endNode = lastParagraphTextNodeWalker.previousNode();
+        endNode = getLastTextNode(this.annotatableParagraphs[this.annotatableParagraphs.length - 1]);
         endOffset = endNode.length;
       } else if (anchorNode === endNode || this.annotatableContainer.contains(endNode)) {
         // Range starts outside of the container but ends inside
-        const firstParagraphTextNodeWalker = document.createTreeWalker(this.annotatableParagraphs[0], NodeFilter.SHOW_TEXT);
-        startNode = firstParagraphTextNodeWalker.nextNode();
+        startNode = getFirstTextNode(this.annotatableParagraphs[0]);
         startOffset = 0;
+      }
+    }
+    
+    // Prevent the range from starting or ending in an element that doesn't match the paragraph selector
+    if (this.annotatableContainer.contains(range.commonAncestorContainer) && (!startNode.parentElement.closest(options.paragraphSelector) || !endNode.parentElement.closest(options.paragraphSelector))) {
+      annotatableParagraphsInRange = Array.from(this.annotatableParagraphs).filter((paragraph) => {
+        const relativeStartPosition = startNode.compareDocumentPosition(paragraph);
+        const relativeEndPosition = endNode.compareDocumentPosition(paragraph);
+        return (relativeStartPosition & Node.DOCUMENT_POSITION_FOLLOWING || relativeStartPosition & Node.DOCUMENT_POSITION_CONTAINS) && (relativeEndPosition & Node.DOCUMENT_POSITION_PRECEDING || relativeEndPosition & Node.DOCUMENT_POSITION_CONTAINS);
+      });
+      if (annotatableParagraphsInRange.length === 0) {
+        return range.cloneRange().collapse(true);
+      }
+      if (!startNode.parentElement.closest(options.paragraphSelector)) {
+        startNode = getFirstTextNode(annotatableParagraphsInRange[0]);
+        startOffset = 0;
+      }
+      if (!endNode.parentElement.closest(options.paragraphSelector)) {
+        endNode = getLastTextNode(annotatableParagraphsInRange[annotatableParagraphsInRange.length - 1]);
+        endOffset = endNode.length;
       }
     }
     
@@ -896,9 +911,9 @@ function Highlighter(options = hhDefaultOptions) {
       // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
       if (startOffset === startNode.textContent.length) {
         let parentElement = range.commonAncestorContainer;
-        let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
+        let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT, (node) => node.parentNode.closest(options.paragraphSelector) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP);
         let nextTextNode = walker.nextNode();
-        while (nextTextNode !== startNode) nextTextNode = walker.nextNode();
+        while (nextTextNode && nextTextNode !== startNode) nextTextNode = walker.nextNode();
         nextTextNode = walker.nextNode();
         if (nextTextNode) {
           startNode = nextTextNode;
@@ -952,6 +967,20 @@ function Highlighter(options = hhDefaultOptions) {
       const lastTextNode = walker.previousNode();
       return [ lastTextNode, lastTextNode.textContent.length ];
     }
+  }
+  
+  // Get the first text node in an element
+  const getFirstTextNode = (element) => {
+    const firstParagraphTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    return firstParagraphTextNodeWalker.nextNode();
+  }
+  
+  // Get the last text node in an element
+  const getLastTextNode = (element) => {
+    const lastParagraphTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let nextNode;
+    while (nextNode = lastParagraphTextNodeWalker.nextNode());
+    return lastParagraphTextNodeWalker.currentNode;
   }
   
   // Update appearance stylesheet (user-defined colors and styles)

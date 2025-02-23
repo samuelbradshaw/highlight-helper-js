@@ -68,30 +68,30 @@ function Highlighter(options = hhDefaultOptions) {
       }
       .hh-selection-handle [draggable] {
         position: absolute;
-        top: 0;
-        width: 1em;
-        height: calc(100% + 1em);
+        top: -0.3em;
+        width: 3.2em;
+        height: calc(100% + 1.3em);
         background-color: transparent;
         z-index: 1;
       }
-      .hh-selection-handle[data-side="left"] [draggable] { right: 0; }
-      .hh-selection-handle[data-side="right"] [draggable] { left: 0; }
+      .hh-selection-handle[data-side="left"] [draggable] { right: -2em; }
+      .hh-selection-handle[data-side="right"] [draggable] { left: -2em; }
       .hh-default-handle {
         position: absolute;
-        width: 14px;
-        height: min(20px, 100%);
+        width: 0.8em;
+        height: min(1.2em, 100%);
         background-color: hsl(from var(--hh-color) h 80% 40% / 1);
-        outline: 1px solid white;
-        outline-offset: -1px;
-        bottom: -2px;
+        outline: 0.1em solid hsla(0, 0%, 100%, 0.8);
+        outline-offset: -0.05em;
+        bottom: -0.2em;
       }
       .hh-selection-handle[data-side="left"] .hh-default-handle {
         right: 0;
-        border-radius: 20px 0 10px 10px;
+        border-radius: 1em 0 0.6em 0.6em;
       }
       .hh-selection-handle[data-side="right"] .hh-default-handle {
         left: 0;
-        border-radius: 0 20px 10px 10px;
+        border-radius: 0 1em 0.6em 0.6em;
       }
       .hh-svg-background {
         position: absolute;
@@ -605,7 +605,7 @@ function Highlighter(options = hhDefaultOptions) {
         this.annotatableContainer.dataset.hhDragging = 'true';
         const selectionHandleClientRect = activeSelectionHandle.getBoundingClientRect();
         const lineHeight = selectionHandleClientRect.bottom - selectionHandleClientRect.top;
-        activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 4));
+        activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 6));
         const selectionRange = window.getSelection().getRangeAt(0);
         dragAnchorNode = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
         dragAnchorOffset = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endOffset : selectionRange.startOffset;

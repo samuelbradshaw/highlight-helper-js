@@ -59,8 +59,8 @@ function Highlighter(options = hhDefaultOptions) {
       }
       .hh-selection-handle {
         position: absolute;
-        width: 0;
-        display: none;
+        width: 0px;
+        visibility: hidden;
       }
       .hh-selection-handle-content {
         position: absolute;
@@ -69,29 +69,27 @@ function Highlighter(options = hhDefaultOptions) {
       .hh-selection-handle [draggable] {
         position: absolute;
         top: 0;
-        width: 15px;
-        height: calc(100% + 10px);
+        width: 1em;
+        height: calc(100% + 1em);
         background-color: transparent;
         z-index: 1;
       }
-      .hh-selection-handle [draggable]:hover,
-      .hh-selection-handle [draggable]:active { cursor: ew-resize; }
-      .hh-selection-handle[data-position="left"] [draggable] { right: 0; }
-      .hh-selection-handle[data-position="right"] [draggable] { left: 0; }
+      .hh-selection-handle[data-side="left"] [draggable] { right: 0; }
+      .hh-selection-handle[data-side="right"] [draggable] { left: 0; }
       .hh-default-handle {
         position: absolute;
-        width: 10px;
+        width: 14px;
         height: min(20px, 100%);
-        background-color: hsl(from var(--hh-color) h 80% 50% / 1);
+        background-color: hsl(from var(--hh-color) h 80% 40% / 1);
         outline: 1px solid white;
         outline-offset: -1px;
         bottom: -2px;
       }
-      .hh-selection-handle[data-position="left"] .hh-default-handle {
+      .hh-selection-handle[data-side="left"] .hh-default-handle {
         right: 0;
         border-radius: 20px 0 10px 10px;
       }
-      .hh-selection-handle[data-position="right"] .hh-default-handle {
+      .hh-selection-handle[data-side="right"] .hh-default-handle {
         left: 0;
         border-radius: 0 20px 10px 10px;
       }
@@ -127,12 +125,10 @@ function Highlighter(options = hhDefaultOptions) {
     svgBackground.classList.add('hh-svg-background');
     this.annotatableContainer.appendChild(svgBackground);
     this.annotatableContainer.insertAdjacentHTML('beforeend', `
-      <div class="hh-selection-handle" data-position="left"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
-      <div class="hh-selection-handle" data-position="right"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+      <div class="hh-selection-handle" data-side="left" data-position="start"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+      <div class="hh-selection-handle" data-side="right" data-position="end"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
     `);
     selectionHandles = this.annotatableContainer.getElementsByClassName('hh-selection-handle');
-    selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '');
-    selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '');
     
     // Check for hyperlinks on the page
     hyperlinkElements = this.annotatableContainer.getElementsByTagName('a');
@@ -352,7 +348,7 @@ function Highlighter(options = hhDefaultOptions) {
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     if (selection.type === 'Range') adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0));
-    if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || adjustedSelectionRange) {
+    if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
       let startNode, startOffset, endNode, endOffset;
       if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
         startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
@@ -531,8 +527,9 @@ function Highlighter(options = hhDefaultOptions) {
     } else if (key === 'containerSelector' || key === 'paragraphSelector') {
       initializeHighlighter(containerSelector);
     } else if (key === 'selectionHandles') {
-      selectionHandles[0].children[1].innerHTML = (options.selectionHandles.left ?? '');
-      selectionHandles[1].children[1].innerHTML = (options.selectionHandles.right ?? '');
+      for (const selectionHandle of selectionHandles) {
+        selectionHandle.children[1].innerHTML = options.selectionHandles[selectionHandle.dataset.side] ?? '';
+      }
     }
   }
   
@@ -567,7 +564,7 @@ function Highlighter(options = hhDefaultOptions) {
     const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
     
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
-    if (previousSelectionRange && (selection.type !== 'Range' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
+    if (!activeSelectionHandle && previousSelectionRange && (selection.type !== 'Range' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
       this.deactivateHighlights(false);
     }
     
@@ -595,10 +592,15 @@ function Highlighter(options = hhDefaultOptions) {
     if (event.target && event.target.closest('.hh-selection-handle')) {
       event.preventDefault();
       activeSelectionHandle = event.target.parentElement.closest('.hh-selection-handle');
+      this.annotatableContainer.dataset.hhDragging = 'true';
+      const selectionHandleClientRect = activeSelectionHandle.getBoundingClientRect();
+      const lineHeight = selectionHandleClientRect.bottom - selectionHandleClientRect.top;
+      activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 4));
       const selectionRange = window.getSelection().getRangeAt(0);
-      dragAnchorNode = activeSelectionHandle.dataset.position === 'left' ? selectionRange.endContainer : selectionRange.startContainer;
-      dragAnchorOffset = activeSelectionHandle.dataset.position === 'left' ? selectionRange.endOffset : selectionRange.startOffset;
+      dragAnchorNode = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
+      dragAnchorOffset = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
       this.annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag, { signal: controller.signal });
+      updateSelectionUi('bounds');
     }
     
     // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
@@ -619,34 +621,26 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
   const respondToSelectionHandleDrag = (event) => {
+    activeSelectionHandle.dataset.pointerXPosition = event.clientX;
+    activeSelectionHandle.dataset.pointerYPosition = event.clientY;
     const selection = window.getSelection();
     const selectionRange = selection.getRangeAt(0);
-    const dragCaret = getCaretFromCoordinates(event.clientX, event.clientY);
+    const dragCaret = getCaretFromCoordinates(event.clientX, event.clientY - activeSelectionHandle.dataset.dragYOffset, true, false, true);
     
     // Return if there's no drag caret, or if the caret is invalid
     if (!dragCaret || dragCaret.startContainer.nodeType !== Node.TEXT_NODE || dragCaret.endContainer.nodeType !== Node.TEXT_NODE) return;
     
-    const dragPositionRelativeToSelectionStart = dragCaret.compareBoundaryPoints(Range.START_TO_START, selectionRange);
+    // Check if start and end selection handles switched positions
+    const dragPositionRelativeToSelectionStart = dragCaret.compareBoundaryPoints(Range.START_TO_END, selectionRange);
     const dragPositionRelativeToSelectionEnd = dragCaret.compareBoundaryPoints(Range.END_TO_END, selectionRange);
-    if (activeSelectionHandle.dataset.position === 'left' && dragPositionRelativeToSelectionEnd === 1 || activeSelectionHandle.dataset.position === 'right' && dragPositionRelativeToSelectionStart === -1) {
-      // Left and right selection handles switched positions
+    if (activeSelectionHandle.dataset.position === 'start' && dragPositionRelativeToSelectionEnd === 1 || activeSelectionHandle.dataset.position === 'end' && dragPositionRelativeToSelectionStart === -1) {
       for (const selectionHandle of selectionHandles) {
-        selectionHandle.dataset.position = selectionHandle.dataset.position === 'left' ? 'right' : 'left';
+        selectionHandle.dataset.position = selectionHandle.dataset.position === 'start' ? 'end' : 'start';
       }
-      if (activeSelectionHandle.dataset.position === 'left') {
-        selectionRange.setEnd(dragAnchorNode, dragAnchorOffset);
-        selectionRange.setStart(dragCaret.startContainer, dragCaret.startOffset);
-      } else {
-        selectionRange.setStart(dragAnchorNode, dragAnchorOffset);
-        selectionRange.setEnd(dragCaret.endContainer, dragCaret.endOffset);
-      }
-    } else if (activeSelectionHandle.dataset.position === 'left' && dragPositionRelativeToSelectionStart !== 0) {
-      // Left selection handle is before or after the selection start
-      selectionRange.setStart(dragCaret.startContainer, dragCaret.startOffset);
-    } else if (activeSelectionHandle.dataset.position === 'right' && dragPositionRelativeToSelectionEnd !== 0) {
-      // Right selection handle is before or after the selection end
-      selectionRange.setEnd(dragCaret.endContainer, dragCaret.endOffset);
     }
+    
+    // Update selection
+    selection.setBaseAndExtent(dragAnchorNode, dragAnchorOffset, dragCaret.endContainer, dragCaret.endOffset);
   }
   
   // Long press in annotatable container (triggered by setTimeout() in pointerdown event)
@@ -687,6 +681,8 @@ function Highlighter(options = hhDefaultOptions) {
     longPressTimeoutId = clearTimeout(longPressTimeoutId);
     if (activeSelectionHandle) {
       activeSelectionHandle = null;
+      updateSelectionUi('bounds');
+      this.annotatableContainer.dataset.hhDragging = 'false';
       this.annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
     }
   }
@@ -846,19 +842,31 @@ function Highlighter(options = hhDefaultOptions) {
         const startRect = selectionRangeRects[0];
         const endRect = selectionRangeRects[selectionRangeRects.length-1];
         const annotatableContainerClientRect = this.annotatableContainer.getBoundingClientRect();
-        selectionHandles[0].dataset.position = 'left';
-        selectionHandles[0].style.display = 'block';
-        selectionHandles[0].style.height = startRect.height + 'px';
-        selectionHandles[0].style.left = startRect.left - annotatableContainerClientRect.left + 'px';
-        selectionHandles[0].style.top = startRect.top - annotatableContainerClientRect.top + 'px';
-        selectionHandles[1].dataset.position = 'right';
-        selectionHandles[1].style.display = 'block';
-        selectionHandles[1].style.height = endRect.height + 'px';
-        selectionHandles[1].style.left = endRect.right - annotatableContainerClientRect.left + 'px';
-        selectionHandles[1].style.top = endRect.top - annotatableContainerClientRect.top + 'px';
+        const startNodeIsRtl = window.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
+        const endNodeIsRtl = window.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
+        
+        for (const selectionHandle of selectionHandles) {
+          selectionHandle.style.visibility = 'visible';
+          let side;
+          if (selectionHandle.dataset.position === 'start') {
+            side = startNodeIsRtl ? 'right' : 'left';
+            selectionHandle.style.left = startRect[side] - annotatableContainerClientRect.left + 'px';
+            selectionHandle.style.height = startRect.height + 'px';
+            selectionHandle.style.top = startRect.top - annotatableContainerClientRect.top + 'px';
+          } else {
+            side = endNodeIsRtl ? 'left' : 'right';
+            selectionHandle.style.left = endRect[side] - annotatableContainerClientRect.left + 'px';
+            selectionHandle.style.height = endRect.height + 'px';
+            selectionHandle.style.top = endRect.top - annotatableContainerClientRect.top + 'px';
+          }
+          if (selectionHandle.dataset.side !== side) {
+            selectionHandle.dataset.side = side;
+            this.setOption('selectionHandles', options.selectionHandles);
+          }
+        }
       } else {
-        selectionHandles[0].style.display = 'none';
-        selectionHandles[1].style.display = 'none';
+        selectionHandles[0].style.visibility = 'hidden';
+        selectionHandles[1].style.visibility = 'hidden';
       }
     }
   }
@@ -971,16 +979,16 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Get the first text node in an element
   const getFirstTextNode = (element) => {
-    const firstParagraphTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    return firstParagraphTextNodeWalker.nextNode();
+    const firstTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    return firstTextNodeWalker.nextNode();
   }
   
   // Get the last text node in an element
   const getLastTextNode = (element) => {
-    const lastParagraphTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const lastTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     let nextNode;
-    while (nextNode = lastParagraphTextNodeWalker.nextNode());
-    return lastParagraphTextNodeWalker.currentNode;
+    while (nextNode = lastTextNodeWalker.nextNode());
+    return lastTextNodeWalker.currentNode;
   }
   
   // Update appearance stylesheet (user-defined colors and styles)
@@ -1052,7 +1060,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Convert tap or click to a selection range
   // Adapted from https://stackoverflow.com/a/12924488/1349044
-  const getCaretFromCoordinates = (clientX, clientY) => {
+  const getCaretFromCoordinates = (clientX, clientY, checkAnnotatable = false, checkXDistance = false, checkYDistance = false) => {
     let range;
     if (document.caretPositionFromPoint) {
       // Most browsers
@@ -1064,6 +1072,13 @@ function Highlighter(options = hhDefaultOptions) {
       // Safari
       range = document.caretRangeFromPoint(clientX, clientY);
     }
+    if (checkXDistance || checkYDistance) {
+      const maxDistance = 30;
+      const caretClientRect = range.getBoundingClientRect();
+      if (checkXDistance && Math.abs(clientX - caretClientRect.x) > maxDistance) return;
+      if (checkYDistance && Math.abs(clientY - caretClientRect.top) > maxDistance && Math.abs(clientY - caretClientRect.bottom) > maxDistance) return;
+    }
+    if (checkAnnotatable && !range.startContainer.parentElement.closest(options.paragraphSelector)) return;
     return range;
   }
   
@@ -1105,7 +1120,7 @@ function Highlighter(options = hhDefaultOptions) {
       for (let ln = 0; ln < linePositions.length; ln++) {
         const linePosition = linePositions[ln];
         const previousLinePosition = ln === 0 ? paragraphRect.top + paragraphTopPadding : linePositions[ln-1];
-        const mergedRect = new DOMRect(paragraphRect.right, previousLinePosition, 0, linePosition - previousLinePosition);
+        const mergedRect = new DOMRect(-1, previousLinePosition, -1, linePosition - previousLinePosition);
         if (mergedRects.length > 0 && ln === 1 && mergedRects[mergedRects.length-1].height < mergedRect.height) {
           // Increase the row height for the first line in the paragraph to match the second line
           mergedRects[mergedRects.length-1].y += mergedRects[mergedRects.length-1].height - mergedRect.height;
@@ -1119,9 +1134,15 @@ function Highlighter(options = hhDefaultOptions) {
             unmergedRects.splice(r, 1);
             r--;
           } else if (rectVerticalPosition > mergedRect.y && rectVerticalPosition < mergedRect.y + mergedRect.height) {
+            if (mergedRect.x === -1) {
+              mergedRect.x = rect.x;
+              mergedRect.width = rect.width;
+            }
             // Process then remove rects that apply to the current line
-            mergedRect.x = Math.min(mergedRect.x, rect.x);
-            mergedRect.width = Math.max(mergedRect.right, rect.right) - mergedRect.x;
+            minLeft = Math.min(mergedRect.x, rect.x);
+            maxRight = Math.max(mergedRect.right, rect.right);
+            mergedRect.width = maxRight - minLeft;
+            mergedRect.x = minLeft;
             unmergedRects.splice(r, 1); r--;
           }
         }
@@ -1148,6 +1169,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   updateAppearanceStylesheet();
   updateSelectionUi('appearance');
+  this.setOption('selectionHandles', options.selectionHandles);
 }
 
 

@@ -1108,6 +1108,25 @@ function Highlighter(options = hhDefaultOptions) {
     const unmergedRects = Array.from(range.getClientRects());
     const mergedRects = [];
     
+    // Remove element rects (only text node rects are needed)
+    const ancestorElementsInRange = [];
+    for (const paragraph of paragraphs) {
+      let element = paragraph;
+      while (element !== range.commonAncestorContainer) {
+        if (!ancestorElementsInRange.includes(element)) ancestorElementsInRange.push(element);
+        element = element.parentElement;
+      }
+    }
+    for (let ur = unmergedRects.length - 1; ur >= 0; ur--) {
+      const rect = unmergedRects[ur];
+      for (const element of ancestorElementsInRange) {
+        const elementRect = element.getBoundingClientRect();
+        if (Math.round(elementRect.width) === Math.round(rect.width) && Math.round(elementRect.height) === Math.round(rect.height) && Math.round(elementRect.top) === Math.round(rect.top) && Math.round(elementRect.left) === Math.round(rect.left)) {
+          unmergedRects.splice(ur, 1);
+        }
+      }
+    }
+    
     // Loop through the highlight's paragraphs
     for (const paragraph of paragraphs) {
       const paragraphRect = paragraph.getBoundingClientRect();
@@ -1142,11 +1161,7 @@ function Highlighter(options = hhDefaultOptions) {
         for (let r = 0; r < unmergedRects.length; r++) {
           const rect = unmergedRects[r];
           const rectVerticalPosition = rect.y + (rect.height / 2);
-          if (Math.round(paragraphRect.width) === Math.round(rect.width) && Math.round(paragraphRect.height) === Math.round(rect.height) && Math.round(paragraphRect.top) === Math.round(rect.top) && Math.round(paragraphRect.left) === Math.round(rect.left)) {
-            // Remove rects that are the same size as the paragraph rect (the highlight range gives us these unneeded rects for "middle" paragraphs between the start and end paragraph)
-            unmergedRects.splice(r, 1);
-            r--;
-          } else if (rectVerticalPosition > mergedRect.y && rectVerticalPosition < mergedRect.y + mergedRect.height) {
+          if (rectVerticalPosition > mergedRect.y && rectVerticalPosition < mergedRect.y + mergedRect.height) {
             if (mergedRect.x === -1) {
               mergedRect.x = rect.x;
               mergedRect.width = rect.width;

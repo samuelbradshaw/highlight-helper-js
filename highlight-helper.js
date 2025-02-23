@@ -314,7 +314,17 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // If a different highlight is active, deactivate it
-    if (activeHighlightId && highlightId !== activeHighlightId) this.deactivateHighlights();
+    if (activeHighlightId && highlightId !== activeHighlightId && triggeredByUserAction === true) {
+      this.deactivateHighlights();
+    }
+    
+    // If the highlight is currently activate, ignore bounds changes that weren't initiated by the user
+    if (highlightId === activeHighlightId && triggeredByUserAction === false) {
+      attributes.startParagraphId = null;
+      attributes.startParagraphOffset = null;
+      attributes.endParagraphId = null;
+      attributes.endParagraphOffset = null;
+    }
     
     // Warn if color, style, or wrapper attributes are invalid
     if (attributes.color && !options.colors.hasOwnProperty(attributes.color)) {
@@ -445,8 +455,7 @@ function Highlighter(options = hhDefaultOptions) {
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
-    selection.removeAllRanges();
-    selection.addRange(highlightRange);
+    selection.setBaseAndExtent(highlightRange.startContainer, highlightRange.startOffset, highlightRange.endContainer, highlightRange.endOffset);
     this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
   
@@ -586,21 +595,25 @@ function Highlighter(options = hhDefaultOptions) {
   // Pointer down in annotatable container
   this.annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: controller.signal });
   const respondToPointerDown = (event) => {
+    const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
     pointerType = event.pointerType;
     
-    // User is dragging a selection handle
-    if (event.target && event.target.closest('.hh-selection-handle')) {
-      event.preventDefault();
-      activeSelectionHandle = event.target.parentElement.closest('.hh-selection-handle');
-      this.annotatableContainer.dataset.hhDragging = 'true';
-      const selectionHandleClientRect = activeSelectionHandle.getBoundingClientRect();
-      const lineHeight = selectionHandleClientRect.bottom - selectionHandleClientRect.top;
-      activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 4));
-      const selectionRange = window.getSelection().getRangeAt(0);
-      dragAnchorNode = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
-      dragAnchorOffset = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
-      this.annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag, { signal: controller.signal });
-      updateSelectionUi('bounds');
+    // Pointer down on a selection handle
+    if (event.target?.closest('.hh-selection-handle')) {
+      if (!isSecondaryClick) {
+        activeSelectionHandle = event.target.parentElement.closest('.hh-selection-handle');
+        this.annotatableContainer.dataset.hhDragging = 'true';
+        const selectionHandleClientRect = activeSelectionHandle.getBoundingClientRect();
+        const lineHeight = selectionHandleClientRect.bottom - selectionHandleClientRect.top;
+        activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 4));
+        const selectionRange = window.getSelection().getRangeAt(0);
+        dragAnchorNode = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
+        dragAnchorOffset = activeSelectionHandle.dataset.position === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
+        this.annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag, { signal: controller.signal });
+        updateSelectionUi('bounds');
+      }
+      // Prevent default drag interaction (which would show a thumbnail and drag selected text)
+      return event.preventDefault();
     }
     
     // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
@@ -611,7 +624,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // Return if it's not a regular click, or if the user is tapping away from an existing selection
-    if (previousSelectionRange || activeSelectionHandle || event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (previousSelectionRange || isSecondaryClick) return;
     
     // Trigger a long-press event if the user doesn't lift their finger within the specified time
     if (options.longPressTimeout) longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
@@ -627,8 +640,8 @@ function Highlighter(options = hhDefaultOptions) {
     const selectionRange = selection.getRangeAt(0);
     const dragCaret = getCaretFromCoordinates(event.clientX, event.clientY - activeSelectionHandle.dataset.dragYOffset, true, false, true);
     
-    // Return if there's no drag caret, or if the caret is invalid
-    if (!dragCaret || dragCaret.startContainer.nodeType !== Node.TEXT_NODE || dragCaret.endContainer.nodeType !== Node.TEXT_NODE) return;
+    // Return if there's no drag caret, if the drag caret is invalid, or if the drag caret and anchor caret have the same position
+    if (!dragCaret || dragCaret.startContainer.nodeType !== Node.TEXT_NODE || dragCaret.endContainer.nodeType !== Node.TEXT_NODE || (dragAnchorNode === dragCaret.endContainer && dragAnchorOffset === dragCaret.endOffset)) return;
     
     // Check if start and end selection handles switched positions
     const dragPositionRelativeToSelectionStart = dragCaret.compareBoundaryPoints(Range.START_TO_END, selectionRange);
@@ -674,8 +687,7 @@ function Highlighter(options = hhDefaultOptions) {
     const selection = window.getSelection();
     if (selection.type === 'Range' && activeHighlightId && this.annotatableContainer.contains(selection.anchorNode)) {
       const adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);
-      selection.removeAllRanges();
-      selection.addRange(adjustedSelectionRange);
+      selection.setBaseAndExtent(adjustedSelectionRange.startContainer, adjustedSelectionRange.startOffset, adjustedSelectionRange.endContainer, adjustedSelectionRange.endOffset);
     }
     tapResult = null;
     longPressTimeoutId = clearTimeout(longPressTimeoutId);
@@ -1072,6 +1084,7 @@ function Highlighter(options = hhDefaultOptions) {
       // Safari
       range = document.caretRangeFromPoint(clientX, clientY);
     }
+    if (!range) return;
     if (checkXDistance || checkYDistance) {
       const maxDistance = 30;
       const caretClientRect = range.getBoundingClientRect();

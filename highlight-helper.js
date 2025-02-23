@@ -1112,7 +1112,7 @@ function Highlighter(options = hhDefaultOptions) {
     const ancestorElementsInRange = [];
     for (const paragraph of paragraphs) {
       let element = paragraph;
-      while (element !== range.commonAncestorContainer) {
+      while (range.commonAncestorContainer.contains(element)) {
         if (!ancestorElementsInRange.includes(element)) ancestorElementsInRange.push(element);
         element = element.parentElement;
       }

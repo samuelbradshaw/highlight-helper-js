@@ -572,6 +572,13 @@ function Highlighter(options = hhDefaultOptions) {
     const selection = getRestoredSelectionOrCaret(window.getSelection());
     const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
     
+    // In "Mac (Designed for iPad)" apps (iPad app running on macOS – most recently tested with macOS Sequoia 15.3.1), in-app webviews have several quirks related to text selection. One of these is text selection collapsing to a caret more often than expected. This code attempts to restore the previous selection range if it unexpectedly collapses to a caret in these scenarios:
+    // 1. While dragging custom selection handles (happens randomly). TODO: Dragging custom selection handles in this environment is still sometimes a little jumpy.
+    // 2. Just after clicking to activate a highlight (happens if it's the first click after the page loads).
+    if (isWKWebView && !isTouchDevice && selection.type !== 'Range' && previousSelectionRange && (activeSelectionHandle || (previousSelectionRange.compareBoundaryPoints(Range.END_TO_START, selectionRange) <= 0 && previousSelectionRange.compareBoundaryPoints(Range.END_TO_END, selectionRange) >= 0))) {
+      selection.setBaseAndExtent(previousSelectionRange.startContainer, previousSelectionRange.startOffset, previousSelectionRange.endContainer, previousSelectionRange.endOffset);
+    }
+    
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
     if (!activeSelectionHandle && previousSelectionRange && (selection.type !== 'Range' || previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
       this.deactivateHighlights(false);
@@ -1207,13 +1214,14 @@ function Highlighter(options = hhDefaultOptions) {
 let hhHighlighters = [];
 
 // Check browser type
-const isTouchDevice = navigator.maxTouchPoints && navigator.maxTouchPoints > 1;
-const isSafari = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
+const isTouchDevice = navigator.maxTouchPoints > 0;
+const isWebKit = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
+const isWKWebView = isWebKit && window.webkit?.messageHandlers;
 const supportsHighlightApi = CSS.highlights;
 
 // Workaround to allow programmatic text selection on tap in iOS Safari
 // See https://stackoverflow.com/a/79261423/1349044
-if (isTouchDevice && isSafari) {
+if (isTouchDevice && isWebKit) {
   const tempInput = document.createElement('input');
   tempInput.style.position = 'fixed';
   tempInput.style.top = 0;

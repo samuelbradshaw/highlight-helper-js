@@ -8,7 +8,7 @@ function Highlighter(options = hhDefaultOptions) {
     options[key] = options[key] ?? hhDefaultOptions[key];
   }
   
-  this.annotatableContainer, this.annotatableParagraphs;
+  this.annotatableContainer, this.relativeAncestorElement, this.annotatableParagraphs;
   let generalStylesheet, appearanceStylesheet, highlightApiStylesheet, selectionStylesheet;
   let annotatableParagraphIds, hyperlinkElements;
   let svgBackground, svgActiveOverlay, selectionHandles;
@@ -33,6 +33,16 @@ function Highlighter(options = hhDefaultOptions) {
       return false;
     }
     
+    // Get the closest ancestor element with `position: relative`, or the root element (this is used to calculate the position of selection handles and SVG highlights)
+    let ancestorElement = this.annotatableContainer;
+    while (ancestorElement) {
+      if (ancestorElement === document.documentElement || window.getComputedStyle(ancestorElement).position === 'relative') {
+        this.relativeAncestorElement = ancestorElement;
+        break;
+      }
+      ancestorElement = ancestorElement.parentElement;
+    }
+    
     // Abort controller can be used to cancel event listeners if the highlighter is removed
     controller = new AbortController;
     
@@ -50,7 +60,6 @@ function Highlighter(options = hhDefaultOptions) {
     document.adoptedStyleSheets.push(selectionStylesheet);
     generalStylesheet.replaceSync(`
       ${options.containerSelector} {
-        position: relative;
         -webkit-tap-highlight-color: transparent;
       }
       .hh-wrapper-start, .hh-wrapper-end, .hh-selection-handle {
@@ -860,7 +869,7 @@ function Highlighter(options = hhDefaultOptions) {
         const selectionRangeRects = selectionRange.getClientRects();
         const startRect = selectionRangeRects[0];
         const endRect = selectionRangeRects[selectionRangeRects.length-1];
-        const annotatableContainerClientRect = this.annotatableContainer.getBoundingClientRect();
+        const relativeAncestorClientRect = this.relativeAncestorElement.getBoundingClientRect();
         const startNodeIsRtl = window.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
         const endNodeIsRtl = window.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
         
@@ -869,14 +878,14 @@ function Highlighter(options = hhDefaultOptions) {
           let side;
           if (selectionHandle.dataset.position === 'start') {
             side = startNodeIsRtl ? 'right' : 'left';
-            selectionHandle.style.left = startRect[side] - annotatableContainerClientRect.left + 'px';
+            selectionHandle.style.left = startRect[side] - relativeAncestorClientRect.left + 'px';
             selectionHandle.style.height = startRect.height + 'px';
-            selectionHandle.style.top = startRect.top - annotatableContainerClientRect.top + 'px';
+            selectionHandle.style.top = startRect.top - relativeAncestorClientRect.top + 'px';
           } else {
             side = endNodeIsRtl ? 'left' : 'right';
-            selectionHandle.style.left = endRect[side] - annotatableContainerClientRect.left + 'px';
+            selectionHandle.style.left = endRect[side] - relativeAncestorClientRect.left + 'px';
             selectionHandle.style.height = endRect.height + 'px';
-            selectionHandle.style.top = endRect.top - annotatableContainerClientRect.top + 'px';
+            selectionHandle.style.top = endRect.top - relativeAncestorClientRect.top + 'px';
           }
           if (selectionHandle.dataset.side !== side) {
             selectionHandle.dataset.side = side;
@@ -1031,16 +1040,16 @@ function Highlighter(options = hhDefaultOptions) {
       return;
     }
     if (type === 'svg' && clientRect) {
-      const annotatableContainerClientRect = this.annotatableContainer.getBoundingClientRect();
+      const relativeAncestorClientRect = this.relativeAncestorElement.getBoundingClientRect();
       styleTemplate = styleTemplate
-        .replaceAll('{x}', clientRect.x - annotatableContainerClientRect.x)
-        .replaceAll('{y}', clientRect.y - annotatableContainerClientRect.y)
+        .replaceAll('{x}', clientRect.x - relativeAncestorClientRect.x)
+        .replaceAll('{y}', clientRect.y - relativeAncestorClientRect.y)
         .replaceAll('{width}', clientRect.width)
         .replaceAll('{height}', clientRect.height)
-        .replaceAll('{top}', clientRect.top - annotatableContainerClientRect.top)
-        .replaceAll('{right}', clientRect.right - annotatableContainerClientRect.right)
-        .replaceAll('{bottom}', clientRect.bottom - annotatableContainerClientRect.bottom)
-        .replaceAll('{left}', clientRect.left - annotatableContainerClientRect.left);
+        .replaceAll('{top}', clientRect.top - relativeAncestorClientRect.top)
+        .replaceAll('{right}', clientRect.right - relativeAncestorClientRect.right)
+        .replaceAll('{bottom}', clientRect.bottom - relativeAncestorClientRect.bottom)
+        .replaceAll('{left}', clientRect.left - relativeAncestorClientRect.left);
     }
     return styleTemplate;
   }

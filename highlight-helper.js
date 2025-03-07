@@ -108,6 +108,7 @@ function Highlighter(options = hhDefaultOptions) {
         left: 0;
         width: 100%;
         height: 100%;
+        overflow: visible;
         z-index: -1;
       }
       .hh-svg-background g {

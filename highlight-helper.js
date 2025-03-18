@@ -556,9 +556,9 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Remove this Highlighter instance and its highlights
   this.removeHighlighter = () => {
-    for (const stylesheet of Object.values(this.stylesheets)) if (stylesheet.parentElement) stylesheet.remove();
     this.loadHighlights([]);
     this.annotatableContainer.querySelectorAll('.hh-svg-background, .hh-selection-handle').forEach(el => el.remove())
+    removeStylesheets(this.stylesheets);
     controller.abort();
     
     this.annotatableContainer.highlighter = undefined;
@@ -1071,6 +1071,18 @@ function Highlighter(options = hhDefaultOptions) {
       stylesheets[stylesheetKey] = stylesheet;
     }
     return stylesheet;
+  }
+  
+  // Remove CSS stylesheets
+  function removeStylesheets(stylesheets) {
+    for (const stylesheet of Object.values(stylesheets)) {
+      if (supportsCssStylesheetApi) {
+        const adoptedStylesheetIndex = document.adoptedStyleSheets.indexOf(stylesheet);
+        document.adoptedStyleSheets.splice(adoptedStylesheetIndex, 1);
+      } else {
+        stylesheet.remove();
+      }
+    }
   }
     
   // Restore the previous selection range in case the browser clears the selection

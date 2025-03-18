@@ -8,7 +8,7 @@ function Highlighter(options = hhDefaultOptions) {
     options[key] = options[key] ?? hhDefaultOptions[key];
   }
   
-  this.annotatableContainer, this.relativeAncestorElement, this.annotatableParagraphs;
+  this.annotatableContainer, this.relativeAncestorElement, this.annotatableParagraphs, this.stylesheets;
   let generalStylesheet, appearanceStylesheet, highlightApiStylesheet, selectionStylesheet;
   let annotatableParagraphIds, hyperlinkElements;
   let svgBackground, svgActiveOverlay, selectionHandles;
@@ -50,14 +50,11 @@ function Highlighter(options = hhDefaultOptions) {
     document.body.tabIndex = -1;
         
     // Set up stylesheets
-    generalStylesheet = new CSSStyleSheet();
-    appearanceStylesheet = new CSSStyleSheet();
-    highlightApiStylesheet = new CSSStyleSheet();
-    selectionStylesheet = new CSSStyleSheet();
-    document.adoptedStyleSheets.push(generalStylesheet);
-    document.adoptedStyleSheets.push(appearanceStylesheet);
-    document.adoptedStyleSheets.push(highlightApiStylesheet);
-    document.adoptedStyleSheets.push(selectionStylesheet);
+    this.stylesheets = {}
+    generalStylesheet = createStylesheet(this.stylesheets, 'general');
+    appearanceStylesheet = createStylesheet(this.stylesheets, 'appearance');
+    highlightApiStylesheet = createStylesheet(this.stylesheets, 'highlight-api');
+    selectionStylesheet = createStylesheet(this.stylesheets, 'selection');
     generalStylesheet.replaceSync(`
       ${options.containerSelector} {
         -webkit-tap-highlight-color: transparent;
@@ -559,11 +556,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Remove this Highlighter instance and its highlights
   this.removeHighlighter = () => {
-    generalStylesheet.replaceSync('');
-    appearanceStylesheet.replaceSync('');
-    highlightApiStylesheet.replaceSync('');
-    selectionStylesheet.replaceSync('');
-    
+    for (const stylesheet of Object.values(this.stylesheets)) if (stylesheet.parentElement) stylesheet.remove();
     this.loadHighlights([]);
     this.annotatableContainer.querySelectorAll('.hh-svg-background, .hh-selection-handle').forEach(el => el.remove())
     controller.abort();
@@ -1055,6 +1048,31 @@ function Highlighter(options = hhDefaultOptions) {
     return styleTemplate;
   }
   
+  // Create a CSS stylesheet
+  function createStylesheet(stylesheets, stylesheetKey) {
+    let stylesheet = stylesheets[stylesheetKey];
+    if (!stylesheet) {
+      if (supportsCssStylesheetApi) {
+        stylesheet = new CSSStyleSheet();
+        document.adoptedStyleSheets.push(stylesheet);
+      } else {
+        // For browsers that don't fully support the CSSStyleSheet API, such as Safari < 16.4.
+        // See https://developer.mozilla.org/en-US/docs/Web/API/CSSStyleSheet#browser_compatibility
+        stylesheet = document.createElement('style');
+        stylesheet.appendChild(document.createTextNode(''));
+        stylesheet.replaceSync = (newContent) => {
+          stylesheet.textContent = newContent;
+        }
+        stylesheet.insertRule = (newContent) => {
+          stylesheet.textContent += newContent;
+        }
+        document.head.appendChild(stylesheet);
+      }
+      stylesheets[stylesheetKey] = stylesheet;
+    }
+    return stylesheet;
+  }
+    
   // Restore the previous selection range in case the browser clears the selection
   const getRestoredSelectionOrCaret = (selection, pointerEvent = null) => {
     if (selection.type === 'None') {
@@ -1091,14 +1109,12 @@ function Highlighter(options = hhDefaultOptions) {
   // Adapted from https://stackoverflow.com/a/12924488/1349044
   const getCaretFromCoordinates = (clientX, clientY, checkAnnotatable = false, checkXDistance = false, checkYDistance = false) => {
     let range;
-    if (document.caretPositionFromPoint) {
-      // Most browsers
+    if (supportsCaretPositionFromPoint) {
       let caretPosition = document.caretPositionFromPoint(clientX, clientY);
       range = document.createRange();
       range.setStart(caretPosition.offsetNode, caretPosition.offset);
       range.collapse(true);
-    } else if (document.caretRangeFromPoint) {
-      // Safari
+    } else if (supportsCaretRangeFromPoint) {
       range = document.caretRangeFromPoint(clientX, clientY);
     }
     if (!range) return;
@@ -1227,6 +1243,9 @@ let hhHighlighters = [];
 const isTouchDevice = navigator.maxTouchPoints > 0;
 const isWebKit = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
 const isWKWebView = isWebKit && window.webkit?.messageHandlers;
+const supportsCaretPositionFromPoint = document.caretPositionFromPoint;
+const supportsCaretRangeFromPoint = document.caretRangeFromPoint;
+const supportsCssStylesheetApi = CSSStyleSheet?.prototype?.replaceSync;
 const supportsHighlightApi = CSS.highlights;
 
 // Workaround to allow programmatic text selection on tap in iOS Safari

@@ -479,12 +479,12 @@ function Highlighter(options = hhDefaultOptions) {
   this.deactivateHighlights = (removeSelectionRanges = true) => {
     const deactivatedHighlight = highlightsById[activeHighlightId];
     activeHighlightId = null;
-    updateSelectionUi('appearance');
     previousSelectionRange = null;
     const selection = window.getSelection();
     if (removeSelectionRanges && selection.anchorNode && this.annotatableContainer.contains(selection.anchorNode)) {
       selection.collapseToStart();
     }
+    updateSelectionUi('appearance');
     if (deactivatedHighlight) {
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
         highlight: deactivatedHighlight,

@@ -51,10 +51,10 @@ function Highlighter(options = hhDefaultOptions) {
         
     // Set up stylesheets
     this.stylesheets = {}
-    generalStylesheet = createStylesheet(this.stylesheets, 'general');
-    appearanceStylesheet = createStylesheet(this.stylesheets, 'appearance');
-    highlightApiStylesheet = createStylesheet(this.stylesheets, 'highlight-api');
-    selectionStylesheet = createStylesheet(this.stylesheets, 'selection');
+    generalStylesheet = addStylesheet(this.stylesheets, 'general');
+    appearanceStylesheet = addStylesheet(this.stylesheets, 'appearance');
+    highlightApiStylesheet = addStylesheet(this.stylesheets, 'highlight-api');
+    selectionStylesheet = addStylesheet(this.stylesheets, 'selection');
     generalStylesheet.replaceSync(`
       ${options.containerSelector} {
         -webkit-tap-highlight-color: transparent;
@@ -1048,8 +1048,8 @@ function Highlighter(options = hhDefaultOptions) {
     return styleTemplate;
   }
   
-  // Create a CSS stylesheet
-  function createStylesheet(stylesheets, stylesheetKey) {
+  // Add a CSS stylesheet to the document
+  function addStylesheet(stylesheets, stylesheetKey) {
     let stylesheet = stylesheets[stylesheetKey];
     if (!stylesheet) {
       if (supportsCssStylesheetApi) {
@@ -1073,7 +1073,7 @@ function Highlighter(options = hhDefaultOptions) {
     return stylesheet;
   }
   
-  // Remove CSS stylesheets
+  // Remove CSS stylesheets (only those from the current Highlighter instance)
   function removeStylesheets(stylesheets) {
     for (const stylesheet of Object.values(stylesheets)) {
       if (supportsCssStylesheetApi) {

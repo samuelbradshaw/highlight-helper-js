@@ -994,7 +994,7 @@ function Highlighter(options = hhDefaultOptions) {
     if (direction == 'backward') {
       return [ firstTextNode, 0 ];
     } else {
-      const lastTextNode = walker.previousNode();
+      const lastTextNode = walker.currentNode;
       return [ lastTextNode, lastTextNode.textContent.length ];
     }
   }

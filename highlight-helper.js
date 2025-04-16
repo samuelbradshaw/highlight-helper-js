@@ -836,7 +836,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     if (changeType === 'appearance') {
-      this.annotatableContainer.style = `--hh-color: ${colorString}`;
+      this.annotatableContainer.style.setProperty('--hh-color', `${colorString}`);
       
       // Update selection background
       if (activeHighlightId && options.drawingMode === 'svg') {

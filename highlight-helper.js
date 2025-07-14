@@ -540,8 +540,11 @@ function Highlighter(options = hhDefaultOptions) {
       this.drawHighlights();
     } else if (key === 'colors') {
       updateAppearanceStylesheet();
-    } else if (key === 'containerSelector' || key === 'paragraphSelector') {
-      initializeHighlighter(containerSelector);
+    } else if (key === 'containerSelector') {
+      this.removeHighlighter();
+      initializeHighlighter();
+    } else if (key === 'paragraphSelector') {
+      initializeHighlighter();
     } else if (key === 'selectionHandles') {
       for (const selectionHandle of selectionHandles) {
         selectionHandle.children[1].innerHTML = options.selectionHandles[selectionHandle.dataset.side] ?? '';
@@ -563,7 +566,6 @@ function Highlighter(options = hhDefaultOptions) {
     
     this.annotatableContainer.highlighter = undefined;
     hhHighlighters = hhHighlighters.filter(hhHighlighter => hhHighlighter.annotatableContainer !== this.annotatableContainer);
-    delete hhHighlighters[options.containerSelector];
   }
     
   

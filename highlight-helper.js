@@ -1273,6 +1273,7 @@ if (isTouchDevice && isWebKit) {
   tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
   tempInput.inputMode = 'none'; // Don't show keyboard
   tempInput.tabIndex = -1; // Prevent user from tabbing to input
+  tempInput.ariaHidden = 'true'; // Hide from screen readers
   const initializeSelection = (event) => {
     if (document.readyState !== 'complete') return setTimeout(initializeSelection, 20);
     if (!tempInput.parentElement) document.body.append(tempInput);

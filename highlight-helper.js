@@ -566,6 +566,7 @@ function Highlighter(options = hhDefaultOptions) {
     this.loadHighlights([]);
     this.annotatableContainer.querySelectorAll('.hh-svg-background, .hh-selection-handle').forEach(el => el.remove())
     removeStylesheets(this.stylesheets);
+    resizeObserver.disconnect();
     controller.abort();
     
     this.annotatableContainer.highlighter = undefined;
@@ -723,19 +724,23 @@ function Highlighter(options = hhDefaultOptions) {
     }, { signal: controller.signal });
   }
   
-  // Window resize
-  let previousContainerWidth = this.annotatableContainer.clientWidth;
-  const respondToWindowResize = () => {
-    // Only respond if the annotatable container width changed
-    if (this.annotatableContainer.clientWidth === previousContainerWidth) return;
-    if (options.drawingMode === 'svg') {
-      this.drawHighlights();
-      if (previousSelectionRange) updateSelectionUi('bounds');
+  // Annotatable container resize (debounced)
+  let computedStyle = window.getComputedStyle(this.annotatableContainer);
+  let previousWidth = this.annotatableContainer.clientWidth - parseInt(computedStyle.getPropertyValue('padding-left')) - parseInt(computedStyle.getPropertyValue('padding-right'));
+  const resizeObserver = new ResizeObserver(debounce((entries) => {
+    for (const entry of entries) {
+      const width = entry.contentBoxSize[0].inlineSize;
+      // Only respond if the annotatable content width changed
+      if (width !== previousWidth) {
+        if (options.drawingMode === 'svg') {
+          this.drawHighlights();
+          if (previousSelectionRange) updateSelectionUi('bounds');
+        }
+        previousWidth = width;
+      }
     }
-    previousContainerWidth = this.annotatableContainer.clientWidth;
-  }
-  const debouncedRespondToWindowResize = debounce(() => respondToWindowResize(), Math.floor(Object.keys(highlightsById).length / 20));
-  window.addEventListener('resize', debouncedRespondToWindowResize, { signal: controller.signal });
+  }, Math.floor(Object.keys(highlightsById).length / 20)));
+  resizeObserver.observe(this.annotatableContainer);
   
   
   // -------- UTILITY FUNCTIONS --------

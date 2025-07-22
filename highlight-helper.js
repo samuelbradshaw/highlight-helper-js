@@ -112,12 +112,16 @@ function Highlighter(options = hhDefaultOptions) {
         fill: transparent;
         stroke: none;
       }
-      span[data-highlight-id][data-style="fill"][data-start] {
+      mark[data-highlight-id] {
+        background-color: transparent;
+        color: inherit;
+      }
+      mark[data-highlight-id][data-style="fill"][data-start] {
         border-top-left-radius: 0.25em;
         border-bottom-left-radius: 0.25em;
         margin-left: -0.13em; padding-left: 0.13em;
       }
-      span[data-highlight-id][data-style="fill"][data-end] {
+      mark[data-highlight-id][data-style="fill"][data-end] {
         border-top-right-radius: 0.25em;
         border-bottom-right-radius: 0.25em;
         margin-right: -0.13em; padding-right: 0.13em;
@@ -211,7 +215,7 @@ function Highlighter(options = hhDefaultOptions) {
       const highlightInfo = highlightsById[highlightId];
       let range = getCorrectedRangeObj(highlightId);
       const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-      const isReadOnly = (options.drawingMode === 'inserted-spans') || highlightInfo.readOnly;
+      const isReadOnly = (options.drawingMode === 'inserted-marks') || highlightInfo.readOnly;
       const wasDrawnAsReadOnly = this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
       
       // Remove old highlight elements and styles
@@ -221,7 +225,7 @@ function Highlighter(options = hhDefaultOptions) {
         // Don't redraw a read-only highlight
         if (wasDrawnAsReadOnly) continue;
         
-        // Inject HTML <span> elements
+        // Inject HTML <mark> elements
         range.startContainer.splitText(range.startOffset);
         range.endContainer.splitText(range.endOffset);
         const textNodeIter = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
@@ -232,15 +236,15 @@ function Highlighter(options = hhDefaultOptions) {
         }
         for (let tn = 0; tn < relevantTextNodes.length; tn++) {
           const textNode = relevantTextNodes[tn];
-          const styledSpan = document.createElement('span');
-          styledSpan.dataset.highlightId = highlightId;
-          styledSpan.dataset.readOnly = '';
-          styledSpan.dataset.color = highlightInfo.color;
-          styledSpan.dataset.style = highlightInfo.style;
-          if (tn === 0) styledSpan.dataset.start = '';
-          if (tn === relevantTextNodes.length - 1) styledSpan.dataset.end = '';
-          textNode.before(styledSpan);
-          styledSpan.appendChild(textNode);
+          const styledMark = document.createElement('mark');
+          styledMark.dataset.highlightId = highlightId;
+          styledMark.dataset.readOnly = '';
+          styledMark.dataset.color = highlightInfo.color;
+          styledMark.dataset.style = highlightInfo.style;
+          if (tn === 0) styledMark.dataset.start = '';
+          if (tn === relevantTextNodes.length - 1) styledMark.dataset.end = '';
+          textNode.before(styledMark);
+          styledMark.appendChild(textNode);
         }
         rangeParagraphs.forEach(p => { p.normalize(); });
         // Update the highlight's stored range object (because the DOM changed)
@@ -452,7 +456,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
     const highlightToActivate = highlightsById[highlightId];
-    if (options.drawingMode === 'inserted-spans' || highlightToActivate.readOnly) {
+    if (options.drawingMode === 'inserted-marks' || highlightToActivate.readOnly) {
       // If the highlight is read-only, return events, but don't actually activate it
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: highlightToActivate } }));
@@ -1023,7 +1027,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     for (const style of Object.keys(options.styles)) {
       const styleTemplate = getStyleTemplate(style, 'css', null);
-      appearanceStylesheet.insertRule(`span[data-highlight-id][data-style="${style}"] { ${styleTemplate} }`);
+      appearanceStylesheet.insertRule(`mark[data-highlight-id][data-style="${style}"] { ${styleTemplate} }`);
     }
   }
   

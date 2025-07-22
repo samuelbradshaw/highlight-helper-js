@@ -724,15 +724,15 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Window resize
-  let previousWindowWidth = window.innerWidth;
+  let previousContainerWidth = this.annotatableContainer.clientWidth;
   const respondToWindowResize = () => {
-    // Only respond if the width changed (ignore height changes)
-    if (window.innerWidth === previousWindowWidth) return;
+    // Only respond if the annotatable container width changed
+    if (this.annotatableContainer.clientWidth === previousContainerWidth) return;
     if (options.drawingMode === 'svg') {
       this.drawHighlights();
       if (previousSelectionRange) updateSelectionUi('bounds');
     }
-    previousWindowWidth = window.innerWidth;
+    previousContainerWidth = this.annotatableContainer.clientWidth;
   }
   const debouncedRespondToWindowResize = debounce(() => respondToWindowResize(), Math.floor(Object.keys(highlightsById).length / 20));
   window.addEventListener('resize', debouncedRespondToWindowResize, { signal: controller.signal });

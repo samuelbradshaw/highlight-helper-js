@@ -126,6 +126,9 @@ function Highlighter(options = hhDefaultOptions) {
         border-bottom-right-radius: 0.25em;
         margin-right: -0.13em; padding-right: 0.13em;
       }
+      mark[data-highlight-id][data-style="fill"] + mark[data-highlight-id][data-style="fill"] {
+        margin-left: 0; padding-left: 0;
+      }
     `);
     
     // Set up SVG background and selection handles
@@ -260,8 +263,9 @@ function Highlighter(options = hhDefaultOptions) {
             CSS.highlights.set(highlightId, highlightObj);
           }
           highlightObj.add(range);
-          let styleTemplate = getStyleTemplate(highlightInfo.style, 'css', null).replaceAll('var(--hh-color)', options.colors[highlightInfo.color]);
-          highlightApiStylesheet.insertRule(`${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { ${styleTemplate} }`);
+          const styleTemplate = getStyleTemplate(highlightInfo.style, 'css', null);
+          const colorString = options.colors[highlightInfo.color];
+          highlightApiStylesheet.insertRule(`${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleTemplate} }`);
           highlightApiStylesheet.insertRule(`${options.containerSelector} rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
           highlightApiStylesheet.insertRule(`${options.containerSelector} img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
           
@@ -855,7 +859,7 @@ function Highlighter(options = hhDefaultOptions) {
       } else if (activeHighlightId) {
         const styleTemplate = getStyleTemplate(style, 'css', null);
         selectionStylesheet.replaceSync(`
-          ${options.containerSelector} ::selection { ${styleTemplate} }
+          ${options.containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
           ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
         `);
       } else {

@@ -6,7 +6,7 @@ Behind the scenes, Highlight Helper supports three different mechanisms for draw
 
 1. [SVG shapes](https://developer.mozilla.org/en-US/docs/Web/SVG) drawn behind text (default).
 2. The [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) (experimental&ast;).
-3. Inserted [HTML mark elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark) (for read-only highlights).
+3. Inserted [HTML mark elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark).
 
 An HTML demo page that shows basic functionality can be found here: [Highlight Helper Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html). Source code for the demo is in **demo.html**. Highlight Helper itself is in **highlight-helper.js**.
 

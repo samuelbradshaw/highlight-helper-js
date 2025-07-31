@@ -218,13 +218,12 @@ function Highlighter(options = hhDefaultOptions) {
       const highlightInfo = highlightsById[highlightId];
       let range = getCorrectedRangeObj(highlightId);
       const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-      const isReadOnly = (options.drawingMode === 'inserted-marks') || highlightInfo.readOnly;
       const wasDrawnAsReadOnly = this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
       
       // Remove old highlight elements and styles
-      if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !isReadOnly)) undrawHighlight(highlightInfo);
+      if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !highlightInfo.readOnly)) undrawHighlight(highlightInfo);
       
-      if (isReadOnly) {
+      if (highlightInfo.readOnly || options.drawingMode === 'inserted-marks') {
         // Don't redraw a read-only highlight
         if (wasDrawnAsReadOnly) continue;
         
@@ -234,14 +233,18 @@ function Highlighter(options = hhDefaultOptions) {
         const textNodeIter = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
         const relevantTextNodes = [];
         while (node = textNodeIter.nextNode()) {
-          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent !== '' && !node.parentElement.closest('rt')) relevantTextNodes.push(node);
+          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent !== '' && !node.parentElement.closest('rt') && node.parentElement.closest(options.paragraphSelector)) relevantTextNodes.push(node);
           if (node === range.endContainer) break;
         }
+        const overlappingHighlightIds = new Set();
         for (let tn = 0; tn < relevantTextNodes.length; tn++) {
           const textNode = relevantTextNodes[tn];
+          if (textNode.parentElement.dataset.highlightId) {
+            overlappingHighlightIds.add(textNode.parentElement.dataset.highlightId)
+          }
           const styledMark = document.createElement('mark');
           styledMark.dataset.highlightId = highlightId;
-          styledMark.dataset.readOnly = '';
+          if (highlightInfo.readOnly) styledMark.dataset.readOnly = '';
           styledMark.dataset.color = highlightInfo.color;
           styledMark.dataset.style = highlightInfo.style;
           if (tn === 0) styledMark.dataset.start = '';
@@ -249,9 +252,12 @@ function Highlighter(options = hhDefaultOptions) {
           textNode.before(styledMark);
           styledMark.appendChild(textNode);
         }
-        rangeParagraphs.forEach(p => { p.normalize(); });
-        // Update the highlight's stored range object (because the DOM changed)
+        
+        // Update highlight ranges that were invalidated by the DOM change
         range = getCorrectedRangeObj(highlightId);
+        for (const overlappingHighlightId of overlappingHighlightIds) {
+          getCorrectedRangeObj(overlappingHighlightId);
+        }
       } else {
         // Draw highlights with Custom Highlight API
         if (options.drawingMode === 'highlight-api' && supportsHighlightApi) {
@@ -286,7 +292,7 @@ function Highlighter(options = hhDefaultOptions) {
       }
       
       // Update wrapper (for read-only highlights only)
-      if (isReadOnly && !wasDrawnAsReadOnly) {
+      if (highlightInfo.readOnly && !wasDrawnAsReadOnly) {
         if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
           const addWrapper = (edge, range, htmlString) => {
             htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}">${htmlString}</span>`
@@ -443,7 +449,10 @@ function Highlighter(options = hhDefaultOptions) {
       changes: appearanceChanges.concat(boundsChanges),
     }
     
-    this.drawHighlights([highlightId]);
+    if (highlightId !== activeHighlightId || options.drawingMode !== 'inserted-marks') {
+      this.drawHighlights([highlightId]);
+    }
+    
     if (highlightId === activeHighlightId && appearanceChanges.length > 0) {
       updateSelectionUi('appearance');
     } else if (triggeredByUserAction && highlightId !== activeHighlightId) {
@@ -460,7 +469,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Activate a highlight by ID
   this.activateHighlight = (highlightId) => {
     const highlightToActivate = highlightsById[highlightId];
-    if (options.drawingMode === 'inserted-marks' || highlightToActivate.readOnly) {
+    if (highlightToActivate.readOnly) {
       // If the highlight is read-only, return events, but don't actually activate it
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: highlightToActivate } }));
@@ -468,6 +477,17 @@ function Highlighter(options = hhDefaultOptions) {
     }
     const selection = window.getSelection();
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
+    
+    // Hide <mark> highlights and wrappers while the highlight is active. This prevents it from getting visually out of sync with the selection UI (mark highlights and wrappers aren't redrawn while the highlight is active, because DOM manipulation can make the selection UI unstable).
+    for (const element of this.annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]:not(g)`)) {
+      if (element.tagName.toLowerCase() === 'mark') {
+        element.dataset.color = '';
+        element.dataset.style = '';
+      } else {
+        element.style.display = 'none';
+      }
+    }
+    
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
     selection.setBaseAndExtent(highlightRange.startContainer, highlightRange.startOffset, highlightRange.endContainer, highlightRange.endOffset);
@@ -494,6 +514,9 @@ function Highlighter(options = hhDefaultOptions) {
     }
     updateSelectionUi('appearance');
     if (deactivatedHighlight) {
+      if (options.drawingMode === 'inserted-marks') {
+        this.drawHighlights([deactivatedHighlight.highlightId]);
+      }
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
         highlight: deactivatedHighlight,
       }}));
@@ -802,18 +825,44 @@ function Highlighter(options = hhDefaultOptions) {
   const undrawHighlight = (highlightInfo) => {
     const highlightId = highlightInfo.highlightId;
     
-    // Remove HTML and SVG elements
-    if (document.querySelector('[data-highlight-id]')) {
-      this.annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]`).forEach(element => {
-        if (element.hasAttribute('data-read-only')) {
+    // Remove <mark> highlights and HTML wrappers
+    if (this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"]:not(g)`)) {
+      const overlappingHighlightIds = new Set();
+      this.annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]:not(g)`).forEach(element => {
+        if (element.parentElement.dataset.highlightId) {
+          overlappingHighlightIds.add(element.parentElement.dataset.highlightId);
+        }
+        for (const childHighlight of element.querySelectorAll('[data-highlight-id]')) {
+          overlappingHighlightIds.add(childHighlight.dataset.highlightId);
+        }
+        if (element.tagName.toLowerCase() === 'mark') {
           element.outerHTML = element.innerHTML;
         } else {
           element.remove();
         }
       });
-      const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
+      
+      // Redraw overlapping highlights
+      overlappingHighlightIds.delete(highlightId);
+      if (overlappingHighlightIds.size > 0) {
+        for (const overlappingHighlightId of overlappingHighlightIds) {
+          undrawHighlight(highlightsById[overlappingHighlightId]);
+        }
+        this.drawHighlights(overlappingHighlightIds);
+      }
+      
+      // Normalize text nodes
+      const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`);
       rangeParagraphs.forEach(p => { p.normalize(); });
       getCorrectedRangeObj(highlightId);
+    }
+    
+    // Remove SVG highlights
+    if (svgBackground.querySelector(`g[data-highlight-id="${highlightId}"]`)) {
+      const overlappingHighlightIds = new Set();
+      svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`).forEach(element => {
+        element.remove();
+      });
     }
     
     // Remove Highlight API highlights

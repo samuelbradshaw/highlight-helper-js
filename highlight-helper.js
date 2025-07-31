@@ -404,7 +404,7 @@ function Highlighter(options = hhDefaultOptions) {
       // Set variables that depend on the range
       const temporaryHtmlElement = document.createElement('div');
       temporaryHtmlElement.appendChild(highlightRange.cloneContents());
-      for (const hyperlink of temporaryHtmlElement.querySelectorAll('a')) hyperlink.setAttribute('onclick', 'event.preventDefault();');
+      for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-highlight-id]:not([data-highlight-id=${highlightId}])`)) element.outerHTML = element.innerHTML;
       rangeText = highlightRange.toString();
       rangeHtml = temporaryHtmlElement.innerHTML;
       let startParagraphIndex = annotatableParagraphIds.indexOf(startParagraphId);
@@ -859,7 +859,7 @@ function Highlighter(options = hhDefaultOptions) {
       } else if (activeHighlightId) {
         const styleTemplate = getStyleTemplate(style, 'css', null);
         selectionStylesheet.replaceSync(`
-          ${options.containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
+          ${options.containerSelector} ::selection { background-color: hsl(from ${colorString} h s l / 20%); --hh-color: ${colorString}; ${styleTemplate} }
           ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
         `);
       } else {

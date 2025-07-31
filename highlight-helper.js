@@ -223,7 +223,7 @@ function Highlighter(options = hhDefaultOptions) {
       // Remove old highlight elements and styles
       if (!wasDrawnAsReadOnly || (wasDrawnAsReadOnly && !highlightInfo.readOnly)) undrawHighlight(highlightInfo);
       
-      if (highlightInfo.readOnly || options.drawingMode === 'inserted-marks') {
+      if (highlightInfo.readOnly || options.drawingMode === 'mark-elements') {
         // Don't redraw a read-only highlight
         if (wasDrawnAsReadOnly) continue;
         
@@ -449,7 +449,7 @@ function Highlighter(options = hhDefaultOptions) {
       changes: appearanceChanges.concat(boundsChanges),
     }
     
-    if (highlightId !== activeHighlightId || options.drawingMode !== 'inserted-marks') {
+    if (highlightId !== activeHighlightId || options.drawingMode !== 'mark-elements') {
       this.drawHighlights([highlightId]);
     }
     
@@ -514,7 +514,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     updateSelectionUi('appearance');
     if (deactivatedHighlight) {
-      if (options.drawingMode === 'inserted-marks') {
+      if (options.drawingMode === 'mark-elements') {
         this.drawHighlights([deactivatedHighlight.highlightId]);
       }
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {

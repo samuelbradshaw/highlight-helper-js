@@ -759,10 +759,8 @@ function Highlighter(options = hhDefaultOptions) {
       const width = entry.contentBoxSize[0].inlineSize;
       // Only respond if the annotatable content width changed
       if (width !== previousWidth) {
-        if (options.drawingMode === 'svg') {
-          this.drawHighlights();
-          if (previousSelectionRange) updateSelectionUi('bounds');
-        }
+        if (options.drawingMode === 'svg') this.drawHighlights();
+        if (previousSelectionRange) updateSelectionUi('bounds');
         previousWidth = width;
       }
     }

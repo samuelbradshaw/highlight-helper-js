@@ -104,7 +104,6 @@ function Highlighter(options = hhDefaultOptions) {
         top: 0;
         left: 0;
         width: 100%;
-        height: 100%;
         overflow: visible;
         z-index: -1;
       }
@@ -410,7 +409,7 @@ function Highlighter(options = hhDefaultOptions) {
       // Set variables that depend on the range
       const temporaryHtmlElement = document.createElement('div');
       temporaryHtmlElement.appendChild(highlightRange.cloneContents());
-      for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-highlight-id]:not([data-highlight-id=${highlightId}])`)) element.outerHTML = element.innerHTML;
+      for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-highlight-id]:not([data-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
       rangeText = highlightRange.toString();
       rangeHtml = temporaryHtmlElement.innerHTML;
       let startParagraphIndex = annotatableParagraphIds.indexOf(startParagraphId);

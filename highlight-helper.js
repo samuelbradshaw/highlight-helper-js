@@ -489,7 +489,19 @@ function Highlighter(options = hhDefaultOptions) {
     
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
-    selection.setBaseAndExtent(highlightRange.startContainer, highlightRange.startOffset, highlightRange.endContainer, highlightRange.endOffset);
+    
+    // Update the selection range if needed
+    // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
+    let selectionRange = selection.type === 'Range' ? selection.getRangeAt(0) : null;
+    if (!selectionRange || !(
+      selectionRange.startContainer === highlightRange.startContainer && 
+      selectionRange.startOffset === highlightRange.startOffset && 
+      selectionRange.endContainer === highlightRange.endContainer && 
+      selectionRange.endOffset === highlightRange.endOffset)
+    ) {
+      selection.setBaseAndExtent(highlightRange.startContainer, highlightRange.startOffset, highlightRange.endContainer, highlightRange.endOffset);
+    }
+    
     this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
   
@@ -730,7 +742,18 @@ function Highlighter(options = hhDefaultOptions) {
     const selection = window.getSelection();
     if (selection.type === 'Range' && activeHighlightId && this.annotatableContainer.contains(selection.anchorNode)) {
       const adjustedSelectionRange = snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);
-      selection.setBaseAndExtent(adjustedSelectionRange.startContainer, adjustedSelectionRange.startOffset, adjustedSelectionRange.endContainer, adjustedSelectionRange.endOffset);
+      
+      // Update the selection range if needed
+      // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
+      const selectionRange = selection.getRangeAt(0);
+      if (!(
+        adjustedSelectionRange.startContainer === selectionRange.startContainer && 
+        adjustedSelectionRange.startOffset === selectionRange.startOffset && 
+        adjustedSelectionRange.endContainer === selectionRange.endContainer && 
+        adjustedSelectionRange.endOffset === selectionRange.endOffset)
+      ) {
+        selection.setBaseAndExtent(adjustedSelectionRange.startContainer, adjustedSelectionRange.startOffset, adjustedSelectionRange.endContainer, adjustedSelectionRange.endOffset);
+      }
     }
     tapResult = null;
     longPressTimeoutId = clearTimeout(longPressTimeoutId);

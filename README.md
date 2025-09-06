@@ -15,6 +15,7 @@ An HTML demo page that shows basic functionality can be found here: [Highlight H
 ### Documentation:
 - [Known issues](#known-issues)
 - [Getting started](#getting-started)
+    - [Installation options](#installation-options)
 - [Methods, options, and custom events](#methods-options-and-custom-events)
     - [Methods](#methods)
     - [Options](#options)
@@ -42,7 +43,24 @@ In the source of demo.html, you’ll see CSS styles, followed by the HTML body, 
 3. Sets up logic to call Highlight Helper methods when buttons on the demo page are tapped, and
 4. Sets up listeners to respond to custom event messages that come back from Highlight Helper.
 
-All of the available methods, options, and custom events are documented below.
+
+### <a name="installation-options"></a>Installation options
+
+You can download highlight-helper.js from GitHub and reference it from your HTML file:
+```html
+<script src="scripts/highlight-helper.js"></script>
+```
+
+Or you can load it from [jsDelivr](https://www.jsdelivr.com/package/gh/samuelbradshaw/highlight-helper-js):
+```html
+<script src="https://cdn.jsdelivr.net/gh/samuelbradshaw/highlight-helper-js@main/highlight-helper.min.js"></script>
+```
+
+Or you can install it using [npm](https://www.npmjs.com/package/@samuelbradshaw/highlight-helper-js):
+```bash
+% cd /your/project/folder
+% npm i @samuelbradshaw/highlight-helper-js
+```
 
 
 ## <a name="methods-options-and-custom-events"></a>Methods, options, and custom events

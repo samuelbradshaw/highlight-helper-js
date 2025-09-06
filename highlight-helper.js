@@ -448,7 +448,7 @@ function Highlighter(options = hhDefaultOptions) {
       changes: appearanceChanges.concat(boundsChanges),
     }
     
-    if (highlightId !== activeHighlightId || options.drawingMode !== 'mark-elements') {
+    if (highlightId !== activeHighlightId || options.drawingMode === 'svg') {
       this.drawHighlights([highlightId]);
     }
     
@@ -476,17 +476,6 @@ function Highlighter(options = hhDefaultOptions) {
     }
     const selection = window.getSelection();
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
-    
-    // Hide <mark> highlights and wrappers while the highlight is active. This prevents it from getting visually out of sync with the selection UI (mark highlights and wrappers aren't redrawn while the highlight is active, because DOM manipulation can make the selection UI unstable).
-    for (const element of this.annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]:not(g)`)) {
-      if (element.tagName.toLowerCase() === 'mark') {
-        element.dataset.color = '';
-        element.dataset.style = '';
-      } else {
-        element.style.display = 'none';
-      }
-    }
-    
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
     
@@ -525,7 +514,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     updateSelectionUi('appearance');
     if (deactivatedHighlight) {
-      if (options.drawingMode === 'mark-elements') {
+      if (options.drawingMode !== 'svg') {
         this.drawHighlights([deactivatedHighlight.highlightId]);
       }
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
@@ -904,9 +893,10 @@ function Highlighter(options = hhDefaultOptions) {
     // If the selection starts in another annotatable container, let the other container handle it
     if (selection.anchorNode && selection.anchorNode.parentElement.closest('[data-hh-container]') && !this.annotatableContainer.contains(selection.anchorNode)) return;
     
-    const color = highlightsById[activeHighlightId]?.color;
+    const highlightInfo = highlightsById[activeHighlightId] ?? null;
+    const color = highlightInfo?.color ?? null;
+    const style = highlightInfo?.style ?? null;
     const colorString = options.colors[color] ?? 'AccentColor';
-    const style = highlightsById[activeHighlightId]?.style;
     
     // Update SVG shapes for the active highlight (bring shape group to front, and duplicate it to make the highlight darker)
     svgActiveOverlay.innerHTML = '';
@@ -927,8 +917,12 @@ function Highlighter(options = hhDefaultOptions) {
         selectionStylesheet.replaceSync(`${options.containerSelector} ::selection { background-color: transparent; }`);
       } else if (activeHighlightId) {
         const styleTemplate = getStyleTemplate(style, 'css', null);
+        // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
         selectionStylesheet.replaceSync(`
-          ${options.containerSelector} ::selection { background-color: hsl(from ${colorString} h s l / 20%); --hh-color: ${colorString}; ${styleTemplate} }
+          ${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+          ${options.containerSelector} mark[data-highlight-id="${activeHighlightId}"][data-style] { all: unset; }
+          ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${activeHighlightId}"] { display: none; }
+          ${options.containerSelector} ::selection { background-color: hsl(from ${colorString} h s l / 0.25); --hh-color: ${colorString}; ${styleTemplate} }
           ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
         `);
       } else {

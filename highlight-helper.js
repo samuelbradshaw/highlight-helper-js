@@ -916,7 +916,7 @@ function Highlighter(options = hhDefaultOptions) {
     if (changeType === 'appearance') {
       this.annotatableContainer.style.setProperty('--hh-color', `${colorString}`);
       
-      // Update selection background
+      // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
       if (activeHighlightId && options.drawingMode === 'svg') {
         selectionStylesheet.replaceSync(`
           ${options.containerSelector} g[data-highlight-id="${activeHighlightId}"][data-style] { display: none; }
@@ -925,14 +925,15 @@ function Highlighter(options = hhDefaultOptions) {
         `);
       } else if (activeHighlightId) {
         const styleTemplate = getStyleTemplate(style, 'css', null, true);
-        // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
         selectionStylesheet.replaceSync(`
           ${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
           ${options.containerSelector} mark[data-highlight-id="${activeHighlightId}"][data-style] { all: unset; }
           ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${activeHighlightId}"] { display: none; }
-          ${options.containerSelector} ::selection { background-color: hsl(from ${colorString} h s l / 0.25); --hh-color: ${colorString}; ${styleTemplate} }
+          ${options.containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
           ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
         `);
+      
+      // No active highlight (show the regular selection UI)
       } else {
         selectionStylesheet.replaceSync(`
           ${options.containerSelector} ::selection { background-color: Highlight; color: inherit; }

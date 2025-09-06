@@ -933,7 +933,7 @@ function Highlighter(options = hhDefaultOptions) {
         `);
       } else {
         selectionStylesheet.replaceSync(`
-          ${options.containerSelector} ::selection { background-color: Highlight; color: HighlightText; }
+          ${options.containerSelector} ::selection { background-color: Highlight; color: inherit; }
           ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
         `);
       }

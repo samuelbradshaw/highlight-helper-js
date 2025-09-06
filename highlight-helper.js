@@ -775,10 +775,10 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Annotatable container resize (debounced)
   let computedStyle = window.getComputedStyle(this.annotatableContainer);
-  let previousWidth = this.annotatableContainer.clientWidth - parseInt(computedStyle.getPropertyValue('padding-left')) - parseInt(computedStyle.getPropertyValue('padding-right'));
+  let previousWidth = Math.round(this.annotatableContainer.clientWidth - parseInt(computedStyle.getPropertyValue('padding-left')) - parseInt(computedStyle.getPropertyValue('padding-right')));
   const resizeObserver = new ResizeObserver(debounce((entries) => {
     for (const entry of entries) {
-      const width = entry.contentBoxSize[0].inlineSize;
+      const width = Math.round(entry.contentBoxSize[0].inlineSize);
       // Only respond if the annotatable content width changed
       if (width !== previousWidth) {
         if (options.drawingMode === 'svg') this.drawHighlights();

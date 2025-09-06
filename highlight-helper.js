@@ -448,10 +448,7 @@ function Highlighter(options = hhDefaultOptions) {
       changes: appearanceChanges.concat(boundsChanges),
     }
     
-    if (highlightId !== activeHighlightId || options.drawingMode === 'svg') {
-      this.drawHighlights([highlightId]);
-    }
-    
+    if (highlightId !== activeHighlightId) this.drawHighlights([highlightId]);    
     if (highlightId === activeHighlightId && appearanceChanges.length > 0) {
       updateSelectionUi('appearance');
     } else if (triggeredByUserAction && highlightId !== activeHighlightId) {
@@ -514,9 +511,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
     updateSelectionUi('appearance');
     if (deactivatedHighlight) {
-      if (options.drawingMode !== 'svg') {
-        this.drawHighlights([deactivatedHighlight.highlightId]);
-      }
+      this.drawHighlights([deactivatedHighlight.highlightId]);
       this.annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
         highlight: deactivatedHighlight,
       }}));
@@ -898,13 +893,22 @@ function Highlighter(options = hhDefaultOptions) {
     const style = highlightInfo?.style ?? null;
     const colorString = options.colors[color] ?? 'AccentColor';
     
-    // Update SVG shapes for the active highlight (bring shape group to front, and duplicate it to make the highlight darker)
+    // Draw SVG selection rects (SVG drawing mode only)
     svgActiveOverlay.innerHTML = '';
     if (activeHighlightId && options.drawingMode === 'svg') {
-      const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
+      let range = getCorrectedRangeObj(activeHighlightId);
+      const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
+      const clientRects = getMergedClientRects(range, rangeParagraphs);
       svgActiveOverlay.dataset.color = color;
       svgActiveOverlay.dataset.style = style;
-      svgActiveOverlay.innerHTML = svgHighlight.innerHTML;
+      let svgContent = '';
+      for (const clientRect of clientRects) {
+        svgContent += getStyleTemplate(highlightInfo.style, 'svg', clientRect, true);
+      }
+      svgActiveOverlay.innerHTML = svgContent;
+      
+      // Bring active highlight to the front
+      const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
       svgBackground.appendChild(svgHighlight);
       svgBackground.appendChild(svgActiveOverlay);
     }
@@ -914,9 +918,13 @@ function Highlighter(options = hhDefaultOptions) {
       
       // Update selection background
       if (activeHighlightId && options.drawingMode === 'svg') {
-        selectionStylesheet.replaceSync(`${options.containerSelector} ::selection { background-color: transparent; }`);
+        selectionStylesheet.replaceSync(`
+          ${options.containerSelector} g[data-highlight-id="${activeHighlightId}"][data-style] { display: none; }
+          ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${activeHighlightId}"] { display: none; }
+          ${options.containerSelector} ::selection { background-color: transparent; }
+        `);
       } else if (activeHighlightId) {
-        const styleTemplate = getStyleTemplate(style, 'css', null);
+        const styleTemplate = getStyleTemplate(style, 'css', null, true);
         // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
         selectionStylesheet.replaceSync(`
           ${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
@@ -1104,9 +1112,12 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Get style template for a given highlight style
-  const getStyleTemplate = (style, type, clientRect) => {
+  const getStyleTemplate = (style, type, clientRect = null, active = false) => {
     style = options.styles.hasOwnProperty(style) ? style : options.defaultStyle;
     let styleTemplate = options.styles[style]?.[type] ?? '';
+    if (active) {
+      styleTemplate = options.styles[style]?.[`${type}-active`] ?? styleTemplate;
+    }
     if (!styleTemplate) {
       console.warn(`Highlight style "${style}" in options does not have a defined "${type}" value.`);
       return;
@@ -1384,14 +1395,29 @@ let hhDefaultOptions = {
     'fill': {
       'css': 'background-color: hsl(from var(--hh-color) h s l / 50%);',
       'svg': '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
+      'css-active': 'background-color: hsl(from var(--hh-color) h s l / 80%);',
+      'svg-active': `
+        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 80%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
+      `,
     },
     'single-underline': {
       'css': 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
       'svg': '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
+      'css-active': 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
+      'svg-active': `
+        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
+        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />
+      `,
     },
     'double-underline': {
       'css': 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
       'svg': '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" /><rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />',
+      'css-active': 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
+      'svg-active': `
+        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
+        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" />
+        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />
+      `,
     },
     'colored-text': {
       'css': 'color: var(--hh-color);',

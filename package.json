@@ -1,0 +1,26 @@
+{
+  "name": "@samuelbradshaw/highlight-helper-js",
+  "version": "0.7.0",
+  "description": "JavaScript tool that enables highlighting or underlining text in an HTML page.",
+  "main": "highlight-helper.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samuelbradshaw/highlight-helper-js.git"
+  },
+  "keywords": [
+    "css",
+    "svg",
+    "marking",
+    "colors",
+    "highlighting",
+    "text-selection",
+    "underlined-text",
+    "highlight-api"
+  ],
+  "author": "Samuel Bradshaw <samuel.h.bradshaw@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/samuelbradshaw/highlight-helper-js/issues"
+  },
+  "homepage": "https://github.com/samuelbradshaw/highlight-helper-js#readme"
+}

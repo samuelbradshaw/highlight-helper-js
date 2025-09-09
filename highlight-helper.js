@@ -263,6 +263,7 @@ function Highlighter(options = hhDefaultOptions) {
       } else {
         // Draw highlights with Custom Highlight API
         if (options.drawingMode === 'highlight-api' && supportsHighlightApi) {
+          let highlightObj;
           if (CSS.highlights.has(highlightId)) {
             highlightObj = CSS.highlights.get(highlightId);
             highlightObj.clear();

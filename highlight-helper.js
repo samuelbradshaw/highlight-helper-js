@@ -3,6 +3,8 @@
  * https://github.com/samuelbradshaw/highlight-helper-js
  */
 
+'use strict';
+
 function Highlighter(options = hhDefaultOptions) {
   for (const key of Object.keys(hhDefaultOptions)) {
     options[key] = options[key] ?? hhDefaultOptions[key];
@@ -231,6 +233,7 @@ function Highlighter(options = hhDefaultOptions) {
         range.endContainer.splitText(range.endOffset);
         const textNodeIter = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
         const relevantTextNodes = [];
+        let node;
         while (node = textNodeIter.nextNode()) {
           if (range.intersectsNode(node) && node !== range.startContainer && node.textContent !== '' && !node.parentElement.closest('rt') && node.parentElement.closest(options.paragraphSelector)) relevantTextNodes.push(node);
           if (node === range.endContainer) break;
@@ -239,7 +242,7 @@ function Highlighter(options = hhDefaultOptions) {
         for (let tn = 0; tn < relevantTextNodes.length; tn++) {
           const textNode = relevantTextNodes[tn];
           if (textNode.parentElement.dataset.highlightId) {
-            overlappingHighlightIds.add(textNode.parentElement.dataset.highlightId)
+            overlappingHighlightIds.add(textNode.parentElement.dataset.highlightId);
           }
           const styledMark = document.createElement('mark');
           styledMark.dataset.highlightId = highlightId;
@@ -302,6 +305,7 @@ function Highlighter(options = hhDefaultOptions) {
             template.innerHTML = htmlString;
             let htmlElement = template.content.firstChild;
             
+            let node;
             const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
             while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
             range.insertNode(htmlElement);
@@ -323,8 +327,8 @@ function Highlighter(options = hhDefaultOptions) {
   // Create a new highlight, or update an existing highlight when it changes
   this.createOrUpdateHighlight = (attributes = {}, triggeredByUserAction = true) => {
     let highlightId = attributes.highlightId ?? activeHighlightId ?? options.highlightIdFunction();
-    appearanceChanges = [];
-    boundsChanges = [];
+    const appearanceChanges = [];
+    const boundsChanges = [];
     
     let isNewHighlight, oldHighlightInfo;
     if (highlightsById.hasOwnProperty(highlightId)) {
@@ -541,7 +545,7 @@ function Highlighter(options = hhDefaultOptions) {
   // Get info for specified highlights, or all highlights on the page
   this.getHighlightInfo = (highlightIds = Object.keys(highlightsById), paragraphId = null) => {
     let filteredHighlights = []
-    for (highlightId of highlightIds) {
+    for (const highlightId of highlightIds) {
       const highlightInfo = highlightsById[highlightId];
       if (!paragraphId || paragraphId === highlightInfo.startParagraphId) {
         filteredHighlights.push(highlightInfo);
@@ -1272,6 +1276,7 @@ function Highlighter(options = hhDefaultOptions) {
       // Get line positions (bottom edge of each line)
       let linePositions = new Set();
       let lineWalker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      let textNode;
       while (textNode = lineWalker.nextNode()) {
         const computedStyle = window.getComputedStyle(textNode.parentElement);
         const lineHeight = parseInt((computedStyle.lineHeight === 'normal' ? computedStyle.fontSize : computedStyle.lineHeight).replace('px', ''));
@@ -1302,8 +1307,8 @@ function Highlighter(options = hhDefaultOptions) {
               mergedRect.width = rect.width;
             }
             // Process then remove rects that apply to the current line
-            minLeft = Math.min(mergedRect.x, rect.x);
-            maxRight = Math.max(mergedRect.right, rect.right);
+            const minLeft = Math.min(mergedRect.x, rect.x);
+            const maxRight = Math.max(mergedRect.right, rect.right);
             mergedRect.width = maxRight - minLeft;
             mergedRect.x = minLeft;
             unmergedRects.splice(r, 1); r--;
@@ -1447,3 +1452,6 @@ let hhDefaultOptions = {
 }
 
 console.info('Highlighter loaded');
+
+// Make Highlighter available to ES module (highlight-helper.mjs)
+window.Highlighter = Highlighter;

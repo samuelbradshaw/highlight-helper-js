@@ -2,7 +2,8 @@
   "name": "@samuelbradshaw/highlight-helper-js",
   "version": "0.7.0",
   "description": "JavaScript tool that enables highlighting or underlining text in an HTML page.",
-  "main": "highlight-helper.js",
+  "type": "module",
+  "main": "highlight-helper.mjs",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/samuelbradshaw/highlight-helper-js.git"

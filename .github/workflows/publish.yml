@@ -18,9 +18,9 @@ jobs:
         run: npm version "${{ steps.get_version.outputs.RELEASE_VERSION }}" --no-git-tag-version
       - name: Commit package.json changes
         uses: stefanzweifel/git-auto-commit-action@v6
-          with:
-            commit_message: "Update package.json version to ${{ steps.get_version.outputs.RELEASE_VERSION }}"
-            branch: main
+        with:
+          commit_message: "Update package.json version to ${{ steps.get_version.outputs.RELEASE_VERSION }}"
+          branch: main
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

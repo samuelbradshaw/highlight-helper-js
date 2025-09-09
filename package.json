@@ -1,6 +1,6 @@
 {
   "name": "@samuelbradshaw/highlight-helper-js",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "JavaScript tool that enables highlighting or underlining text in an HTML page.",
   "type": "module",
   "main": "highlight-helper.mjs",

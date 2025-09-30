@@ -702,7 +702,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Long press in annotatable container (triggered by setTimeout() in pointerdown event)
   const respondToLongPress = (event) => {
-    respondToPointerUp(event, isLongPress = true);
+    respondToPointerUp(event, true);
     tapResult = null;
   }
   

@@ -1271,7 +1271,6 @@ function Highlighter(options = hhDefaultOptions) {
     for (const paragraph of paragraphs) {
       const paragraphRect = paragraph.getBoundingClientRect();
       const computedParagraphStyle = window.getComputedStyle(paragraph);
-      const paragraphLineHeight = parseInt((computedParagraphStyle.lineHeight === 'normal' ? computedParagraphStyle.fontSize : computedParagraphStyle.lineHeight).replace('px', ''));
       const paragraphTopPadding = parseInt(computedParagraphStyle.getPropertyValue('padding-top').replace('px', ''));
       
       // Get line positions (bottom edge of each line)
@@ -1279,13 +1278,11 @@ function Highlighter(options = hhDefaultOptions) {
       let lineWalker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
       let textNode;
       while (textNode = lineWalker.nextNode()) {
-        const computedStyle = window.getComputedStyle(textNode.parentElement);
-        const lineHeight = parseInt((computedStyle.lineHeight === 'normal' ? computedStyle.fontSize : computedStyle.lineHeight).replace('px', ''));
-        if (lineHeight >= paragraphLineHeight) {
-          const referenceRange = document.createRange();
-          referenceRange.selectNode(textNode);
-          for (const rangeRect of referenceRange.getClientRects()) linePositions.add(rangeRect.bottom);
-        }
+        // Skip text nodes in elements that are higher or lower than surrounding text
+        if (textNode.parentElement.closest('sup, sub, rt')) continue;
+        const referenceRange = document.createRange();
+        referenceRange.selectNode(textNode);
+        for (const rangeRect of referenceRange.getClientRects()) linePositions.add(rangeRect.bottom);
       }
       linePositions = Array.from(linePositions);
       

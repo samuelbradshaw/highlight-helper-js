@@ -1010,7 +1010,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Prevent the range from starting or ending in an element that doesn't match the paragraph selector
     if (this.annotatableContainer.contains(range.commonAncestorContainer) && (!startNode.parentElement.closest(options.paragraphSelector) || !endNode.parentElement.closest(options.paragraphSelector))) {
-      annotatableParagraphsInRange = Array.from(this.annotatableParagraphs).filter((paragraph) => {
+      let annotatableParagraphsInRange = Array.from(this.annotatableParagraphs).filter((paragraph) => {
         const relativeStartPosition = startNode.compareDocumentPosition(paragraph);
         const relativeEndPosition = endNode.compareDocumentPosition(paragraph);
         return (relativeStartPosition & Node.DOCUMENT_POSITION_FOLLOWING || relativeStartPosition & Node.DOCUMENT_POSITION_CONTAINS) && (relativeEndPosition & Node.DOCUMENT_POSITION_PRECEDING || relativeEndPosition & Node.DOCUMENT_POSITION_CONTAINS);

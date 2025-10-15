@@ -453,11 +453,12 @@ function Highlighter(options = hhDefaultOptions) {
       changes: appearanceChanges.concat(boundsChanges),
     }
     
-    if (highlightId !== activeHighlightId) this.drawHighlights([highlightId]);    
-    if (highlightId === activeHighlightId && appearanceChanges.length > 0) {
-      updateSelectionUi('appearance');
-    } else if (triggeredByUserAction && highlightId !== activeHighlightId) {
+    if (triggeredByUserAction && !activeHighlightId) {
       this.activateHighlight(highlightId);
+    } else if (activeHighlightId && highlightId === activeHighlightId && appearanceChanges.length > 0) {
+      updateSelectionUi('appearance');
+    } else {
+      this.drawHighlights([highlightId]);
     }
     
     if (isNewHighlight) {
@@ -914,8 +915,10 @@ function Highlighter(options = hhDefaultOptions) {
       
       // Bring active highlight to the front
       const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
-      svgBackground.appendChild(svgHighlight);
-      svgBackground.appendChild(svgActiveOverlay);
+      if (svgHighlight) {
+        svgBackground.appendChild(svgHighlight);
+        svgBackground.appendChild(svgActiveOverlay);
+      }
     }
     
     if (changeType === 'appearance') {

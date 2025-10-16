@@ -1267,6 +1267,7 @@ function Highlighter(options = hhDefaultOptions) {
         const elementRect = element.getBoundingClientRect();
         if (Math.round(elementRect.width) === Math.round(rect.width) && Math.round(elementRect.height) === Math.round(rect.height) && Math.round(elementRect.top) === Math.round(rect.top) && Math.round(elementRect.left) === Math.round(rect.left)) {
           unmergedRects.splice(ur, 1);
+          break;
         }
       }
     }

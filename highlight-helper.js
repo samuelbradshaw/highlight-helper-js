@@ -481,6 +481,7 @@ function Highlighter(options = hhDefaultOptions) {
     const highlightRange = highlightToActivate.rangeObj.cloneRange();
     activeHighlightId = highlightId;
     updateSelectionUi('appearance');
+    updateSelectionUi('bounds');
     
     // Update the selection range if needed
     // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.

@@ -457,7 +457,7 @@ function Highlighter(options = hhDefaultOptions) {
       this.activateHighlight(highlightId);
     } else if (activeHighlightId && highlightId === activeHighlightId && appearanceChanges.length > 0) {
       updateSelectionUi('appearance');
-    } else {
+    } else if (highlightId !== activeHighlightId) {
       this.drawHighlights([highlightId]);
     }
     

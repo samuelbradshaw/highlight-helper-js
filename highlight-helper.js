@@ -916,10 +916,8 @@ function Highlighter(options = hhDefaultOptions) {
       
       // Bring active highlight to the front
       const svgHighlight = svgBackground.querySelector(`g[data-highlight-id="${activeHighlightId}"]`);
-      if (svgHighlight) {
-        svgBackground.appendChild(svgHighlight);
-        svgBackground.appendChild(svgActiveOverlay);
-      }
+      if (svgHighlight) svgBackground.appendChild(svgHighlight);
+      svgBackground.appendChild(svgActiveOverlay);
     }
     
     if (changeType === 'appearance') {
@@ -1014,7 +1012,7 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Prevent the range from starting or ending in an element that doesn't match the paragraph selector
     if (this.annotatableContainer.contains(range.commonAncestorContainer) && (!startNode.parentElement.closest(options.paragraphSelector) || !endNode.parentElement.closest(options.paragraphSelector))) {
-      let annotatableParagraphsInRange = Array.from(this.annotatableParagraphs).filter((paragraph) => {
+      const annotatableParagraphsInRange = Array.from(this.annotatableParagraphs).filter((paragraph) => {
         const relativeStartPosition = startNode.compareDocumentPosition(paragraph);
         const relativeEndPosition = endNode.compareDocumentPosition(paragraph);
         return (relativeStartPosition & Node.DOCUMENT_POSITION_FOLLOWING || relativeStartPosition & Node.DOCUMENT_POSITION_CONTAINS) && (relativeEndPosition & Node.DOCUMENT_POSITION_PRECEDING || relativeEndPosition & Node.DOCUMENT_POSITION_CONTAINS);

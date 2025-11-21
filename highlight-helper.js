@@ -1308,8 +1308,8 @@ function Highlighter(options = hhDefaultOptions) {
               mergedRect.width = rect.width;
             }
             // Process then remove rects that apply to the current line
-            const minLeft = Math.min(mergedRect.x, rect.x);
-            const maxRight = Math.max(mergedRect.right, rect.right);
+            const minLeft = Math.max(paragraphRect.left, Math.min(mergedRect.x, rect.x));
+            const maxRight = Math.min(paragraphRect.right, Math.max(mergedRect.right, rect.right));
             mergedRect.width = maxRight - minLeft;
             mergedRect.x = minLeft;
             unmergedRects.splice(r, 1); r--;

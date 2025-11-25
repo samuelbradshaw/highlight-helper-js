@@ -70,6 +70,9 @@ function Highlighter(options = hhDefaultOptions) {
         width: 0px;
         visibility: hidden;
       }
+      [data-hh-pointer-down="true"] .hh-selection-handle {
+        visibility: hidden !important;
+      }
       .hh-selection-handle-content {
         position: absolute;
         height: 100%;
@@ -642,13 +645,13 @@ function Highlighter(options = hhDefaultOptions) {
   this.annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: controller.signal });
   const respondToPointerDown = (event) => {
     const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+    if (!isSecondaryClick) this.annotatableContainer.dataset.hhPointerDown = 'true';
     pointerType = event.pointerType;
     
     // Pointer down on a selection handle
     if (event.target?.closest('.hh-selection-handle')) {
       if (!isSecondaryClick) {
         activeSelectionHandle = event.target.parentElement.closest('.hh-selection-handle');
-        this.annotatableContainer.dataset.hhDragging = 'true';
         const selectionHandleClientRect = activeSelectionHandle.getBoundingClientRect();
         const lineHeight = selectionHandleClientRect.bottom - selectionHandleClientRect.top;
         activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 6));
@@ -748,10 +751,10 @@ function Highlighter(options = hhDefaultOptions) {
     }
     tapResult = null;
     longPressTimeoutId = clearTimeout(longPressTimeoutId);
+    this.annotatableContainer.dataset.hhPointerDown = 'false';
     if (activeSelectionHandle) {
       activeSelectionHandle = null;
       updateSelectionUi('bounds');
-      this.annotatableContainer.dataset.hhDragging = 'false';
       this.annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
     }
   }
@@ -898,7 +901,7 @@ function Highlighter(options = hhDefaultOptions) {
     const highlightInfo = highlightsById[activeHighlightId] ?? null;
     const color = highlightInfo?.color ?? null;
     const style = highlightInfo?.style ?? null;
-    const colorString = options.colors[color] ?? 'AccentColor';
+    const colorString = options.colors[color] ?? (CSS.supports('color', 'AccentColor') ? 'AccentColor' : 'dodgerblue');
     
     // Draw SVG selection rects (SVG drawing mode only)
     svgActiveOverlay.innerHTML = '';
@@ -953,7 +956,7 @@ function Highlighter(options = hhDefaultOptions) {
       
     } else if (changeType === 'bounds') {
       // Update selection handle location and visibility
-      if (selection.type === 'Range' && activeHighlightId && pointerType === 'mouse' && !activeSelectionHandle) {
+      if (selection.type === 'Range') {
         const selectionRangeRects = selectionRange.getClientRects();
         const startRect = selectionRangeRects[0];
         const endRect = selectionRangeRects[selectionRangeRects.length-1];
@@ -961,8 +964,14 @@ function Highlighter(options = hhDefaultOptions) {
         const startNodeIsRtl = window.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
         const endNodeIsRtl = window.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
         
+        if (
+          (options.showCustomSelectionHandlesOnTouch || pointerType === 'mouse')
+          && ((options.showCustomSelectionHandlesForActiveHighlights && activeHighlightId)
+            || (options.showCustomSelectionHandlesForTextSelection && !activeHighlightId))
+        ) {
+          setCustomSelectionHandleVisibility(true);
+        }
         for (const selectionHandle of selectionHandles) {
-          selectionHandle.style.visibility = 'visible';
           let side;
           if (selectionHandle.dataset.position === 'start') {
             side = startNodeIsRtl ? 'right' : 'left';
@@ -981,9 +990,14 @@ function Highlighter(options = hhDefaultOptions) {
           }
         }
       } else {
-        selectionHandles[0].style.visibility = 'hidden';
-        selectionHandles[1].style.visibility = 'hidden';
+        setCustomSelectionHandleVisibility(false);
       }
+    }
+  }
+  
+  const setCustomSelectionHandleVisibility = (visible = selectionHandles[0].style.visibility === 'hidden') => {
+    for (const selectionHandle of selectionHandles) {
+      selectionHandle.style.visibility = visible ? 'visible' : 'hidden';
     }
   }
   
@@ -1450,6 +1464,9 @@ let hhDefaultOptions = {
   defaultStyle: 'fill',
   defaultWrapper: 'none',
   highlightIdFunction: hhGetNewHighlightId,
+  showCustomSelectionHandlesForActiveHighlights: true,
+  showCustomSelectionHandlesForTextSelection: false,
+  showCustomSelectionHandlesOnTouch: false,
 }
 
 console.info('Highlighter loaded');

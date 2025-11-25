@@ -147,6 +147,12 @@
         <label><input type="radio" name="hh-drawing-mode" value="highlight-api"> Custom Highlight API</label><br>
         <label><input type="radio" name="hh-drawing-mode" value="mark-elements"> HTML mark elements</label><br>
       </p>
+      <p>
+        Show custom selection handles:<br>
+        <label><input type="checkbox" id="hh-selection-handles-active-highlights" checked> For active highlights</label><br>
+        <label><input type="checkbox" id="hh-selection-handles-text-selection"> For text selection</label><br>
+        <label><input type="checkbox" id="hh-selection-handles-touch"> On touch devices</label><br>
+      </p>
       <b>Active highlight:</b>
       <div id="snippet-container">
         <div id="snippet">N/A</div>
@@ -263,6 +269,12 @@
           }
         });
       }
+      const selectionHandlesActiveHighlightsCheckbox = document.getElementById('hh-selection-handles-active-highlights');
+      selectionHandlesActiveHighlightsCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesForActiveHighlights', event.currentTarget.checked); });
+      const selectionHandlesTextSelectionCheckbox = document.getElementById('hh-selection-handles-text-selection');
+      selectionHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesForTextSelection', event.currentTarget.checked); });
+      const selectionHandlesOnTouchCheckbox = document.getElementById('hh-selection-handles-touch');
+      selectionHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesOnTouch', event.currentTarget.checked); });
       
       const container = document.querySelector(highlighter.getOptions().containerSelector);
       const snippetDiv = document.getElementById('snippet');

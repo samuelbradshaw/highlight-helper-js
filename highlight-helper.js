@@ -969,25 +969,25 @@ function Highlighter(options = hhDefaultOptions) {
           && ((options.showCustomSelectionHandlesForActiveHighlights && activeHighlightId)
             || (options.showCustomSelectionHandlesForTextSelection && !activeHighlightId))
         ) {
+          for (const selectionHandle of selectionHandles) {
+            let side;
+            if (selectionHandle.dataset.position === 'start') {
+              side = startNodeIsRtl ? 'right' : 'left';
+              selectionHandle.style.left = startRect[side] - relativeAncestorClientRect.left + 'px';
+              selectionHandle.style.height = startRect.height + 'px';
+              selectionHandle.style.top = startRect.top - relativeAncestorClientRect.top + 'px';
+            } else {
+              side = endNodeIsRtl ? 'left' : 'right';
+              selectionHandle.style.left = endRect[side] - relativeAncestorClientRect.left + 'px';
+              selectionHandle.style.height = endRect.height + 'px';
+              selectionHandle.style.top = endRect.top - relativeAncestorClientRect.top + 'px';
+            }
+            if (selectionHandle.dataset.side !== side) {
+              selectionHandle.dataset.side = side;
+              this.setOption('selectionHandles', options.selectionHandles);
+            }
+          }
           setCustomSelectionHandleVisibility(true);
-        }
-        for (const selectionHandle of selectionHandles) {
-          let side;
-          if (selectionHandle.dataset.position === 'start') {
-            side = startNodeIsRtl ? 'right' : 'left';
-            selectionHandle.style.left = startRect[side] - relativeAncestorClientRect.left + 'px';
-            selectionHandle.style.height = startRect.height + 'px';
-            selectionHandle.style.top = startRect.top - relativeAncestorClientRect.top + 'px';
-          } else {
-            side = endNodeIsRtl ? 'left' : 'right';
-            selectionHandle.style.left = endRect[side] - relativeAncestorClientRect.left + 'px';
-            selectionHandle.style.height = endRect.height + 'px';
-            selectionHandle.style.top = endRect.top - relativeAncestorClientRect.top + 'px';
-          }
-          if (selectionHandle.dataset.side !== side) {
-            selectionHandle.dataset.side = side;
-            this.setOption('selectionHandles', options.selectionHandles);
-          }
         }
       } else {
         setCustomSelectionHandleVisibility(false);

@@ -335,7 +335,7 @@ function Highlighter(options = hhDefaultOptions) {
     const boundsChanges = [];
     
     let isNewHighlight, oldHighlightInfo;
-    if (highlightsById.hasOwnProperty(highlightId)) {
+    if (Object.hasOwn(highlightsById, highlightId)) {
       oldHighlightInfo = highlightsById[highlightId];
     } else {
       isNewHighlight = true;
@@ -355,13 +355,13 @@ function Highlighter(options = hhDefaultOptions) {
     }
     
     // Warn if color, style, or wrapper attributes are invalid
-    if (attributes.color && !options.colors.hasOwnProperty(attributes.color)) {
+    if (attributes.color && !Object.hasOwn(options.colors, attributes.color)) {
       console.warn(`Highlight color "${attributes.color}" is not defined in options (highlightId: ${highlightId}).`);
     }
-    if (attributes.style && !options.styles.hasOwnProperty(attributes.style)) {
+    if (attributes.style && !Object.hasOwn(options.styles, attributes.style)) {
       console.warn(`Highlight style "${attributes.style}" is not defined in options (highlightId: ${highlightId}).`);
     }
-    if (attributes.wrapper && !options.wrappers.hasOwnProperty(attributes.wrapper)) {
+    if (attributes.wrapper && !Object.hasOwn(options.wrappers, attributes.wrapper)) {
       console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
     }
     
@@ -828,7 +828,7 @@ function Highlighter(options = hhDefaultOptions) {
     if (!oldHighlightInfo) return newHighlightInfo;
     const changedHighlightInfo = {}
     for (const key of Object.keys(newHighlightInfo)) {
-      if (oldHighlightInfo.hasOwnProperty(key) && oldHighlightInfo[key] !== newHighlightInfo[key]) {
+      if (Object.hasOwn(oldHighlightInfo, key) && oldHighlightInfo[key] !== newHighlightInfo[key]) {
         changedHighlightInfo[key] = newHighlightInfo[key];
       }
     }
@@ -1135,7 +1135,7 @@ function Highlighter(options = hhDefaultOptions) {
   
   // Get style template for a given highlight style
   const getStyleTemplate = (style, type, clientRect = null, active = false) => {
-    style = options.styles.hasOwnProperty(style) ? style : options.defaultStyle;
+    style = Object.hasOwn(options.styles, style) ? style : options.defaultStyle;
     let styleTemplate = options.styles[style]?.[type] ?? '';
     if (active) {
       styleTemplate = options.styles[style]?.[`${type}-active`] ?? styleTemplate;

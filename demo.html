@@ -2,7 +2,7 @@
 <html lang="en" translate="no">
   <head>
     <meta charset="utf-8">
-    <title>Text Selection Demo</title>
+    <title>HighlightHelper.js Demo</title>
     <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">
     <meta name="google" content="notranslate">
     <style>
@@ -105,9 +105,9 @@
   </head>
   <body>
     <main>
-      <h1 id="title1">Highlight Helper Demo</h1>
+      <h1 id="title1">HighlightHelper.js Demo</h1>
       <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/CMYK_color_model.svg/180px-CMYK_color_model.svg.png">
-      <p id="p1"><b>Highlight Helper</b> enables highlighting or underlining text in an HTML page. Highlights are drawn via <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/SVG">SVG shapes</a>, the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, or <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark">HTML mark elements</a>. Highlights can be drawn across multiple paragraphs or <b>inline <i>style</i></b> elements—they can even overlap!</p>
+      <p id="p1"><b>HighlightHelper.js</b> enables highlighting or underlining text in an HTML page. Highlights are drawn via <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/SVG">SVG shapes</a>, the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, or <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark">HTML mark elements</a>. Highlights can be drawn across multiple paragraphs or <b>inline <i>style</i></b> elements—they can even overlap!</p>
       <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images (right) and Japanese ruby/furigana (below) are highlighted around.</p>
       <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
       <p id="p4" style="direction: rtl;">فِي الْبَدْءِ خَلَقَ اللهُ السَّمَاوَاتِ وَالأَرْضَ. وَكَانَتِ الأَرْضُ خَرِبَةً وَخَالِيَةً، وَعَلَى وَجْهِ الْغَمْرِ ظُلْمَةٌ، وَرُوحُ اللهِ يَرِفُّ عَلَى وَجْهِ الْمِيَاهِ. وَقَالَ اللهُ: «لِيَكُنْ نُورٌ»، فَكَانَ نُورٌ.</p>
@@ -165,7 +165,7 @@
       <button id="disambiguation-cancel">Cancel</button>
     </dialog>
     
-    <!-- Link to the Highlight Helper JavaScript file -->
+    <!-- Link to the HighlightHelper.js JavaScript file -->
     <script src="highlight-helper.js"></script>
     <script>
       // Example highlights
@@ -173,8 +173,8 @@
         {
           highlightId: 'hh-1729991847207',
           color: 'green', style: 'fill',
-          startParagraphId: 'p1', startParagraphOffset: 25,
-          endParagraphId: 'p1', endParagraphOffset: 57,
+          startParagraphId: 'p1', startParagraphOffset: 27,
+          endParagraphId: 'p1', endParagraphOffset: 59,
         },
         {
           highlightId: 'hh-1729991847300',
@@ -199,14 +199,14 @@
         {
           highlightId: 'hh-1735379727958',
           color: 'yellow', style: 'fill',
-          startParagraphId: 'p1', startParagraphOffset: 246,
-          endParagraphId: 'p1', endParagraphOffset: 259,
+          startParagraphId: 'p1', startParagraphOffset: 248,
+          endParagraphId: 'p1', endParagraphOffset: 261,
         },
         {
           highlightId: 'hh-1735379721523',
           color: 'red', style: 'fill',
-          startParagraphId: 'p1', startParagraphOffset: 237,
-          endParagraphId: 'p1', endParagraphOffset: 250,
+          startParagraphId: 'p1', startParagraphOffset: 239,
+          endParagraphId: 'p1', endParagraphOffset: 252,
         },
         {
           highlightId: 'hh-1735479727958',
@@ -226,7 +226,7 @@
       });
       highlighter.loadHighlights(highlights);
       
-      // Call Highlight Helper methods when color, style, wrapper, or remove buttons on this demo page are tapped
+      // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
       const colorButtons = document.getElementsByName('hh-color');
       for (const colorButton of colorButtons) {
         colorButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ color: colorButton.value }); });
@@ -246,7 +246,7 @@
         if (event.key === 'Backspace') highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
       }
       
-      // Call Highlight Helper methods when options are changed
+      // Call HighlightHelper.js methods when options are changed
       const rememberStyleCheckbox = document.getElementById('hh-remember-style');
       const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
       const pointerModeRadioButtons = document.getElementsByName('hh-pointer-mode');

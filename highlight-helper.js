@@ -1,5 +1,5 @@
 /**
- * Highlight Helper
+ * HighlightHelper.js
  * https://github.com/samuelbradshaw/highlight-helper-js
  */
 

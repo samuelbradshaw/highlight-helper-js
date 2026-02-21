@@ -46,22 +46,37 @@ In the source of demo.html, you’ll see CSS styles, followed by the HTML body, 
 
 ### <a name="installation-options"></a>Installation options
 
-You can download highlight-helper.js from GitHub and reference it from your HTML file:
+HighlightHelper.js is available as classic JavaScript (highlight-helper.js) or as a [JavaScript module](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules) (highlight-helper.mjs).
+
+#### Classic JavaScript
+
+Download highlight-helper.js from GitHub and reference it locally in your HTML file:
 ```html
 <script src="scripts/highlight-helper.js"></script>
 ```
 
-Or you can load it from [jsDelivr](https://www.jsdelivr.com/package/gh/samuelbradshaw/highlight-helper-js):
+Or load it from [jsDelivr](https://www.jsdelivr.com/package/gh/samuelbradshaw/highlight-helper-js) CDN:
 ```html
 <script src="https://cdn.jsdelivr.net/gh/samuelbradshaw/highlight-helper-js@main/highlight-helper.min.js"></script>
 ```
 
-Or you can install it using [npm](https://www.npmjs.com/package/@samuelbradshaw/highlight-helper-js):
+#### JavaScript Module
+
+Download highlight-helper.js and highlight-helper.mjs from GitHub and import as a JavaScript module:
+```javascript
+import { Highlighter } from './highlight-helper.mjs';
+```
+
+Or load it from [jsDelivr](https://www.jsdelivr.com/package/gh/samuelbradshaw/highlight-helper-js) CDN:
+```html
+import { Highlighter } from 'https://cdn.jsdelivr.net/gh/samuelbradshaw/highlight-helper-js@main/highlight-helper.min.mjs';
+```
+
+You can also install it using [npm](https://www.npmjs.com/package/@samuelbradshaw/highlight-helper-js):
 ```bash
 % cd /your/project/folder
 % npm i @samuelbradshaw/highlight-helper-js
 ```
-
 
 ## <a name="methods-options-and-custom-events"></a>Methods, options, and custom events
 

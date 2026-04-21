@@ -789,20 +789,22 @@ function Highlighter(options = hhDefaultOptions) {
     
     // Check for tapped highlights and hyperlinks
     const tappedHighlights = [];
-    for (const highlightId of Object.keys(highlightsById)) {
-      const highlightInfo = highlightsById[highlightId];
-      const highlightRange = highlightInfo.rangeObj;
-      for (const rangeRect of highlightRange.getClientRects()) {
-        if (isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rangeRect, 5)) {
-          tappedHighlights.push(highlightInfo);
-          break;
+    const tappedHyperlinks = [];
+    if (!pointerEvent.target.closest('[data-hh-ignore]')) {
+      for (const highlightId of Object.keys(highlightsById)) {
+        const highlightInfo = highlightsById[highlightId];
+        const highlightRange = highlightInfo.rangeObj;
+        for (const rangeRect of highlightRange.getClientRects()) {
+          if (isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rangeRect, 5)) {
+            tappedHighlights.push(highlightInfo);
+            break;
+          }
         }
       }
-    }
-    const tappedHyperlinks = [];
-    for (const hyperlinkInfo of Object.values(hyperlinksByPosition)) {
-      if (pointerEvent.target.closest('a') === hyperlinkInfo.hyperlinkElement) {
-        tappedHyperlinks.push(hyperlinkInfo);
+      for (const hyperlinkInfo of Object.values(hyperlinksByPosition)) {
+        if (pointerEvent.target.closest('a') === hyperlinkInfo.hyperlinkElement) {
+          tappedHyperlinks.push(hyperlinkInfo);
+        }
       }
     }
     

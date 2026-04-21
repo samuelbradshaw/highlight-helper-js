@@ -143,8 +143,8 @@ function Highlighter(options = hhDefaultOptions) {
     svgBackground.classList.add('hh-svg-background');
     this.annotatableContainer.appendChild(svgBackground);
     this.annotatableContainer.insertAdjacentHTML('beforeend', `
-      <div class="hh-selection-handle" data-side="left" data-position="start"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
-      <div class="hh-selection-handle" data-side="right" data-position="end"><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+      <div class="hh-selection-handle" data-side="left" data-position="start" data-hh-ignore=""><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+      <div class="hh-selection-handle" data-side="right" data-position="end" data-hh-ignore=""><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
     `);
     selectionHandles = this.annotatableContainer.getElementsByClassName('hh-selection-handle');
     
@@ -234,11 +234,11 @@ function Highlighter(options = hhDefaultOptions) {
         // Inject HTML <mark> elements
         range.startContainer.splitText(range.startOffset);
         range.endContainer.splitText(range.endOffset);
-        const textNodeIter = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+        const walker = getTextNodeWalker(range.commonAncestorContainer);
         const relevantTextNodes = [];
         let node;
-        while (node = textNodeIter.nextNode()) {
-          if (range.intersectsNode(node) && node !== range.startContainer && node.textContent !== '' && !node.parentElement.closest('rt') && node.parentElement.closest(options.paragraphSelector)) relevantTextNodes.push(node);
+        while (node = walker.nextNode()) {
+          if (range.intersectsNode(node) && node !== range.startContainer && !node.parentElement.closest('rt, rp')) relevantTextNodes.push(node);
           if (node === range.endContainer) break;
         }
         const overlappingHighlightIds = new Set();
@@ -301,17 +301,13 @@ function Highlighter(options = hhDefaultOptions) {
       if (highlightInfo.readOnly && !wasDrawnAsReadOnly) {
         if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
           const addWrapper = (edge, range, htmlString) => {
-            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}">${htmlString}</span>`
+            htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}" data-hh-ignore="">${htmlString}</span>`
             for (const key of Object.keys(highlightInfo.wrapperVariables)) {
               htmlString = htmlString.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
             }
             const template = document.createElement('template');
             template.innerHTML = htmlString;
             let htmlElement = template.content.firstChild;
-            
-            let node;
-            const textNodeIter = document.createNodeIterator(htmlElement, NodeFilter.SHOW_TEXT);
-            while (node = textNodeIter.nextNode()) node.parentNode.removeChild(node);
             range.insertNode(htmlElement);
           }
           const startRange = highlightInfo.rangeObj;
@@ -418,7 +414,8 @@ function Highlighter(options = hhDefaultOptions) {
       const temporaryHtmlElement = document.createElement('div');
       temporaryHtmlElement.appendChild(highlightRange.cloneContents());
       for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-highlight-id]:not([data-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
-      rangeText = highlightRange.toString();
+      for (const element of temporaryHtmlElement.querySelectorAll(`[data-hh-ignore]`)) element.remove();
+      rangeText = temporaryHtmlElement.textContent;
       rangeHtml = temporaryHtmlElement.innerHTML;
       let startParagraphIndex = annotatableParagraphIds.indexOf(startParagraphId);
       let endParagraphIndex = annotatableParagraphIds.indexOf(endParagraphId);
@@ -1024,23 +1021,20 @@ function Highlighter(options = hhDefaultOptions) {
       }
     }
     
-    // Prevent the range from starting or ending in an element that doesn't match the paragraph selector
-    if (this.annotatableContainer.contains(range.commonAncestorContainer) && (!startNode.parentElement.closest(options.paragraphSelector) || !endNode.parentElement.closest(options.paragraphSelector))) {
-      const annotatableParagraphsInRange = Array.from(this.annotatableParagraphs).filter((paragraph) => {
-        const relativeStartPosition = startNode.compareDocumentPosition(paragraph);
-        const relativeEndPosition = endNode.compareDocumentPosition(paragraph);
-        return (relativeStartPosition & Node.DOCUMENT_POSITION_FOLLOWING || relativeStartPosition & Node.DOCUMENT_POSITION_CONTAINS) && (relativeEndPosition & Node.DOCUMENT_POSITION_PRECEDING || relativeEndPosition & Node.DOCUMENT_POSITION_CONTAINS);
-      });
-      if (annotatableParagraphsInRange.length === 0) {
-        return range.cloneRange().collapse(true);
-      }
-      if (!startNode.parentElement.closest(options.paragraphSelector)) {
-        startNode = getFirstTextNode(annotatableParagraphsInRange[0]);
+    // Prevent the range from starting or ending in an invalid text node
+    if (this.annotatableContainer.contains(range.commonAncestorContainer) && (shouldSkipTextNode(startNode) || shouldSkipTextNode(endNode))) {
+      if (shouldSkipTextNode(startNode)) {
+        startNode = getNextValidTextNode(startNode);
         startOffset = 0;
       }
-      if (!endNode.parentElement.closest(options.paragraphSelector)) {
-        endNode = getLastTextNode(annotatableParagraphsInRange[annotatableParagraphsInRange.length - 1]);
+      if (shouldSkipTextNode(endNode)) {
+        endNode = getPreviousValidTextNode(endNode);
         endOffset = endNode.length;
+      }
+      if (!startNode || !endNode || (startNode === endNode && startOffset === endOffset)) {
+        return range.cloneRange().collapse(true);
+      } else if (startNode === endNode && endOffset < startOffset) {
+        [startOffset, endOffset] = [endOffset, startOffset];
       }
     }
     
@@ -1048,17 +1042,15 @@ function Highlighter(options = hhDefaultOptions) {
     if (options.snapToWord) {
       // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
       if (startOffset === startNode.textContent.length) {
-        let parentElement = range.commonAncestorContainer;
-        let walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT, (node) => node.parentNode.closest(options.paragraphSelector) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP);
-        let nextTextNode = walker.nextNode();
-        while (nextTextNode && nextTextNode !== startNode) nextTextNode = walker.nextNode();
-        nextTextNode = walker.nextNode();
+        const walker = getTextNodeWalker(range.commonAncestorContainer);
+        walker.currentNode = startNode;
+        const nextTextNode = walker.nextNode();
         if (nextTextNode) {
           startNode = nextTextNode;
           startOffset = 0;
         }
       }
-      
+            
       // Trim whitespace and dashes at range start and end
       while (/\s|\p{Pd}/u.test(startOffset < startNode.textContent.length && startNode.textContent[startOffset])) startOffset += 1;
       while (endOffset - 1 >= 0 && /\s|\p{Pd}/u.test(endNode.textContent[endOffset - 1])) endOffset -= 1;
@@ -1075,20 +1067,25 @@ function Highlighter(options = hhDefaultOptions) {
   }
   
   // Get the character offset relative to the annotatable paragraph
-  // Adapted from https://stackoverflow.com/a/4812022/1349044
   const getParagraphOffset = (referenceTextNode, referenceTextNodeOffset) => {
     const paragraph = referenceTextNode.parentElement.closest(options.paragraphSelector);
-    const referenceRange = document.createRange();
-    referenceRange.selectNodeContents(paragraph);
-    referenceRange.setEnd(referenceTextNode, referenceTextNodeOffset);
-    const paragraphOffset = referenceRange.toString().length;
-    return [ paragraph.id, paragraphOffset ];
+    const walker = getTextNodeWalker(paragraph);
+    let currentOffset = 0;
+    let textNode;
+    while (textNode = walker.nextNode()) {
+      if (textNode === referenceTextNode) {
+        currentOffset += referenceTextNodeOffset;
+        break;
+      }
+      currentOffset += textNode.textContent.length;
+    }
+    return [ paragraph.id, currentOffset ];
   }
   
   // Get the character offset relative to the deepest relevant text node
   const getTextNodeAndOffset = (parentElement, targetOffset) => {
     let textNode, firstTextNode, currentOffset = 0;
-    const walker = document.createTreeWalker(parentElement, NodeFilter.SHOW_TEXT);
+    const walker = getTextNodeWalker(parentElement);
     while (textNode = walker.nextNode()) {
       if (!firstTextNode) firstTextNode = walker.currentNode;
       currentOffset += textNode.textContent.length;
@@ -1107,18 +1104,45 @@ function Highlighter(options = hhDefaultOptions) {
     }
   }
   
-  // Get the first text node in an element
+  // Get the first valid text node in an element
   const getFirstTextNode = (element) => {
-    const firstTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    return firstTextNodeWalker.nextNode();
+    const walker = getTextNodeWalker(element);
+    return walker.nextNode();
   }
   
-  // Get the last text node in an element
+  // Get the last valid text node in an element
   const getLastTextNode = (element) => {
-    const lastTextNodeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    let nextNode;
-    while (nextNode = lastTextNodeWalker.nextNode());
-    return lastTextNodeWalker.currentNode;
+    const walker = getTextNodeWalker(element);
+    let lastNode = null, node;
+    while (node = walker.nextNode()) lastNode = node;
+    return lastNode;
+  }
+  
+  // Get the previous valid text node in the annotatable container
+  const getNextValidTextNode = (currentNode) => {
+    const walker = getTextNodeWalker(this.annotatableContainer);
+    walker.currentNode = currentNode;
+    return walker.nextNode();
+  }
+  
+  // Get the next valid text node in the annotatable container
+  const getPreviousValidTextNode = (currentNode) => {
+    const walker = getTextNodeWalker(this.annotatableContainer);
+    walker.currentNode = currentNode;
+    return walker.previousNode();
+  }
+  
+  // Determine if text node should be skipped when snapping to word or calculating character offsets
+  const shouldSkipTextNode = (textNode) => {
+    const parentParagraph = textNode.parentNode.closest(options.paragraphSelector);
+    const hhIgnore = textNode.parentNode.closest('[data-hh-ignore]');
+    if (!parentParagraph || hhIgnore || textNode.textContent === '') return true;
+    return false;
+  }
+  
+  // Get text node walker
+  const getTextNodeWalker = (root) => {
+    return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, (node) => shouldSkipTextNode(node) ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT);
   }
   
   // Update appearance stylesheet (user-defined colors and styles)
@@ -1471,5 +1495,5 @@ let hhDefaultOptions = {
 
 console.info('Highlighter loaded');
 
-// Make Highlighter available to ES module (highlight-helper.mjs)
+// Make Highlighter available to JavaScript module (highlight-helper.mjs)
 window.Highlighter = Highlighter;

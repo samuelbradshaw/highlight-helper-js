@@ -17,7 +17,7 @@ jobs:
       - name: Update package.json
         run: npm version "${{ steps.get_version.outputs.RELEASE_VERSION }}" --no-git-tag-version
       - name: Commit package.json changes
-        uses: stefanzweifel/git-auto-commit-action@v6
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: "Update package.json version to ${{ steps.get_version.outputs.RELEASE_VERSION }}"
           branch: main

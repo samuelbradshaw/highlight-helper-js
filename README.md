@@ -68,7 +68,7 @@ import { Highlighter } from './highlight-helper.mjs';
 ```
 
 Or load it from [jsDelivr](https://www.jsdelivr.com/package/gh/samuelbradshaw/highlight-helper-js) CDN:
-```html
+```javascript
 import { Highlighter } from 'https://cdn.jsdelivr.net/gh/samuelbradshaw/highlight-helper-js@main/highlight-helper.min.mjs';
 ```
 
@@ -104,7 +104,7 @@ Options can be provided when HighlightHelper.js is initialized. They can also be
 - **paragraphSelector** – CSS selector for the paragraphs (or other block elements) on the page that should be annotatable. Each paragraph is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Default: `h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]`.
 - **colors** – Object that describes available highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default: red, orange, yellow, green, blue (see full default values at the bottom of highlight-helper.js).
 - **styles** – Object that describes available highlight styles. Keys are style names, and there are four properties for each style: `css`, `svg`, `css-active` (optional), and `svg-active` (optional). `css` is a CSS string used for styling highlights in `highlight-api` and `mark-elements` drawing modes, as well as for read-only highlights. `svg` is an SVG string (one or more SVG shapes) to represent the highlight in `svg` drawing mode. `css-active` and `svg-active` are alternative styles to be used when a highlight is active. The CSS custom property `var(--hh-color)` can be used to reference the highlight color value. For SVG highlights, the following variables (if present) will be replaced with relevant values from the highlight’s DOMRect: `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}`. Default: fill, single-underline, double-underline, colored-text, redacted (see full default values at the bottom of highlight-helper.js).
-- **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with two optional properties: `start` (HTML string to be inserted at the beginning of the highlight), and `end` (HTML string to be inserted at the end of the highlight). Only read-only highlights support wrappers. To avoid problems when calculating ranges and offsets, all [text nodes](https://developer.mozilla.org/en-US/docs/Web/API/Text) in the start and end wrappers will be removed (if text is needed, it should be rendered with CSS). `var(--hh-color)` can be used to reference the highlight color value. Variables surrounded by curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. See default values at the bottom of highlight-helper.js.
+- **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with two optional properties: `start` (HTML string to be inserted at the beginning of the highlight), and `end` (HTML string to be inserted at the end of the highlight). Only read-only highlights support wrappers. `var(--hh-color)` can be used to reference the highlight color value. Variables surrounded by curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. See default values at the bottom of highlight-helper.js.
 - **selectionHandles** – Object that describes custom selection handles that a user can drag to resize a selection or highlight. Because most touch devices have built-in selection handles, custom selection handles will only show when using a mouse or trackpad. There are two properties: `left` (HTML string to be used for the left selection handle) and `right` (HTML string to be used for the right selection handle). `var(--hh-color)` can be used to reference the highlight color value. See default values at the bottom of highlight-helper.js.
 - **rememberStyle** – Whether the most recent color, style, and wrapper should be remembered and used by default the next time the user creates a highlight. Boolean. Default: `true`.
 - **snapToWord** – Whether highlights should snap to the nearest word boundary. Spaces and dashes are considered word boundaries (this option may not work correctly in all languages). Boolean. Default: `false`.
@@ -148,11 +148,13 @@ These are the attributes that HighlightHelper.js stores for each highlight. You 
 - **wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
 - **readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
 - **startParagraphId** – ID of the paragraph where the highlight starts. Example: `p1`.
-- **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the paragraph. Example: 12.
+- **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the paragraph.* Example: 12.
 - **endParagraphId** – ID of the paragraph where the highlight ends. Example: `p1`.
-- **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the paragraph. Example: 14.
+- **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the paragraph.* Example: 14.
 - **escapedHighlightId** (read-only) – Escaped highlight ID used as a CSS identifier (this is used internally by HighlightHelper.js).
 - **rangeText** (read-only) – Text content in the highlighted range.
 - **rangeHtml** (read-only) – HTML content in the highlighted range.
 - **rangeParagraphIds** (read-only) – IDs of paragraphs in the highlighted range.
 - **rangeObj** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
+
+*If you have dynamic elements that need to be inserted into an annotatable paragraph temporarily, you can mark them with the `data-hh-ignore` attribute. HighlightHelper.js will skip over elements with this attribute when calculating character offsets and drawing highlights.

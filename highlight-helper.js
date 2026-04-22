@@ -120,19 +120,6 @@ function Highlighter(options = hhDefaultOptions) {
         background-color: transparent;
         color: inherit;
       }
-      mark[data-highlight-id][data-style="fill"][data-start] {
-        border-top-left-radius: 0.25em;
-        border-bottom-left-radius: 0.25em;
-        margin-left: -0.13em; padding-left: 0.13em;
-      }
-      mark[data-highlight-id][data-style="fill"][data-end] {
-        border-top-right-radius: 0.25em;
-        border-bottom-right-radius: 0.25em;
-        margin-right: -0.13em; padding-right: 0.13em;
-      }
-      mark[data-highlight-id][data-style="fill"] + mark[data-highlight-id][data-style="fill"] {
-        margin-left: 0; padding-left: 0;
-      }
     `);
     
     // Set up SVG background and selection handles
@@ -232,30 +219,46 @@ function Highlighter(options = hhDefaultOptions) {
         if (wasDrawnAsReadOnly) continue;
         
         // Inject HTML <mark> elements
-        range.startContainer.splitText(range.startOffset);
-        range.endContainer.splitText(range.endOffset);
+        if (range.startOffset < range.startContainer.length) range.startContainer.splitText(range.startOffset);
+        if (range.endOffset > 0 && range.endOffset < range.endContainer.length) range.endContainer.splitText(range.endOffset);
         const walker = getTextNodeWalker(range.commonAncestorContainer);
+        walker.currentNode = range.startContainer;
         const relevantTextNodes = [];
         let node;
         while (node = walker.nextNode()) {
-          if (range.intersectsNode(node) && node !== range.startContainer && !node.parentElement.closest('rt, rp')) relevantTextNodes.push(node);
+          if (!node.parentElement.closest('rt, rp')) relevantTextNodes.push(node);
           if (node === range.endContainer) break;
         }
         const overlappingHighlightIds = new Set();
+        const createStyledMark = () => {
+          const mark = document.createElement('mark');
+          mark.dataset.highlightId = highlightId;
+          if (highlightInfo.readOnly) mark.dataset.readOnly = '';
+          mark.dataset.color = highlightInfo.color;
+          mark.dataset.style = highlightInfo.style;
+          return mark;
+        };
         for (let tn = 0; tn < relevantTextNodes.length; tn++) {
           const textNode = relevantTextNodes[tn];
-          if (textNode.parentElement.dataset.highlightId) {
-            overlappingHighlightIds.add(textNode.parentElement.dataset.highlightId);
-          }
-          const styledMark = document.createElement('mark');
-          styledMark.dataset.highlightId = highlightId;
-          if (highlightInfo.readOnly) styledMark.dataset.readOnly = '';
-          styledMark.dataset.color = highlightInfo.color;
-          styledMark.dataset.style = highlightInfo.style;
+          if (textNode.parentElement.dataset.highlightId) overlappingHighlightIds.add(textNode.parentElement.dataset.highlightId);
+          const styledMark = createStyledMark();
           if (tn === 0) styledMark.dataset.start = '';
           if (tn === relevantTextNodes.length - 1) styledMark.dataset.end = '';
           textNode.before(styledMark);
           styledMark.appendChild(textNode);
+          // Absorb adjacent elements without text into the mark element. This prevents unstyled gaps around CSS-rendered pseudoelement content (such as superscript footnote markers).
+          let prev = styledMark.previousSibling;
+          while (prev && prev.nodeType === Node.ELEMENT_NODE && prev.textContent === '') {
+            const toAbsorb = prev; prev = prev.previousSibling;
+            styledMark.prepend(toAbsorb);
+          }
+          if (tn < relevantTextNodes.length - 1) {
+            let next = styledMark.nextSibling;
+            while (next && next.nodeType === Node.ELEMENT_NODE && next.textContent === '') {
+              const toAbsorb = next; next = next.nextSibling;
+              styledMark.appendChild(toAbsorb);
+            }
+          }
         }
         
         // Update highlight ranges that were invalidated by the DOM change

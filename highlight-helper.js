@@ -341,20 +341,16 @@ function Highlighter(options = hhDefaultOptions) {
     const appearanceChanges = [];
     const boundsChanges = [];
 
-    let isNewHighlight, oldHighlightInfo;
-    if (Object.hasOwn(highlightsById, highlightId)) {
-      oldHighlightInfo = highlightsById[highlightId];
-    } else {
-      isNewHighlight = true;
-    }
+    const oldHighlightInfo = highlightsById[highlightId];
+    const isNewHighlight = !oldHighlightInfo;
 
     // If a different highlight is active, deactivate it
-    if (activeHighlightId && highlightId !== activeHighlightId && triggeredByUserAction === true) {
+    if (activeHighlightId && highlightId !== activeHighlightId && triggeredByUserAction) {
       this.deactivateHighlights();
     }
 
     // If the highlight is currently activate, ignore bounds changes that weren't initiated by the user
-    if (highlightId === activeHighlightId && triggeredByUserAction === false) {
+    if (highlightId === activeHighlightId && !triggeredByUserAction) {
       attributes.startParagraphId = null;
       attributes.startParagraphOffset = null;
       attributes.endParagraphId = null;
@@ -441,11 +437,11 @@ function Highlighter(options = hhDefaultOptions) {
     // Update saved highlight info
     const newHighlightInfo = {
       highlightId: highlightId,
-      color: attributes?.color ?? oldHighlightInfo?.color ?? options.defaultColor,
-      style: attributes?.style ?? oldHighlightInfo?.style ?? options.defaultStyle,
-      wrapper: attributes?.wrapper ?? oldHighlightInfo?.wrapper ?? options.defaultWrapper,
-      wrapperVariables: attributes?.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
-      readOnly: attributes?.readOnly ?? oldHighlightInfo?.readOnly ?? false,
+      color: attributes.color ?? oldHighlightInfo?.color ?? options.defaultColor,
+      style: attributes.style ?? oldHighlightInfo?.style ?? options.defaultStyle,
+      wrapper: attributes.wrapper ?? oldHighlightInfo?.wrapper ?? options.defaultWrapper,
+      wrapperVariables: attributes.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
+      readOnly: attributes.readOnly ?? oldHighlightInfo?.readOnly ?? false,
       startParagraphId: startParagraphId ?? oldHighlightInfo?.startParagraphId,
       startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
       endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
@@ -849,43 +845,39 @@ function Highlighter(options = hhDefaultOptions) {
     const highlightId = highlightInfo.highlightId;
 
     // Remove <mark> highlights and HTML wrappers
-    if (this.annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"]:not(g)`)) {
-      const overlappingHighlightIds = new Set();
-      this.annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]:not(g)`).forEach(element => {
-        if (element.parentElement.dataset.highlightId) {
-          overlappingHighlightIds.add(element.parentElement.dataset.highlightId);
-        }
-        for (const childHighlight of element.querySelectorAll('[data-highlight-id]')) {
-          overlappingHighlightIds.add(childHighlight.dataset.highlightId);
-        }
-        if (element.tagName.toLowerCase() === 'mark') {
-          element.outerHTML = element.innerHTML;
-        } else {
-          element.remove();
-        }
-      });
-
-      // Redraw overlapping highlights
-      overlappingHighlightIds.delete(highlightId);
-      if (overlappingHighlightIds.size > 0) {
-        for (const overlappingHighlightId of overlappingHighlightIds) {
-          undrawHighlight(highlightsById[overlappingHighlightId]);
-        }
-        this.drawHighlights(overlappingHighlightIds);
+    const overlappingHighlightIds = new Set();
+    this.annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]:not(g)`).forEach(element => {
+      if (element.parentElement.dataset.highlightId) {
+        overlappingHighlightIds.add(element.parentElement.dataset.highlightId);
       }
+      for (const childHighlight of element.querySelectorAll('[data-highlight-id]')) {
+        overlappingHighlightIds.add(childHighlight.dataset.highlightId);
+      }
+      if (element.tagName.matches('mark')) {
+        element.outerHTML = element.innerHTML;
+      } else {
+        element.remove();
+      }
+    });
 
-      // Normalize text nodes
-      const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`);
-      rangeParagraphs.forEach(p => { p.normalize(); });
-      getCorrectedRangeObj(highlightId);
+    // Redraw overlapping highlights
+    overlappingHighlightIds.delete(highlightId);
+    if (overlappingHighlightIds.size > 0) {
+      for (const overlappingHighlightId of overlappingHighlightIds) {
+        undrawHighlight(highlightsById[overlappingHighlightId]);
+      }
+      this.drawHighlights(overlappingHighlightIds);
     }
+
+    // Normalize text nodes
+    const rangeParagraphs = this.annotatableContainer.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`);
+    rangeParagraphs.forEach(p => p.normalize());
+    getCorrectedRangeObj(highlightId);
 
     // Remove SVG highlights
-    if (svgBackground.querySelector(`g[data-highlight-id="${highlightId}"]`)) {
-      svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`).forEach(element => {
-        element.remove();
-      });
-    }
+    svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`).forEach(element => {
+      element.remove();
+    });
 
     // Remove Highlight API highlights
     if (supportsHighlightApi && CSS.highlights.has(highlightId)) {
@@ -932,7 +924,7 @@ function Highlighter(options = hhDefaultOptions) {
     }
 
     if (changeType === 'appearance') {
-      this.annotatableContainer.style.setProperty('--hh-color', `${colorString}`);
+      this.annotatableContainer.style.setProperty('--hh-color', colorString);
 
       // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
       if (activeHighlightId && options.drawingMode === 'svg') {
@@ -1061,17 +1053,17 @@ function Highlighter(options = hhDefaultOptions) {
           startOffset = 0;
         }
       }
-  
+
       // Trim whitespace and dashes at range start and end
       while (/\s|\p{Pd}/u.test(startOffset < startNode.textContent.length && startNode.textContent[startOffset])) startOffset += 1;
-      while (endOffset - 1 >= 0 && /\s|\p{Pd}/u.test(endNode.textContent[endOffset - 1])) endOffset -= 1;
+      while (endOffset > 0 && /\s|\p{Pd}/u.test(endNode.textContent[endOffset - 1])) endOffset -= 1;
 
       // Expand range to word boundaries
       while (startOffset > 0 && /[^\s|\p{Pd}]/u.test(startNode.textContent[startOffset - 1])) startOffset -= 1;
-      while (endOffset + 1 <= endNode.textContent.length && /[^\s|\p{Pd}]/u.test(endNode.textContent[endOffset])) endOffset += 1;
+      while (endOffset < endNode.textContent.length && /[^\s|\p{Pd}]/u.test(endNode.textContent[endOffset])) endOffset += 1;
     }
 
-    let newRange = document.createRange();
+    const newRange = document.createRange();
     newRange.setStart(startNode, startOffset);
     newRange.setEnd(endNode, endOffset);
     return newRange;
@@ -1300,11 +1292,11 @@ function Highlighter(options = hhDefaultOptions) {
     const mergedRects = [];
 
     // Remove element rects (only text node rects are needed)
-    const ancestorElementsInRange = [];
+    const ancestorElementsInRange = new Set();
     for (const paragraph of paragraphs) {
       let element = paragraph;
       while (range.commonAncestorContainer.contains(element)) {
-        if (!ancestorElementsInRange.includes(element)) ancestorElementsInRange.push(element);
+        ancestorElementsInRange.add(element);
         element = element.parentElement;
       }
     }
@@ -1323,7 +1315,7 @@ function Highlighter(options = hhDefaultOptions) {
     for (const paragraph of paragraphs) {
       const paragraphRect = paragraph.getBoundingClientRect();
       const paragraphStyle = getComputedStyle(paragraph);
-      const snapTolerance = Math.max(Number.parseInt(getComputedStyle(paragraph).fontSize) / 2, 4);
+      const snapTolerance = Math.max(Number.parseInt(paragraphStyle.fontSize) / 2, 4);
       const topPadding = Number.parseInt(paragraphStyle.paddingTop);
       const textIndent = Number.parseInt(paragraphStyle.textIndent);
 
@@ -1334,9 +1326,9 @@ function Highlighter(options = hhDefaultOptions) {
       while (textNode = walker.nextNode()) {
         // Skip text nodes in elements that are higher or lower than surrounding text
         if (textNode.parentElement.closest('sup, sub, rt')) continue;
-        const range = document.createRange();
-        range.selectNode(textNode);
-        for (const rect of range.getClientRects()) {
+        const textNodeRange = document.createRange();
+        textNodeRange.selectNode(textNode);
+        for (const rect of textNodeRange.getClientRects()) {
           // Round to a nearby line position if close
           const lineBottom = Object.keys(linePositions).map(Number).find(b => Math.abs(b - rect.bottom) < snapTolerance) ?? rect.bottom;
           const pos = linePositions[lineBottom] ??= {
@@ -1381,7 +1373,7 @@ function Highlighter(options = hhDefaultOptions) {
           if (left - paragraphRect.left < snapTolerance) left = paragraphRect.left;
           if (textIndent < 0) left += textIndent;
         } else if (paragraphStyle.direction === 'rtl' && paragraphStyle.textAlign === 'start') {
-          if (paragraphRect.right - right  < snapTolerance) right = paragraphRect.right;
+          if (paragraphRect.right - right < snapTolerance) right = paragraphRect.right;
           if (textIndent < 0) right += textIndent;
         }
 

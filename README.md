@@ -115,7 +115,7 @@ Options can be provided when HighlightHelper.js is initialized. They can also be
 - **defaultColor** – Key of the default highlight color. Default: `yellow`.
 - **defaultStyle** – Key of the default highlight style. Default: `fill`.
 - **defaultWrapper** – Key of the default highlight wrapper. Default: `none`.
-- **highlightIdFunction** – Identifier of a function that provides unique IDs for new highlights. Default: `hhGetNewHighlightId`.
+- **highlightIdFunction** – Identifier of a function that provides unique IDs for new highlights. Default: `_getNewHighlightId`.
 - **showCustomSelectionHandlesForActiveHighlights** – Whether custom selection handles should show for active highlights. Default: `true`.
 - **showCustomSelectionHandlesForTextSelection** – Whether custom selection handles should show for text selection. Default: `false`.
 - **showCustomSelectionHandlesOnTouch** – Whether custom selection handles should show on touch devices. Default: `false`.

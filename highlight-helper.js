@@ -1313,52 +1313,74 @@ function Highlighter(options = hhDefaultOptions) {
     // Loop through the highlight's paragraphs
     for (const paragraph of paragraphs) {
       const paragraphRect = paragraph.getBoundingClientRect();
-      const computedParagraphStyle = window.getComputedStyle(paragraph);
-      const paragraphTopPadding = parseInt(computedParagraphStyle.getPropertyValue('padding-top').replace('px', ''));
+      const paragraphStyle = getComputedStyle(paragraph);
+      const snapTolerance = Math.max(parseInt(getComputedStyle(paragraph).fontSize) / 2, 4);
+      const topPadding = parseInt(paragraphStyle.paddingTop);
+      const textIndent = parseInt(paragraphStyle.textIndent);
       
-      // Get line positions (bottom edge of each line)
-      let linePositions = new Set();
-      let lineWalker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      // Build line positions from paragraph text nodes
+      const linePositions = {};
+      const walker = getTextNodeWalker(paragraph);
       let textNode;
-      while (textNode = lineWalker.nextNode()) {
+      while (textNode = walker.nextNode()) {
         // Skip text nodes in elements that are higher or lower than surrounding text
         if (textNode.parentElement.closest('sup, sub, rt')) continue;
-        const referenceRange = document.createRange();
-        referenceRange.selectNode(textNode);
-        for (const rangeRect of referenceRange.getClientRects()) linePositions.add(rangeRect.bottom);
-      }
-      linePositions = Array.from(linePositions);
-      
-      // Create a merged rect for each line
-      for (let ln = 0; ln < linePositions.length; ln++) {
-        const linePosition = linePositions[ln];
-        const previousLinePosition = ln === 0 ? paragraphRect.top + paragraphTopPadding : linePositions[ln-1];
-        const mergedRect = new DOMRect(-1, previousLinePosition, -1, linePosition - previousLinePosition);
-        if (mergedRects.length > 0 && ln === 1 && mergedRects[mergedRects.length-1].height < mergedRect.height) {
-          // Increase the row height for the first line in the paragraph to match the second line
-          mergedRects[mergedRects.length-1].y += mergedRects[mergedRects.length-1].height - mergedRect.height;
-          mergedRects[mergedRects.length-1].height = mergedRect.height;
+        const range = document.createRange();
+        range.selectNode(textNode);
+        for (const rect of range.getClientRects()) {
+          // Round to a nearby line position if close
+          const lineBottom = Object.keys(linePositions).map(Number).find(b => Math.abs(b - rect.bottom) < snapTolerance) ?? rect.bottom;
+          const pos = linePositions[lineBottom] ??= {
+            minLeft: rect.left, maxRight: rect.right,
+            highlightLeft: null, highlightRight: null,
+          };
+          pos.minLeft = Math.min(pos.minLeft, rect.left);
+          pos.maxRight = Math.max(pos.maxRight, rect.right);
         }
-        for (let r = 0; r < unmergedRects.length; r++) {
-          const rect = unmergedRects[r];
-          const rectVerticalPosition = rect.y + (rect.height / 2);
-          if (rectVerticalPosition > mergedRect.y && rectVerticalPosition < mergedRect.y + mergedRect.height) {
-            if (mergedRect.x === -1) {
-              mergedRect.x = rect.x;
-              mergedRect.width = rect.width;
-            }
-            // Process then remove rects that apply to the current line
-            const minLeft = Math.max(paragraphRect.left, Math.min(mergedRect.x, rect.x));
-            const maxRight = Math.min(paragraphRect.right, Math.max(mergedRect.right, rect.right));
-            mergedRect.width = maxRight - minLeft;
-            mergedRect.x = minLeft;
-            unmergedRects.splice(r, 1); r--;
+      }
+      
+      const lineBottoms = Object.keys(linePositions).map(Number).sort((a, b) => a - b);
+      
+      // Assign highlight range rects to matching line positions
+      for (const rect of unmergedRects) {
+        const centerY = rect.y + rect.height / 2;
+        for (let i = 0; i < lineBottoms.length; i++) {
+          const pos = linePositions[lineBottoms[i]];
+          // Skip rects that extend outside the line of text (such as absolutely-positioned elements)
+          if (rect.left >= pos.minLeft && rect.right <= pos.maxRight
+              && centerY > (lineBottoms[i - 1] ?? (paragraphRect.top + topPadding)) && centerY <= lineBottoms[i]) {
+            pos.highlightLeft = Math.min(pos.highlightLeft ?? rect.left, rect.left);
+            pos.highlightRight = Math.max(pos.highlightRight ?? rect.right, rect.right);
+            break;
           }
         }
-        if (mergedRect.width > 0) mergedRects.push(mergedRect);
+      }
+      
+      // Create a merged rect for each relevant line
+      for (let i = 0; i < lineBottoms.length; i++) {
+        const bottom = lineBottoms[i];
+        const pos = linePositions[bottom];
+        if (pos.highlightLeft == null) continue;
+        const nearbyBottom = lineBottoms[i - 1] ?? lineBottoms[i + 1] ?? (paragraphRect.top + topPadding);
+        const height = Math.abs(bottom - nearbyBottom);
+        const top = bottom - height;
+        let left = Math.max(pos.minLeft, pos.highlightLeft);
+        let right = Math.min(pos.maxRight, pos.highlightRight);
+        
+        // Final adjustment to left and right bounds
+        if (paragraphStyle.direction === 'ltr' && paragraphStyle.textAlign === 'start') {
+          if (left - paragraphRect.left < snapTolerance) left = paragraphRect.left;
+          if (textIndent < 0) left += textIndent;
+        } else if (paragraphStyle.direction === 'rtl' && paragraphStyle.textAlign === 'start') {
+          if (paragraphRect.right - right  < snapTolerance) right = paragraphRect.right;
+          if (textIndent < 0) right += textIndent;
+        }
+        
+        const width = right - left;
+        mergedRects.push(new DOMRect(left, top, width, height));
       }
     }
-    
+        
     return mergedRects;
   }
   

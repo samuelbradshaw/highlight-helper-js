@@ -19,19 +19,19 @@
         --gray-90: hsl(0, 0%, 30%);
         --gray-50: hsl(0, 0%, 70%);
       }}
-      
+
       body {
         background-color: var(--page-bg);
         color: var(--text-color);
         line-height: 1.4;
       }
-      img { width: 120px; float: right; }
+      main { margin-right: 2em; }
       a { color: var(--gray-50); }
       button {
         cursor: pointer;
         user-select: none;
       }
-      
+
       #annotation-menu {
         font-family: "Helvetica", sans-serif;
         font-size: 0.8em;
@@ -54,7 +54,10 @@
           button[name="hh-color"][value="yellow"] { background-color: hsl(50, 98%, 61%); }
           button[name="hh-color"][value="green"] { background-color: hsl(75, 70%, 49%); }
           button[name="hh-color"][value="blue"] { background-color: hsl(182, 86%, 47%); }
-          button[name="hh-style"], button[name="hh-wrapper"] { color: inherit; border: 2px solid var(--gray-50); }
+          button[name="hh-style"], button[name="hh-wrapper"] {
+            position: relative;
+            color: inherit; border: 2px solid var(--gray-50);
+          }
           button[name="hh-remove"] { background-color: var(--gray-50); color: var(--page-bg); }
           .highlight-placeholder {
             background-color: var(--gray-90);
@@ -68,10 +71,25 @@
         font-size: smaller;
         line-height: 0.5em;
         &::before {
-          content: attr(data-marker) / attr(data-accessibility-label);
+          content: attr(data-content) / attr(data-accessibility-label);
         }
       }
-      
+      .note-container {
+        display: inline-block;
+        visibility: visible;
+        font-style: normal;
+        height: 1em;
+      }
+      .note {
+        position: absolute;
+        right: 0.5rem;
+        font-size: 1.2rem;
+        margin-top: -0.2rem;
+        &::before {
+          content: attr(data-content) / attr(data-accessibility-label);
+        }
+      }
+
       #disambiguation-panel {
         color: inherit;
         background-color: inherit;
@@ -106,13 +124,12 @@
   <body>
     <main>
       <h1 id="title1">HighlightHelper.js Demo</h1>
-      <img src="https://upload.wikimedia.org/wikipedia/commons/d/db/CMYK-color_model.png">
       <p id="p1"><b>HighlightHelper.js</b> enables highlighting or underlining text in an HTML page. Highlights are drawn via <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/SVG">SVG shapes</a>, the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, or <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark">HTML mark elements</a>. Highlights can be drawn across multiple paragraphs or <b>inline <i>style</i></b> elements—they can even overlap!</p>
       <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images (right) and Japanese ruby/furigana (below) are highlighted around.</p>
       <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
       <p id="p4" style="direction: rtl;">فِي الْبَدْءِ خَلَقَ اللهُ السَّمَاوَاتِ وَالأَرْضَ. وَكَانَتِ الأَرْضُ خَرِبَةً وَخَالِيَةً، وَعَلَى وَجْهِ الْغَمْرِ ظُلْمَةٌ، وَرُوحُ اللهِ يَرِفُّ عَلَى وَجْهِ الْمِيَاهِ. وَقَالَ اللهُ: «لِيَكُنْ نُورٌ»، فَكَانَ نُورٌ.</p>
     </main>
-    
+
     <hr>
     <aside id="annotation-menu">
       <div class="buttons-area">
@@ -127,9 +144,10 @@
         <button name="hh-style" value="colored-text"> Colored text</button>
         <button name="hh-style" value="redacted"> Redacted</button>
         <button name="hh-remove">Remove</button>
-        <div></div>
-        <!--button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-marker="a" data-accessibility-label="Footnote"></span><span class="highlight-placeholder">…</span></button-->
+        <button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-content="a" data-accessibility-label="Footnote [a]"></span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="🙂" data-accessibility-label="Smile emoji"></span></span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="✅" data-accessibility-label="Checkmark emoji"></span></span><span class="highlight-placeholder">…</span></button>
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
@@ -167,7 +185,7 @@
     <p>
       ← <a href="https://github.com/samuelbradshaw/highlight-helper-js">Back to GitHub</a>
     </p>
-    
+
     <!-- Link to the HighlightHelper.js JavaScript file -->
     <script src="highlight-helper.js"></script>
     <script>
@@ -181,15 +199,15 @@
         },
         {
           highlightId: 'hh-1729991847300',
-          color: 'blue', style: 'fill',
+          color: 'blue', style: 'fill', wrapper: 'margin-note',
+          wrapperVariables: { content: '🙂', accessibilityLabel: 'Smile emoji', },
           startParagraphId: 'p2', startParagraphOffset: 27,
           endParagraphId: 'p2', endParagraphOffset: 42,
         },
         {
           highlightId: 'hh-1729991847468',
-          color: 'red', style: 'colored-text', wrapper: 'footnote',
-          wrapperVariables: { marker: 'a', accessibilityLabel: 'Footnote 1a', },
-          readOnly: true,
+          color: 'red', style: 'single-underline', wrapper: 'footnote',
+          wrapperVariables: { content: 'a', accessibilityLabel: 'Footnote [a]', },
           startParagraphId: 'p2', startParagraphOffset: 119,
           endParagraphId: 'p2', endParagraphOffset: 127,
         },
@@ -218,17 +236,18 @@
           endParagraphId: 'p4', endParagraphOffset: 207,
         },
       ];
-      
+
       // Initialize a Highlighter instance, then load highlights
       const highlighter = new Highlighter({
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
         wrappers: {
-          'footnote': { start: '<span class="footnote-marker" data-marker="{marker}" data-accessibility-label="{accessibilityLabel}"></span>', end: '', },
+          'footnote': { start: '<span class="footnote-marker" data-content="{content}" data-accessibility-label="{accessibilityLabel}"></span>', end: '', },
+          'margin-note': { start: '<span class="note-container"><span class="note" data-content="{content}" data-accessibility-label="{accessibilityLabel}"></span></span>', end: '', },
         },
       });
       highlighter.loadHighlights(highlights);
-      
+
       // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
       const colorButtons = document.getElementsByName('hh-color');
       for (const colorButton of colorButtons) {
@@ -240,7 +259,13 @@
       }
       const wrapperButtons = document.getElementsByName('hh-wrapper');
       for (const wrapperButton of wrapperButtons) {
-        wrapperButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ wrapper: wrapperButton.value }); });
+        const contentSpan = wrapperButton.querySelector('[data-content]');
+        wrapperButton.addEventListener('click', () => {
+          highlighter.createOrUpdateHighlight({
+            wrapper: wrapperButton.value === 'none' ? null : wrapperButton.value,
+            wrapperVariables: { content: contentSpan?.dataset?.content ?? '', accessibilityLabel: contentSpan?.dataset?.accessibilityLabel ?? '', },
+          });
+        });
       }
       const removeButton = document.getElementsByName('hh-remove')[0];
       removeButton.addEventListener('click', () => { highlighter.removeHighlights([highlighter.getActiveHighlightId()]); });
@@ -248,7 +273,7 @@
       function respondToKeyPress(event) {
         if (event.key === 'Backspace') highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
       }
-      
+
       // Call HighlightHelper.js methods when options are changed
       const rememberStyleCheckbox = document.getElementById('hh-remember-style');
       const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
@@ -278,11 +303,11 @@
       selectionHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesForTextSelection', event.currentTarget.checked); });
       const selectionHandlesOnTouchCheckbox = document.getElementById('hh-selection-handles-touch');
       selectionHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesOnTouch', event.currentTarget.checked); });
-      
+
       const container = document.querySelector(highlighter.getOptions().containerSelector);
       const snippetDiv = document.getElementById('snippet');
       const infoDiv = document.getElementById('highlight-info');
-      
+
       // Respond to highlight update and highlight activate event
       container.addEventListener('hh:highlightupdate', updateHighlightInfo);
       container.addEventListener('hh:highlightactivate', updateHighlightInfo);
@@ -300,6 +325,9 @@
         for (const annotatedParagraph of annotatedParagraphs) {
           const snippetParagraph = annotatedParagraph.cloneNode(true);
           snippetParagraph.id = `${snippetParagraph.id}_${event.detail.highlight.highlightId}`;
+          for (const wrapperEl of snippetParagraph.querySelectorAll('[data-highlight-id]')) {
+            wrapperEl.dataset.highlightId = wrapperEl.dataset.highlightId + '_snippet';
+          }
           snippetDiv.append(snippetParagraph);
         }
         const snippetHighlights = [
@@ -317,15 +345,23 @@
         });
         snippetHighlighter.loadHighlights(snippetHighlights);
       }
-      
+
       // Respond to highlight deactivate event
       container.addEventListener('hh:highlightdeactivate', clearHighlightInfo);
       function clearHighlightInfo(event) {
         snippetDiv.innerHTML = '';
         infoDiv.innerHTML = 'N/A';
       }
-      
-      // Respond to ambiguous action events (when a user taps on overlapping highlights, or an overlapping link and highlight)
+
+      // Respond to tap
+      container.addEventListener('hh:tap', respondToTap);
+      function respondToTap(event) {
+        if (event.detail.wrappers.length === 1) {
+          highlighter.activateHighlight(event.detail.wrappers[0].highlightInfo.highlightId);
+        }
+      }
+
+      // Respond to ambiguous action events (when a user taps on overlapping highlights, wrappers, and/or links)
       const disambiguationPanel = document.getElementById('disambiguation-panel');
       const disambiguationButtonsDiv = document.getElementById('disambiguation-buttons');
       const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
@@ -333,7 +369,11 @@
       container.addEventListener('hh:ambiguousaction', handleAmbiguousAction);
       function handleAmbiguousAction(event) {
         disambiguationButtonsDiv.innerHTML = '';
-        for (const highlight of event.detail.highlights) {
+        const highlightIds = new Set();
+        for (const highlight of event.detail.highlights) highlightIds.add(highlight.highlightId);
+        for (const wrapper of event.detail.wrappers) highlightIds.add(wrapper.highlightInfo.highlightId);
+        const highlights = highlighter.getHighlightInfo(highlightIds);
+        for (const highlight of highlights) {
           let buttonStyle = highlighter.getOptions().styles[highlight.style]['css']
           let buttonHtml = `
             <button data-color="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
@@ -354,7 +394,20 @@
         // TODO: Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:ambiguousaction. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
         setTimeout(function() { disambiguationPanel.showModal(); }, 10);
       }
-      
+
+      // Update margin note position when a highlight with a start wrapper is active
+      function updateMarginNotePosition(event) {
+        const activeHighlightId = highlighter.getActiveHighlightId();
+        if (!activeHighlightId) return;
+        const note = container.querySelector(`.hh-wrapper-start[data-highlight-id="${activeHighlightId}"] .note`);
+        if (!note) return;
+        const selection = getSelection();
+        const startRect = selection.type === 'Range' ? selection.getRangeAt(0).getBoundingClientRect() : null;
+        if (startRect) note.style.top = (startRect.top + window.scrollY - 1) + 'px';
+      }
+      container.addEventListener('hh:highlightactivate', updateMarginNotePosition);
+      document.addEventListener('selectionchange', updateMarginNotePosition);
+
       // Log events for debugging
       container.addEventListener('hh:highlightcreate', console.info)
       container.addEventListener('hh:highlightupdate', console.info)
@@ -365,16 +418,6 @@
       container.addEventListener('hh:selectionupdate', console.info)
       container.addEventListener('hh:ambiguousaction', console.info)
       container.addEventListener('hh:tap', console.info)
-      
-//       snippetDiv.addEventListener('hh:highlightcreate', console.warn)
-//       snippetDiv.addEventListener('hh:highlightupdate', console.warn)
-//       snippetDiv.addEventListener('hh:highlightremove', console.warn)
-//       snippetDiv.addEventListener('hh:highlightsload', console.warn)
-//       snippetDiv.addEventListener('hh:highlightactivate', console.warn)
-//       snippetDiv.addEventListener('hh:highlightdeactivate', console.warn)
-//       snippetDiv.addEventListener('hh:selectionupdate', console.warn)
-//       snippetDiv.addEventListener('hh:ambiguousaction', console.warn)
-//       snippetDiv.addEventListener('hh:tap', console.warn)
     </script>
   </body>
 </html>

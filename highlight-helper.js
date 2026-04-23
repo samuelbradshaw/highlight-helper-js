@@ -112,11 +112,13 @@ Highlighter.prototype._initializeHighlighter = function (previousContainerSelect
   this._hyperlinkElements = this._annotatableContainer.getElementsByTagName('a');
   this._hyperlinksByPosition = {}
   for (let hyp = 0; hyp < this._hyperlinkElements.length; hyp++) {
+    const hyperlink = this._hyperlinkElements[hyp];
+    hyperlink.dataset.hhPosition = hyp;
     this._hyperlinksByPosition[hyp] = {
       'position': hyp,
-      'text': this._hyperlinkElements[hyp].innerHTML,
-      'url': this._hyperlinkElements[hyp].href,
-      'hyperlinkElement': this._hyperlinkElements[hyp],
+      'text': hyperlink.innerHTML,
+      'url': hyperlink.href,
+      'hyperlinkElement': hyperlink,
     }
   }
 
@@ -315,12 +317,12 @@ Highlighter.prototype._loadEventListeners = function () {
       this._tapResult.isLongPress = isLongPress;
       this._annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: this._tapResult, }));
       if (options.autoTapToActivate && this._tapResult?.targetFound && !isLongPress) {
-        if (this._tapResult.highlights.length === 1 && this._tapResult.hyperlinks.length === 0) {
-          return this.activateHighlight(this._tapResult.highlights[0].highlightId);
-        } else if (this._tapResult.highlights.length === 0 && this._tapResult.hyperlinks.length === 1) {
-          return this.activateHyperlink(this._tapResult.hyperlinks[0].position);
-        } else if (this._tapResult.highlights.length + this._tapResult.hyperlinks.length > 1) {
+        if (this._tapResult.targetCount > 1) {
           return this._annotatableContainer.dispatchEvent(new CustomEvent('hh:ambiguousaction', { detail: this._tapResult, }));
+        } else if (this._tapResult.highlights.length === 1) {
+          return this.activateHighlight(this._tapResult.highlights[0].highlightId);
+        } else if (this._tapResult.hyperlinks.length === 1) {
+          return this.activateHyperlink(this._tapResult.hyperlinks[0].position);
         }
       }
     }
@@ -446,6 +448,34 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     // Don't redraw a read-only highlight that's already drawn
     if (wasDrawnAsReadOnly) continue;
 
+    // Insert wrappers before drawing, so any layout shift from wrapper content is reflected in drawing positions
+    if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
+      const addWrapper = (edge, range, htmlString) => {
+        htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}" data-hh-ignore="">${htmlString}</span>`
+        for (const key of Object.keys(highlightInfo.wrapperVariables)) {
+          htmlString = htmlString.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
+        }
+        const template = document.createElement('template');
+        template.innerHTML = htmlString;
+        let htmlElement = template.content.firstChild;
+        range.insertNode(htmlElement);
+      }
+      const startRange = highlightInfo.rangeObj;
+      const endRange = document.createRange(); endRange.setStart(highlightInfo.rangeObj.endContainer, highlightInfo.rangeObj.endOffset);
+      const wrapperInfo = options.wrappers[highlightInfo.wrapper];
+      addWrapper('start', startRange, wrapperInfo.start);
+      addWrapper('end', endRange, wrapperInfo.end);
+      rangeParagraphs.forEach(p => { p.normalize(); });
+      range = this._getCorrectedRangeObj(highlightId);
+      if (!highlightInfo.readOnly && options.drawingMode === 'svg') {
+        const startWrapperEl = this._annotatableContainer.querySelector(`.hh-wrapper-start[data-highlight-id="${highlightId}"]`);
+        const endWrapperEl = this._annotatableContainer.querySelector(`.hh-wrapper-end[data-highlight-id="${highlightId}"]`);
+        range = document.createRange();
+        range.setStartAfter(startWrapperEl);
+        range.setEndBefore(endWrapperEl);
+      }
+    }
+
     // Draw highlights with mark elements
     if (highlightInfo.readOnly || options.drawingMode === 'mark-elements') {
       // Inject HTML <mark> elements
@@ -478,13 +508,13 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         styledMark.appendChild(textNode);
         // Absorb adjacent elements without text into the mark element. This prevents unstyled gaps around CSS-rendered pseudoelement content (such as superscript footnote markers).
         let prev = styledMark.previousSibling;
-        while (prev && prev.nodeType === Node.ELEMENT_NODE && prev.textContent === '') {
+        while (prev && prev.nodeType === Node.ELEMENT_NODE && prev.textContent === '' && !prev.hasAttribute('data-hh-ignore')) {
           const toAbsorb = prev; prev = prev.previousSibling;
           styledMark.prepend(toAbsorb);
         }
         if (tn < relevantTextNodes.length - 1) {
           let next = styledMark.nextSibling;
-          while (next && next.nodeType === Node.ELEMENT_NODE && next.textContent === '') {
+          while (next && next.nodeType === Node.ELEMENT_NODE && next.textContent === '' && !next.hasAttribute('data-hh-ignore')) {
             const toAbsorb = next; next = next.nextSibling;
             styledMark.appendChild(toAbsorb);
           }
@@ -527,28 +557,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
       group.innerHTML = svgContent;
       this._svgBackground.appendChild(group);
-    }
-
-    // Update wrapper (for read-only highlights only)
-    if (highlightInfo.readOnly) {
-      if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
-        const addWrapper = (edge, range, htmlString) => {
-          htmlString = `<span class="hh-wrapper-${edge}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}" data-hh-ignore="">${htmlString}</span>`
-          for (const key of Object.keys(highlightInfo.wrapperVariables)) {
-            htmlString = htmlString.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
-          }
-          const template = document.createElement('template');
-          template.innerHTML = htmlString;
-          let htmlElement = template.content.firstChild;
-          range.insertNode(htmlElement);
-        }
-        const startRange = highlightInfo.rangeObj;
-        const endRange = document.createRange(); endRange.setStart(highlightInfo.rangeObj.endContainer, highlightInfo.rangeObj.endOffset);
-        const wrapperInfo = options.wrappers[highlightInfo.wrapper];
-        addWrapper('start', startRange, wrapperInfo.start);
-        addWrapper('end', endRange, wrapperInfo.end);
-        rangeParagraphs.forEach(p => { p.normalize(); });
-      }
     }
   }
 
@@ -683,12 +691,21 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
     changes: appearanceChanges.concat(boundsChanges),
   }
 
+  const wrapperChanged = appearanceChanges.some(k => k.startsWith('wrapper'));
   if (triggeredByUserAction && !this._activeHighlightId) {
     this.activateHighlight(highlightId);
   } else if (this._activeHighlightId && highlightId === this._activeHighlightId && appearanceChanges.length > 0) {
     this._updateSelectionUi('appearance');
-  } else if (highlightId !== this._activeHighlightId) {
+  }
+  if (highlightId !== this._activeHighlightId || wrapperChanged) {
     this.drawHighlights([highlightId]);
+  }
+
+  // Redraw highlights after the current highlight if needed
+  if (wrapperChanged && options.drawingMode === 'svg') {
+    const highlights = this.getHighlightInfo();
+    const changedIndex = highlights.findIndex(h => h.highlightId === highlightId);
+    this.drawHighlights(highlights.slice(changedIndex + 1).map(h => h.highlightId));
   }
 
   if (isNewHighlight) {
@@ -853,41 +870,51 @@ Highlighter.prototype.removeHighlighter = function () {
 
 /********************** Private Methods **********************/
 
-// Check if the tap is in the range of an existing highlight or link
+// Check if the tap hits any highlights, wrappers, or links
 Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
   if (!pointerEvent) return;
 
-  // Check for tapped highlights and hyperlinks
-  const tappedHighlights = [];
-  const tappedHyperlinks = [];
+  // Check for tapped highlights
+  const tappedHighlightIds = [];
   if (!pointerEvent.target.closest('[data-hh-ignore]')) {
     for (const highlightId of Object.keys(this._highlightsById)) {
       const highlightInfo = this._highlightsById[highlightId];
       const highlightRange = highlightInfo.rangeObj;
       for (const rangeRect of highlightRange.getClientRects()) {
         if (this._isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rangeRect, 5)) {
-          tappedHighlights.push(highlightInfo);
+          tappedHighlightIds.push(highlightId);
           break;
         }
       }
     }
-    for (const hyperlinkInfo of Object.values(this._hyperlinksByPosition)) {
-      if (pointerEvent.target.closest('a') === hyperlinkInfo.hyperlinkElement) {
-        tappedHyperlinks.push(hyperlinkInfo);
-      }
+  }
+  const tappedHighlights = this.getHighlightInfo(tappedHighlightIds);
+
+  // Check for tapped wrappers and hyperlinks
+  const tappedWrappers = [];
+  const tappedHyperlinks = [];
+  const targetElements = document.elementsFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+  for (const element of targetElements) {
+    const wrapper = element.closest('.hh-wrapper-start, .hh-wrapper-end');
+    if (wrapper) {
+      tappedWrappers.push({
+        position: wrapper.className.includes('hh-wrapper-start') ? 'start' : 'end',
+        highlightInfo: this._highlightsById[wrapper.dataset.highlightId],
+      });
+    } else if (element.matches('a') && element.dataset.hhPosition) {
+      const hyperlinkInfo = this._hyperlinksByPosition[element.dataset.hhPosition];
+      tappedHyperlinks.push(hyperlinkInfo);
     }
   }
 
-  // Sort highlights (hyperlinks should already be sorted)
-  const tappedHighlightIds = [];
-  for (const highlightInfo of tappedHighlights) tappedHighlightIds.push(highlightInfo.highlightId);
-  const sortedTappedHighlights = this.getHighlightInfo(tappedHighlightIds);
-
+  const targetCount = tappedHighlights.length + tappedWrappers.length + tappedHyperlinks.length;
   return {
-    'targetFound': sortedTappedHighlights.length > 0 || tappedHyperlinks.length > 0,
+    'targetCount': targetCount,
+    'targetFound': targetCount > 0,
     'tapRange': this._getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
     'pointerEvent': pointerEvent,
-    'highlights': sortedTappedHighlights,
+    'highlights': tappedHighlights,
+    'wrappers': tappedWrappers,
     'hyperlinks': tappedHyperlinks,
   }
 }
@@ -972,6 +999,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
   this._svgActiveOverlay.innerHTML = '';
   if (this._activeHighlightId && options.drawingMode === 'svg') {
     let range = this._getCorrectedRangeObj(this._activeHighlightId);
+    range = this._snapRangeToBoundaries(range);
     const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
     const clientRects = this._getMergedClientRects(range, rangeParagraphs);
     this._svgActiveOverlay.dataset.color = color;
@@ -995,7 +1023,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     if (this._activeHighlightId && options.drawingMode === 'svg') {
       this._selectionStylesheet.replaceSync(`
         ${options.containerSelector} g[data-highlight-id="${this._activeHighlightId}"][data-style] { display: none; }
-        ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${this._activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${this._activeHighlightId}"] { display: none; }
+        ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${this._activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
         ${options.containerSelector} ::selection { background-color: transparent; }
       `);
     } else if (this._activeHighlightId) {
@@ -1003,7 +1031,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
       this._selectionStylesheet.replaceSync(`
         ${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
         ${options.containerSelector} mark[data-highlight-id="${this._activeHighlightId}"][data-style] { all: unset; }
-        ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${this._activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${this._activeHighlightId}"] { display: none; }
+        ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${this._activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
         ${options.containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
         ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
       `);
@@ -1090,6 +1118,17 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
     }
   }
 
+  // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
+  if (startOffset === startNode.textContent.length) {
+    const walker = this._getTextNodeWalker(range.commonAncestorContainer);
+    walker.currentNode = startNode;
+    const nextTextNode = walker.nextNode();
+    if (nextTextNode) {
+      startNode = nextTextNode;
+      startOffset = 0;
+    }
+  }
+
   // Prevent the range from starting or ending in an invalid text node
   if (this._annotatableContainer.contains(range.commonAncestorContainer) && (this._shouldSkipTextNode(startNode) || this._shouldSkipTextNode(endNode))) {
     if (this._shouldSkipTextNode(startNode)) {
@@ -1109,17 +1148,6 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
 
   // Snap to the nearest word
   if (options.snapToWord) {
-    // If the range starts at the end of a text node, move it to start at the beginning of the following text node. This prevents the range from jumping across the text node boundary and selecting an extra word.
-    if (startOffset === startNode.textContent.length) {
-      const walker = this._getTextNodeWalker(range.commonAncestorContainer);
-      walker.currentNode = startNode;
-      const nextTextNode = walker.nextNode();
-      if (nextTextNode) {
-        startNode = nextTextNode;
-        startOffset = 0;
-      }
-    }
-
     // Trim whitespace and dashes at range start and end
     while (_reWhitespaceDash.test(startOffset < startNode.textContent.length && startNode.textContent[startOffset])) startOffset += 1;
     while (endOffset > 0 && _reWhitespaceDash.test(endNode.textContent[endOffset - 1])) endOffset -= 1;

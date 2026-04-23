@@ -57,7 +57,7 @@ function Highlighter(options = _defaultOptions) {
 
   this._updateAppearanceStylesheet();
   this._updateSelectionUi('appearance');
-  this.setOption('selectionHandles', this._options.selectionHandles);
+  this.setOptions({ selectionHandles: this._options.selectionHandles });
 }
 
 Highlighter.prototype._initializeHighlighter = function (previousContainerSelector = null) {
@@ -792,31 +792,45 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
   return filteredHighlights;
 }
 
-// Update one of the initialized options
-Highlighter.prototype.setOption = function (key, value) {
+// Update initialized options
+Highlighter.prototype.setOptions = function (optionsToUpdate) {
   const options = this._options;
-  options[key] = value ?? options[key];
-  if (key === 'drawingMode' || key === 'styles') {
-    this._updateAppearanceStylesheet();
-    if (supportsHighlightApi) CSS.highlights.clear();
-    this.drawHighlights();
-  } else if (key === 'colors') {
-    this._updateAppearanceStylesheet();
-  } else if (key === 'containerSelector') {
+  for (const key in optionsToUpdate) {
+    options[key] = optionsToUpdate[key] ?? options[key];
+  }
+  if ('containerSelector' in optionsToUpdate) {
     this.removeHighlighter();
     this._initializeHighlighter();
     this._loadStyles();
     this._loadEventListeners();
     this._updateAppearanceStylesheet();
     this._updateSelectionUi('appearance');
-    this.setOption('selectionHandles', options.selectionHandles);
-  } else if (key === 'paragraphSelector') {
-    this._initializeHighlighter();
-  } else if (key === 'selectionHandles') {
     for (const selectionHandle of this._selectionHandles) {
       selectionHandle.children[1].innerHTML = options.selectionHandles[selectionHandle.dataset.side] ?? '';
     }
+  } else {
+    if ('paragraphSelector' in optionsToUpdate) {
+      this._initializeHighlighter();
+    }
+    if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate || 'colors' in optionsToUpdate) {
+      this._updateAppearanceStylesheet();
+    }
+    if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate) {
+      if (supportsHighlightApi) CSS.highlights.clear();
+      this.drawHighlights();
+    }
+    if ('selectionHandles' in optionsToUpdate) {
+      for (const selectionHandle of this._selectionHandles) {
+        selectionHandle.children[1].innerHTML = options.selectionHandles[selectionHandle.dataset.side] ?? '';
+      }
+    }
   }
+}
+
+/** @deprecated Use setOptions({ key: value }) instead */
+Highlighter.prototype.setOption = function (key, value) {
+  console.warn('setOption() is deprecated. Use setOptions({ key: value }) instead.');
+  this.setOptions({ [key]: value });
 }
 
 // Get all of the initialized options
@@ -1035,7 +1049,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
           }
           if (selectionHandle.dataset.side !== side) {
             selectionHandle.dataset.side = side;
-            this.setOption('selectionHandles', options.selectionHandles);
+            this.setOptions({ selectionHandles: options.selectionHandles });
           }
         }
         this._setCustomSelectionHandleVisibility(true);

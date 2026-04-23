@@ -91,14 +91,14 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 - **removeHighlights(highlightIds)** – Remove the specified highlights. If `highlightIds` isn’t provided, all highlights will be removed.
 - **getActiveHighlightId()** – Get the ID of the currently-active highlight (if there is one).
 - **getHighlightInfo(highlightIds, paragraphId)** – Get highlight information for an array of highlight IDs. If no highlight IDs are passed, information for all relevant highlights will be returned. If `paragraphId` is provided, only highlights that start in the specified paragraph will be returned. Highlights will be sorted based on their position on the page.
-- **setOption(key, value)** – Change one of the initialized options. Available options are described below.
+- **setOptions(optionsToUpdate)** – Change one or more options. `optionsToUpdate` is an object with one or more of the option keys described below.
 - **getOptions()** – Get the initialized options, including defaults for any options that weren’t explicitly set.
 - **removeHighlighter()** – Removes the current Highlighter instance and all of its highlights from the page. If a new Highlighter instance is created with the same container (as defined by the `containerSelector` option), the previous instance for that container will be removed automatically (there can be multiple Highlighter instances on a page, but each one needs to have a different container).
 
 
 ### <a name="options"></a>Options
 
-Options can be provided when HighlightHelper.js is initialized. They can also be set on demand using `setOption(key, value)` (described above). All of these settings are optional. If not specified, the default value for each option will be used.
+Options can be provided when HighlightHelper.js is initialized. They can be updated after initialization using `setOptions()`.
 
 - **containerSelector** – CSS selector for the section of the page that should be annotatable. Default: `body`.
 - **paragraphSelector** – CSS selector for the paragraphs (or other block elements) on the page that should be annotatable. Each paragraph is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Default: `h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]`.

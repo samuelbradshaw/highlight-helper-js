@@ -25,7 +25,7 @@ function Highlighter(options = _defaultOptions) {
   this._annotatableParagraphs = null;
   this._svgBackground = null;
   this._svgActiveOverlay = null;
-  this._selectionHandles = null;
+  this._customHandles = null;
 
   // Stylesheets
   this._stylesheets = null;
@@ -37,7 +37,7 @@ function Highlighter(options = _defaultOptions) {
   // Data and state
   this._annotatableParagraphIds = null;
   this._hyperlinkElements = null;
-  this._hyperlinksByPosition = null;
+  this._hyperlinksByIndex = null;
   this._highlightsById = null;
 
   // Abort controller
@@ -49,7 +49,7 @@ function Highlighter(options = _defaultOptions) {
   // Interaction state
   this._activeHighlightId = undefined;
   this._previousSelectionRange = undefined;
-  this._activeSelectionHandle = undefined;
+  this._activeHandle = undefined;
   this._dragAnchorNode = undefined;
   this._dragAnchorOffset = undefined;
   this._pointerType = undefined;
@@ -63,7 +63,7 @@ function Highlighter(options = _defaultOptions) {
 
   this._updateAppearanceStylesheet();
   this._updateSelectionUi('appearance');
-  this.setOptions({ selectionHandles: this._options.selectionHandles });
+  this.setOptions({ customHandles: this._options.customHandles });
 }
 
 Highlighter.prototype._initializeHighlighter = function (previousContainerSelector = null) {
@@ -97,24 +97,24 @@ Highlighter.prototype._initializeHighlighter = function (previousContainerSelect
   this._annotatableContainer.appendChild(this._hhAdditionsDiv);
   this._svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   this._svgActiveOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  this._svgActiveOverlay.dataset.activeOverlay = '';
+  this._svgActiveOverlay.dataset.hhSvgActiveOverlay = '';
   this._svgBackground.appendChild(this._svgActiveOverlay);
-  this._svgBackground.classList.add('hh-svg-background');
+  this._svgBackground.dataset.hhSvgBackground = '';
   this._hhAdditionsDiv.appendChild(this._svgBackground);
   this._hhAdditionsDiv.insertAdjacentHTML('beforeend', `
-    <div class="hh-selection-handle" data-side="left" data-position="start" data-hh-ignore=""><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
-    <div class="hh-selection-handle" data-side="right" data-position="end" data-hh-ignore=""><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
+    <div data-hh-handle="" data-hh-side="left" data-hh-position="start" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
+    <div data-hh-handle="" data-hh-side="right" data-hh-position="end" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
   `);
-  this._selectionHandles = this._hhAdditionsDiv.getElementsByClassName('hh-selection-handle');
+  this._customHandles = this._hhAdditionsDiv.querySelectorAll('[data-hh-handle]');
 
   // Check for hyperlinks on the page
   this._hyperlinkElements = this._annotatableContainer.getElementsByTagName('a');
-  this._hyperlinksByPosition = {}
+  this._hyperlinksByIndex = {}
   for (let hyp = 0; hyp < this._hyperlinkElements.length; hyp++) {
     const hyperlink = this._hyperlinkElements[hyp];
-    hyperlink.dataset.hhPosition = hyp;
-    this._hyperlinksByPosition[hyp] = {
-      'position': hyp,
+    hyperlink.dataset.hhIndex = hyp;
+    this._hyperlinksByIndex[hyp] = {
+      'index': hyp,
       'text': hyperlink.innerHTML,
       'url': hyperlink.href,
       'hyperlinkElement': hyperlink,
@@ -142,23 +142,23 @@ Highlighter.prototype._loadStyles = function () {
     ${options.containerSelector} {
       -webkit-tap-highlight-color: transparent;
     }
-    .hh-wrapper-start, .hh-wrapper-end, .hh-selection-handle {
+    [data-hh-wrapper], [data-hh-handle] {
       -webkit-user-select: none;
       user-select: none;
     }
-    .hh-selection-handle {
+    [data-hh-handle] {
       position: absolute;
       width: 0px;
       visibility: hidden;
     }
-    [data-hh-pointer-down="true"] .hh-selection-handle {
+    [data-hh-pointer-down="true"] [data-hh-handle] {
       visibility: hidden !important;
     }
-    .hh-selection-handle-content {
+    [data-hh-handle-content] {
       position: absolute;
       height: 100%;
     }
-    .hh-selection-handle [draggable] {
+    [data-hh-handle] [draggable] {
       position: absolute;
       top: -0.3em;
       width: 3.2em;
@@ -166,9 +166,9 @@ Highlighter.prototype._loadStyles = function () {
       background-color: transparent;
       z-index: 1;
     }
-    .hh-selection-handle[data-side="left"] [draggable] { right: -2em; }
-    .hh-selection-handle[data-side="right"] [draggable] { left: -2em; }
-    .hh-default-handle {
+    [data-hh-handle][data-hh-side="left"] [draggable] { right: -2em; }
+    [data-hh-handle][data-hh-side="right"] [draggable] { left: -2em; }
+    [data-hh-default-handle] {
       position: absolute;
       width: 0.8em;
       height: min(1.2em, 100%);
@@ -177,11 +177,11 @@ Highlighter.prototype._loadStyles = function () {
       outline-offset: -0.05em;
       bottom: -0.2em;
     }
-    .hh-selection-handle[data-side="left"] .hh-default-handle {
+    [data-hh-handle][data-hh-side="left"] [data-hh-default-handle] {
       right: 0;
       border-radius: 1em 0 0.6em 0.6em;
     }
-    .hh-selection-handle[data-side="right"] .hh-default-handle {
+    [data-hh-handle][data-hh-side="right"] [data-hh-default-handle] {
       left: 0;
       border-radius: 0 1em 0.6em 0.6em;
     }
@@ -192,7 +192,7 @@ Highlighter.prototype._loadStyles = function () {
       width: 100%;
       overflow: visible;
     }
-    .hh-svg-background {
+    [data-hh-svg-background] {
       position: absolute;
       top: 0;
       left: 0;
@@ -200,11 +200,11 @@ Highlighter.prototype._loadStyles = function () {
       overflow: visible;
       z-index: -1;
     }
-    .hh-svg-background g {
+    [data-hh-svg-background] g {
       fill: transparent;
       stroke: none;
     }
-    mark[data-highlight-id] {
+    mark[data-hh-highlight-id] {
       background-color: transparent;
       color: inherit;
     }
@@ -231,12 +231,12 @@ Highlighter.prototype._loadEventListeners = function () {
     // In "Mac (Designed for iPad)" apps (iPad app running on macOS – most recently tested with macOS Sequoia 15.3.1), in-app webviews have several quirks related to text selection. One of these is text selection collapsing to a caret more often than expected. This code attempts to restore the previous selection range if it unexpectedly collapses to a caret in these scenarios:
     // 1. While dragging custom selection handles (happens randomly). TODO: Dragging custom selection handles in this environment is still sometimes a little jumpy.
     // 2. Just after clicking to activate a highlight (happens if it's the first click after the page loads).
-    if (isWKWebView && !isTouchDevice && selection.type !== 'Range' && this._previousSelectionRange && (this._activeSelectionHandle || (this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_START, selectionRange) <= 0 && this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_END, selectionRange) >= 0))) {
+    if (isWKWebView && !isTouchDevice && selection.type !== 'Range' && this._previousSelectionRange && (this._activeHandle || (this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_START, selectionRange) <= 0 && this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_END, selectionRange) >= 0))) {
       selection.setBaseAndExtent(this._previousSelectionRange.startContainer, this._previousSelectionRange.startOffset, this._previousSelectionRange.endContainer, this._previousSelectionRange.endOffset);
     }
 
     // Deactivate highlights when tapping or creating a selection outside of the previous selection range
-    if (!this._activeSelectionHandle && this._previousSelectionRange && (selection.type !== 'Range' || this._previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || this._previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
+    if (!this._activeHandle && this._previousSelectionRange && (selection.type !== 'Range' || this._previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || this._previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
       this.deactivateHighlights(false);
     }
 
@@ -263,16 +263,16 @@ Highlighter.prototype._loadEventListeners = function () {
     this._pointerType = event.pointerType;
 
     // Pointer down on a selection handle
-    if (event.target?.closest('.hh-selection-handle')) {
+    if (event.target?.closest('[data-hh-handle]')) {
       if (!isSecondaryClick) {
-        this._activeSelectionHandle = event.target.parentElement.closest('.hh-selection-handle');
-        const selectionHandleClientRect = this._activeSelectionHandle.getBoundingClientRect();
-        const lineHeight = selectionHandleClientRect.bottom - selectionHandleClientRect.top;
-        this._activeSelectionHandle.dataset.dragYOffset = Math.max(0, event.clientY - selectionHandleClientRect.bottom + (lineHeight / 6));
+        this._activeHandle = event.target.parentElement.closest('[data-hh-handle]');
+        const handleClientRect = this._activeHandle.getBoundingClientRect();
+        const lineHeight = handleClientRect.bottom - handleClientRect.top;
+        this._activeHandle.dataset.hhDragYOffset = Math.max(0, event.clientY - handleClientRect.bottom + (lineHeight / 6));
         const selectionRange = globalThis.getSelection().getRangeAt(0);
-        this._dragAnchorNode = this._activeSelectionHandle.dataset.position === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
-        this._dragAnchorOffset = this._activeSelectionHandle.dataset.position === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
-        this._annotatableContainer.addEventListener('pointermove', respondToSelectionHandleDrag, { signal: this._controller.signal });
+        this._dragAnchorNode = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
+        this._dragAnchorOffset = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
+        this._annotatableContainer.addEventListener('pointermove', respondToCustomHandleDrag, { signal: this._controller.signal });
         this._updateSelectionUi('bounds');
       }
       // Prevent default drag interaction (which would show a thumbnail and drag selected text)
@@ -297,12 +297,12 @@ Highlighter.prototype._loadEventListeners = function () {
   this._annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
 
   // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
-  const respondToSelectionHandleDrag = (event) => {
-    this._activeSelectionHandle.dataset.pointerXPosition = event.clientX;
-    this._activeSelectionHandle.dataset.pointerYPosition = event.clientY;
+  const respondToCustomHandleDrag = (event) => {
+    this._activeHandle.dataset.hhPointerXPosition = event.clientX;
+    this._activeHandle.dataset.hhPointerYPosition = event.clientY;
     const selection = globalThis.getSelection();
     const selectionRange = selection.getRangeAt(0);
-    const dragCaret = this._getCaretFromCoordinates(event.clientX, event.clientY - this._activeSelectionHandle.dataset.dragYOffset, true, false, true);
+    const dragCaret = this._getCaretFromCoordinates(event.clientX, event.clientY - this._activeHandle.dataset.hhDragYOffset, true, false, true);
 
     // Return if there's no drag caret, if the drag caret is invalid, or if the drag caret and anchor caret have the same position
     if (!dragCaret || dragCaret.startContainer.nodeType !== Node.TEXT_NODE || dragCaret.endContainer.nodeType !== Node.TEXT_NODE || (this._dragAnchorNode === dragCaret.endContainer && this._dragAnchorOffset === dragCaret.endOffset)) return;
@@ -310,9 +310,9 @@ Highlighter.prototype._loadEventListeners = function () {
     // Check if start and end selection handles switched positions
     const dragPositionRelativeToSelectionStart = dragCaret.compareBoundaryPoints(Range.START_TO_END, selectionRange);
     const dragPositionRelativeToSelectionEnd = dragCaret.compareBoundaryPoints(Range.END_TO_END, selectionRange);
-    if (this._activeSelectionHandle.dataset.position === 'start' && dragPositionRelativeToSelectionEnd === 1 || this._activeSelectionHandle.dataset.position === 'end' && dragPositionRelativeToSelectionStart === -1) {
-      for (const selectionHandle of this._selectionHandles) {
-        selectionHandle.dataset.position = selectionHandle.dataset.position === 'start' ? 'end' : 'start';
+    if (this._activeHandle.dataset.hhPosition === 'start' && dragPositionRelativeToSelectionEnd === 1 || this._activeHandle.dataset.hhPosition === 'end' && dragPositionRelativeToSelectionStart === -1) {
+      for (const handle of this._customHandles) {
+        handle.dataset.hhPosition = handle.dataset.hhPosition === 'start' ? 'end' : 'start';
       }
     }
 
@@ -337,7 +337,7 @@ Highlighter.prototype._loadEventListeners = function () {
         } else if (this._tapResult.highlights.length === 1) {
           return this.activateHighlight(this._tapResult.highlights[0].highlightId);
         } else if (this._tapResult.hyperlinks.length === 1) {
-          return this.activateHyperlink(this._tapResult.hyperlinks[0].position);
+          return this.activateHyperlink(this._tapResult.hyperlinks[0].index);
         }
       }
     }
@@ -365,10 +365,10 @@ Highlighter.prototype._loadEventListeners = function () {
     this._tapResult = null;
     this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
     this._annotatableContainer.dataset.hhPointerDown = 'false';
-    if (this._activeSelectionHandle) {
-      this._activeSelectionHandle = null;
+    if (this._activeHandle) {
+      this._activeHandle = null;
       this._updateSelectionUi('bounds');
-      this._annotatableContainer.removeEventListener('pointermove', respondToSelectionHandleDrag);
+      this._annotatableContainer.removeEventListener('pointermove', respondToCustomHandleDrag);
     }
   }
   globalThis.addEventListener('pointerup', (event) => respondToWindowPointerUp(event), { signal: this._controller.signal });
@@ -456,14 +456,14 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     const highlightInfo = this._highlightsById[highlightId];
     let range = this._getCorrectedRangeObj(highlightId);
     const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-    const wasDrawnAsReadOnly = this._annotatableContainer.querySelector(`[data-highlight-id="${highlightId}"][data-read-only]`);
+    const wasDrawnAsReadOnly = this._annotatableContainer.querySelector(`[data-hh-highlight-id="${highlightId}"][data-hh-read-only]`);
 
     // Don't redraw a read-only highlight that's already drawn
     if (wasDrawnAsReadOnly && highlightInfo.readOnly) continue;
 
     // Remove old highlight and wrapper elements
-    const existingStartWrapper = this._annotatableContainer.querySelector(`.hh-wrapper-start[data-highlight-id="${highlightId}"]`);
-    const existingEndWrapper = this._annotatableContainer.querySelector(`.hh-wrapper-end[data-highlight-id="${highlightId}"]`);
+    const existingStartWrapper = this._annotatableContainer.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${highlightId}"]`);
+    const existingEndWrapper = this._annotatableContainer.querySelector(`[data-hh-wrapper][data-hh-position="end"][data-hh-highlight-id="${highlightId}"]`);
     existingStartWrapper?.remove();
     existingEndWrapper?.remove();
     this._undrawHighlight(highlightInfo);
@@ -477,18 +477,18 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         }
         let htmlElement;
         if (existingEl) {
-          existingEl.dataset.color = highlightInfo.color;
-          existingEl.dataset.style = highlightInfo.style;
-          const wrapperContentChanged = existingEl.dataset.wrapper !== highlightInfo.wrapper || existingEl.dataset.wrapperVariables !== serializedWrapperVariables;
+          existingEl.dataset.hhColorKey = highlightInfo.color;
+          existingEl.dataset.hhStyleKey = highlightInfo.style;
+          const wrapperContentChanged = existingEl.dataset.hhWrapperKey !== highlightInfo.wrapper || existingEl.dataset.hhWrapperVariables !== serializedWrapperVariables;
           if (wrapperContentChanged) {
-            existingEl.dataset.wrapper = highlightInfo.wrapper;
-            existingEl.dataset.wrapperVariables = serializedWrapperVariables;
+            existingEl.dataset.hhWrapperKey = highlightInfo.wrapper;
+            existingEl.dataset.hhWrapperVariables = serializedWrapperVariables;
             existingEl.innerHTML = innerHtml;
           }
           htmlElement = existingEl;
         } else {
           const template = document.createElement('template');
-          template.innerHTML = `<span class="hh-wrapper-${position}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}" data-wrapper="${highlightInfo.wrapper}" data-wrapper-variables='${serializedWrapperVariables}' data-hh-ignore="">${innerHtml}</span>`;
+          template.innerHTML = `<span data-hh-wrapper="" data-hh-position="${position}" data-hh-highlight-id="${highlightId}" data-hh-color-key="${highlightInfo.color}" data-hh-style-key="${highlightInfo.style}" data-hh-wrapper-key="${highlightInfo.wrapper}" data-hh-wrapper-variables='${serializedWrapperVariables}' data-hh-ignore="">${innerHtml}</span>`;
           htmlElement = template.content.firstChild;
         }
         if (position === 'start') {
@@ -529,18 +529,19 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       const overlappingHighlightIds = new Set();
       const createStyledMark = () => {
         const mark = document.createElement('mark');
-        mark.dataset.highlightId = highlightId;
-        if (highlightInfo.readOnly) mark.dataset.readOnly = '';
-        mark.dataset.color = highlightInfo.color;
-        mark.dataset.style = highlightInfo.style;
+        mark.dataset.hhHighlightId = highlightId;
+        if (highlightInfo.readOnly) mark.dataset.hhReadOnly = '';
+        mark.dataset.hhColorKey = highlightInfo.color;
+        mark.dataset.hhStyleKey = highlightInfo.style;
         return mark;
       };
       for (let tn = 0; tn < relevantTextNodes.length; tn++) {
         const textNode = relevantTextNodes[tn];
-        if (textNode.parentElement.dataset.highlightId) overlappingHighlightIds.add(textNode.parentElement.dataset.highlightId);
+        if (textNode.parentElement.dataset.hhHighlightId) overlappingHighlightIds.add(textNode.parentElement.dataset.hhHighlightId);
         const styledMark = createStyledMark();
-        if (tn === 0) styledMark.dataset.start = '';
-        if (tn === relevantTextNodes.length - 1) styledMark.dataset.end = '';
+        if (tn === 0 && tn === relevantTextNodes.length - 1) styledMark.dataset.hhPosition = 'start end';
+        else if (tn === 0) styledMark.dataset.hhPosition = 'start';
+        else if (tn === relevantTextNodes.length - 1) styledMark.dataset.hhPosition = 'end';
         textNode.before(styledMark);
         styledMark.appendChild(textNode);
         // Absorb adjacent elements without text into the mark element. This prevents unstyled gaps around CSS-rendered pseudoelement content (such as superscript footnote markers).
@@ -585,9 +586,9 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     } else if (options.drawingMode === 'svg') {
       const clientRects = this._getMergedClientRects(range, rangeParagraphs);
       let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      group.dataset.highlightId = highlightId;
-      group.dataset.color = highlightInfo.color;
-      group.dataset.style = highlightInfo.style;
+      group.dataset.hhHighlightId = highlightId;
+      group.dataset.hhColorKey = highlightInfo.color;
+      group.dataset.hhStyleKey = highlightInfo.style;
       let svgContent = '';
       for (const clientRect of clientRects) {
         svgContent += this._getStyleTemplate(highlightInfo.style, 'svg', clientRect);
@@ -688,7 +689,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
     // Set variables that depend on the range
     const temporaryHtmlElement = document.createElement('div');
     temporaryHtmlElement.appendChild(highlightRange.cloneContents());
-    for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-highlight-id]:not([data-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
+    for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-hh-highlight-id]:not([data-hh-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
     for (const element of temporaryHtmlElement.querySelectorAll(`[data-hh-ignore]`)) element.remove();
     rangeText = temporaryHtmlElement.textContent;
     rangeHtml = temporaryHtmlElement.innerHTML;
@@ -794,11 +795,11 @@ Highlighter.prototype.activateHighlight = function (highlightId) {
   this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
 }
 
-// Activate a link by position
-Highlighter.prototype.activateHyperlink = function (position) {
+// Activate a link by index
+Highlighter.prototype.activateHyperlink = function (index) {
   this.deactivateHighlights();
   this._allowHyperlinkClick = true;
-  this._hyperlinksByPosition[position].hyperlinkElement.click();
+  this._hyperlinksByIndex[index].hyperlinkElement.click();
   this._allowHyperlinkClick = false;
 }
 
@@ -875,8 +876,8 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
     this._loadEventListeners();
     this._updateAppearanceStylesheet();
     this._updateSelectionUi('appearance');
-    for (const selectionHandle of this._selectionHandles) {
-      selectionHandle.children[1].innerHTML = options.selectionHandles[selectionHandle.dataset.side] ?? '';
+    for (const handle of this._customHandles) {
+      handle.children[1].innerHTML = options.customHandles[handle.dataset.hhSide] ?? '';
     }
   } else {
     if ('paragraphSelector' in optionsToUpdate) {
@@ -889,9 +890,9 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
       if (supportsHighlightApi) CSS.highlights.clear();
       this.drawHighlights();
     }
-    if ('selectionHandles' in optionsToUpdate) {
-      for (const selectionHandle of this._selectionHandles) {
-        selectionHandle.children[1].innerHTML = options.selectionHandles[selectionHandle.dataset.side] ?? '';
+    if ('customHandles' in optionsToUpdate) {
+      for (const handle of this._customHandles) {
+        handle.children[1].innerHTML = options.customHandles[handle.dataset.hhSide] ?? '';
       }
     }
   }
@@ -958,16 +959,16 @@ Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
   const tappedWrapperElements = new Set()
   const targetElements = document.elementsFromPoint(pointerEvent.clientX, pointerEvent.clientY);
   for (const element of targetElements) {
-    const wrapper = element.closest('.hh-wrapper-start, .hh-wrapper-end');
+    const wrapper = element.closest('[data-hh-wrapper]');
     if (wrapper && !tappedWrapperElements.has(wrapper)) {
       tappedWrappers.push({
-        position: wrapper.className.includes('hh-wrapper-start') ? 'start' : 'end',
+        position: wrapper.dataset.hhPosition,
         wrapperElement: wrapper,
-        highlightInfo: this._highlightsById[wrapper.dataset.highlightId],
+        highlightInfo: this._highlightsById[wrapper.dataset.hhHighlightId],
       });
       tappedWrapperElements.add(wrapper);
-    } else if (element.matches('a') && element.dataset.hhPosition) {
-      const hyperlinkInfo = this._hyperlinksByPosition[element.dataset.hhPosition];
+    } else if (element.matches('a') && element.dataset.hhIndex) {
+      const hyperlinkInfo = this._hyperlinksByIndex[element.dataset.hhIndex];
       tappedHyperlinks.push(hyperlinkInfo);
     }
   }
@@ -1002,12 +1003,12 @@ Highlighter.prototype._undrawHighlight = function (highlightInfo) {
 
   // Remove <mark> highlights and HTML wrappers
   const overlappingHighlightIds = new Set();
-  this._annotatableContainer.querySelectorAll(`[data-highlight-id="${highlightId}"]:not(g)`).forEach(element => {
-    if (element.parentElement.dataset.highlightId) {
-      overlappingHighlightIds.add(element.parentElement.dataset.highlightId);
+  this._annotatableContainer.querySelectorAll(`[data-hh-highlight-id="${highlightId}"]:not(g)`).forEach(element => {
+    if (element.parentElement.dataset.hhHighlightId) {
+      overlappingHighlightIds.add(element.parentElement.dataset.hhHighlightId);
     }
-    for (const childHighlight of element.querySelectorAll('[data-highlight-id]')) {
-      overlappingHighlightIds.add(childHighlight.dataset.highlightId);
+    for (const childHighlight of element.querySelectorAll('[data-hh-highlight-id]')) {
+      overlappingHighlightIds.add(childHighlight.dataset.hhHighlightId);
     }
     if (element.matches('mark')) {
       element.outerHTML = element.innerHTML;
@@ -1031,7 +1032,7 @@ Highlighter.prototype._undrawHighlight = function (highlightInfo) {
   this._getCorrectedRangeObj(highlightId);
 
   // Remove SVG highlights
-  this._svgBackground.querySelectorAll(`g[data-highlight-id="${highlightId}"]`).forEach(element => {
+  this._svgBackground.querySelectorAll(`g[data-hh-highlight-id="${highlightId}"]`).forEach(element => {
     element.remove();
   });
 
@@ -1067,8 +1068,8 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     range = this._snapRangeToBoundaries(range);
     const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
     const clientRects = this._getMergedClientRects(range, rangeParagraphs);
-    this._svgActiveOverlay.dataset.color = color;
-    this._svgActiveOverlay.dataset.style = style;
+    this._svgActiveOverlay.dataset.hhColorKey = color;
+    this._svgActiveOverlay.dataset.hhStyleKey = style;
     let svgContent = '';
     for (const clientRect of clientRects) {
       svgContent += this._getStyleTemplate(highlightInfo.style, 'svg', clientRect, true);
@@ -1076,7 +1077,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     this._svgActiveOverlay.innerHTML = svgContent;
 
     // Bring active highlight to the front
-    const svgHighlight = this._svgBackground.querySelector(`g[data-highlight-id="${this._activeHighlightId}"]`);
+    const svgHighlight = this._svgBackground.querySelector(`g[data-hh-highlight-id="${this._activeHighlightId}"]`);
     if (svgHighlight) this._svgBackground.appendChild(svgHighlight);
     this._svgBackground.appendChild(this._svgActiveOverlay);
   }
@@ -1087,16 +1088,16 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
     if (this._activeHighlightId && options.drawingMode === 'svg') {
       this._selectionStylesheet.replaceSync(`
-        ${options.containerSelector} g[data-highlight-id="${this._activeHighlightId}"][data-style] { display: none; }
-        ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${this._activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
+        ${options.containerSelector} g[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { display: none; }
+        ${options.containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
         ${options.containerSelector} ::selection { background-color: transparent; }
       `);
     } else if (this._activeHighlightId) {
       const styleTemplate = this._getStyleTemplate(style, 'css', null, true);
       this._selectionStylesheet.replaceSync(`
         ${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
-        ${options.containerSelector} mark[data-highlight-id="${this._activeHighlightId}"][data-style] { all: unset; }
-        ${options.containerSelector} .hh-wrapper-start[data-highlight-id="${this._activeHighlightId}"], .hh-wrapper-end[data-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
+        ${options.containerSelector} mark[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { all: unset; }
+        ${options.containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
         ${options.containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
         ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
       `);
@@ -1110,7 +1111,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     }
 
     // Send event
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionupdate', { detail: { color: color, style: style, }}));
+    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionstyleupdate', { detail: { color: color, style: style, }}));
 
   } else if (changeType === 'bounds') {
     // Update selection handle location and visibility
@@ -1123,39 +1124,39 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
       const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
 
       if (
-        (options.showCustomSelectionHandlesOnTouch || this._pointerType === 'mouse')
-        && ((options.showCustomSelectionHandlesForActiveHighlights && this._activeHighlightId)
-          || (options.showCustomSelectionHandlesForTextSelection && !this._activeHighlightId))
+        (options.showCustomHandlesOnTouch || this._pointerType === 'mouse')
+        && ((options.showCustomHandlesForActiveHighlights && this._activeHighlightId)
+          || (options.showCustomHandlesForTextSelection && !this._activeHighlightId))
       ) {
-        for (const selectionHandle of this._selectionHandles) {
+        for (const handle of this._customHandles) {
           let side;
-          if (selectionHandle.dataset.position === 'start') {
+          if (handle.dataset.hhPosition === 'start') {
             side = startNodeIsRtl ? 'right' : 'left';
-            selectionHandle.style.left = startRect[side] - additionsRect.left + 'px';
-            selectionHandle.style.height = startRect.height + 'px';
-            selectionHandle.style.top = startRect.top - additionsRect.top + 'px';
+            handle.style.left = startRect[side] - additionsRect.left + 'px';
+            handle.style.height = startRect.height + 'px';
+            handle.style.top = startRect.top - additionsRect.top + 'px';
           } else {
             side = endNodeIsRtl ? 'left' : 'right';
-            selectionHandle.style.left = endRect[side] - additionsRect.left + 'px';
-            selectionHandle.style.height = endRect.height + 'px';
-            selectionHandle.style.top = endRect.top - additionsRect.top + 'px';
+            handle.style.left = endRect[side] - additionsRect.left + 'px';
+            handle.style.height = endRect.height + 'px';
+            handle.style.top = endRect.top - additionsRect.top + 'px';
           }
-          if (selectionHandle.dataset.side !== side) {
-            selectionHandle.dataset.side = side;
-            this.setOptions({ selectionHandles: options.selectionHandles });
+          if (handle.dataset.hhSide !== side) {
+            handle.dataset.hhSide = side;
+            this.setOptions({ customHandles: options.customHandles });
           }
         }
-        this._setCustomSelectionHandleVisibility(true);
+        this._setCustomHandleVisibility(true);
       }
     } else {
-      this._setCustomSelectionHandleVisibility(false);
+      this._setCustomHandleVisibility(false);
     }
   }
 }
 
-Highlighter.prototype._setCustomSelectionHandleVisibility = function (visible = this._selectionHandles[0].style.visibility === 'hidden') {
-  for (const selectionHandle of this._selectionHandles) {
-    selectionHandle.style.visibility = visible ? 'visible' : 'hidden';
+Highlighter.prototype._setCustomHandleVisibility = function (visible = this._customHandles[0].style.visibility === 'hidden') {
+  for (const handle of this._customHandles) {
+    handle.style.visibility = visible ? 'visible' : 'hidden';
   }
 }
 
@@ -1317,11 +1318,11 @@ Highlighter.prototype._updateAppearanceStylesheet = function () {
   const options = this._options;
   this._appearanceStylesheet.replaceSync('');
   for (const color of Object.keys(options.colors)) {
-    this._appearanceStylesheet.insertRule(`[data-color="${color}"] { --hh-color: ${options.colors[color]}; }`);
+    this._appearanceStylesheet.insertRule(`[data-hh-color-key="${color}"] { --hh-color: ${options.colors[color]}; }`);
   }
   for (const style of Object.keys(options.styles)) {
     const styleTemplate = this._getStyleTemplate(style, 'css', null);
-    this._appearanceStylesheet.insertRule(`mark[data-highlight-id][data-style="${style}"] { ${styleTemplate} }`);
+    this._appearanceStylesheet.insertRule(`mark[data-hh-highlight-id][data-hh-style-key="${style}"] { ${styleTemplate} }`);
   }
 }
 
@@ -1623,9 +1624,9 @@ const _defaultOptions = {
       end: '<span class="sr-only"> {endLabel}</span>',
     },
   },
-  selectionHandles: {
-    left: '<div class="hh-default-handle"></div>',
-    right: '<div class="hh-default-handle"></div>',
+  customHandles: {
+    left: '<div data-hh-default-handle=""></div>',
+    right: '<div data-hh-default-handle=""></div>',
   },
   rememberStyle: true,
   snapToWord: false,
@@ -1635,11 +1636,11 @@ const _defaultOptions = {
   drawingMode: 'svg',
   defaultColor: 'yellow',
   defaultStyle: 'fill',
-  defaultWrapper: 'none',
+  defaultWrapper: null,
   highlightIdFunction: _getNewHighlightId,
-  showCustomSelectionHandlesForActiveHighlights: true,
-  showCustomSelectionHandlesForTextSelection: false,
-  showCustomSelectionHandlesOnTouch: false,
+  showCustomHandlesForActiveHighlights: true,
+  showCustomHandlesForTextSelection: false,
+  showCustomHandlesOnTouch: false,
 }
 
 // Workaround to allow programmatic text selection on tap in iOS Safari

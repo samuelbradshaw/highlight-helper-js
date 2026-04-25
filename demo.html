@@ -24,7 +24,7 @@
         color: var(--text-color);
         line-height: 1.4;
       }
-      main { margin-right: 2em; }
+      main { margin-inline-end: 2em; }
       a { color: var(--gray-50); }
       button {
         cursor: pointer;
@@ -65,7 +65,7 @@
         }
       }
      
-      .hh-wrapper-start, .hh-wrapper-end {
+      [data-hh-wrapper] {
         /* Prevent line breaks mid-wrapper. You can also prevent line breaks between the wrapper and the highlight by adding &NoBreak; at the start or end of the wrapper content. */
         white-space: nowrap;
       }
@@ -86,7 +86,7 @@
       }
       .note {
         position: absolute;
-        right: 0.5rem;
+        inset-inline-end: 0.5rem;
         font-size: 1.2rem;
         margin-top: -0.2rem;
         &::before {
@@ -129,7 +129,7 @@
     <main>
       <h1 id="title1">HighlightHelper.js Demo</h1>
       <p id="p1"><b>HighlightHelper.js</b> enables highlighting or underlining text in an HTML page. Highlights are drawn via <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/SVG">SVG shapes</a>, the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, or <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark">HTML mark elements</a>. Highlights can be drawn across multiple paragraphs or <b>inline <i>style</i></b> elements—they can even overlap!</p>
-      <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images (right) and Japanese ruby/furigana (below) are highlighted around.</p>
+      <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images and Japanese ruby/furigana are highlighted around.</p>
       <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
       <p id="p4" style="direction: rtl;">فِي الْبَدْءِ خَلَقَ اللهُ السَّمَاوَاتِ وَالأَرْضَ. وَكَانَتِ الأَرْضُ خَرِبَةً وَخَالِيَةً، وَعَلَى وَجْهِ الْغَمْرِ ظُلْمَةٌ، وَرُوحُ اللهِ يَرِفُّ عَلَى وَجْهِ الْمِيَاهِ. وَقَالَ اللهُ: «لِيَكُنْ نُورٌ»، فَكَانَ نُورٌ.</p>
     </main>
@@ -171,9 +171,9 @@
       </p>
       <p>
         Show custom selection handles:<br>
-        <label><input type="checkbox" id="hh-selection-handles-active-highlights" checked> For active highlights</label><br>
-        <label><input type="checkbox" id="hh-selection-handles-text-selection"> For text selection</label><br>
-        <label><input type="checkbox" id="hh-selection-handles-touch"> On touch devices</label><br>
+        <label><input type="checkbox" id="hh-custom-handles-active-highlights" checked> For active highlights</label><br>
+        <label><input type="checkbox" id="hh-custom-handles-text-selection"> For text selection</label><br>
+        <label><input type="checkbox" id="hh-custom-handles-touch"> On touch devices</label><br>
       </p>
       <b>Active highlight:</b>
       <div id="snippet-container">
@@ -330,12 +330,12 @@
           }
         });
       }
-      const selectionHandlesActiveHighlightsCheckbox = document.getElementById('hh-selection-handles-active-highlights');
-      selectionHandlesActiveHighlightsCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomSelectionHandlesForActiveHighlights: event.currentTarget.checked }); });
-      const selectionHandlesTextSelectionCheckbox = document.getElementById('hh-selection-handles-text-selection');
-      selectionHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomSelectionHandlesForTextSelection: event.currentTarget.checked }); });
-      const selectionHandlesOnTouchCheckbox = document.getElementById('hh-selection-handles-touch');
-      selectionHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomSelectionHandlesOnTouch: event.currentTarget.checked }); });
+      const customHandlesActiveHighlightsCheckbox = document.getElementById('hh-custom-handles-active-highlights');
+      customHandlesActiveHighlightsCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesForActiveHighlights: event.currentTarget.checked }); });
+      const customHandlesTextSelectionCheckbox = document.getElementById('hh-custom-handles-text-selection');
+      customHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesForTextSelection: event.currentTarget.checked }); });
+      const customHandlesOnTouchCheckbox = document.getElementById('hh-custom-handles-touch');
+      customHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesOnTouch: event.currentTarget.checked }); });
 
       const container = document.querySelector(highlighter.getOptions().containerSelector);
       const snippetDiv = document.getElementById('snippet');
@@ -357,7 +357,7 @@
         const annotatedParagraphs = container.querySelectorAll(`#${event.detail.highlight.rangeParagraphIds.join(', #')}`);
         for (const annotatedParagraph of annotatedParagraphs) {
           const snippetParagraph = annotatedParagraph.cloneNode(true);
-          for (const element of snippetParagraph.querySelectorAll('[data-highlight-id]')) element.remove();
+          for (const element of snippetParagraph.querySelectorAll('[data-hh-highlight-id]')) element.remove();
           snippetParagraph.id = `${snippetParagraph.id}_${event.detail.highlight.highlightId}`;
           snippetDiv.append(snippetParagraph);
         }
@@ -407,7 +407,7 @@
         for (const highlight of highlights) {
           let buttonStyle = highlighter.getOptions().styles[highlight.style]['css']
           let buttonHtml = `
-            <button data-color="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
+            <button data-hh-color-key="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
               <span style="${buttonStyle}">${highlight.rangeHtml}</span>
             </button>
           `;
@@ -416,7 +416,7 @@
         for (const hyperlink of event.detail.hyperlinks) {
           let buttonStyle = 'color: var(--gray-50); text-decoration: underline;'
           let buttonHtml = `
-            <button onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.position});">
+            <button onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.index});">
               <span style="${buttonStyle}">${hyperlink.text}</span>
             </button>
           `;
@@ -430,7 +430,7 @@
       function updateMarginNotePosition(event) {
         const activeHighlightId = highlighter.getActiveHighlightId();
         if (!activeHighlightId) return;
-        const note = container.querySelector(`.hh-wrapper-start[data-highlight-id="${activeHighlightId}"] .note`);
+        const note = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
         if (!note) return;
         const selection = getSelection();
         const startRect = selection.type === 'Range' ? selection.getRangeAt(0).getBoundingClientRect() : null;
@@ -446,7 +446,7 @@
       container.addEventListener('hh:highlightsload', console.info)
       container.addEventListener('hh:highlightactivate', console.info)
       container.addEventListener('hh:highlightdeactivate', console.info)
-      container.addEventListener('hh:selectionupdate', console.info)
+      container.addEventListener('hh:selectionstyleupdate', console.info)
       container.addEventListener('hh:ambiguousaction', console.info)
       container.addEventListener('hh:tap', console.info)
     </script>

@@ -65,6 +65,11 @@
           }
         }
       }
+     
+      .hh-wrapper-start, .hh-wrapper-end {
+        /* Prevent line breaks mid-wrapper. You can also prevent line breaks between the wrapper and the highlight by adding &NoBreak; at the start or end of the wrapper content. */
+        white-space: nowrap;
+      }
       .footnote-marker {
         display: inline-block;
         vertical-align: super;
@@ -140,14 +145,14 @@
         <button name="hh-color" value="blue">Blue</button>
         <button name="hh-style" value="fill" checked> Fill</button>
         <button name="hh-style" value="single-underline"> Underline</button>
-        <button name="hh-style" value="double-underline"> Double underline</button>
+        <button name="hh-style" value="double-underline"> 2x underline</button>
         <button name="hh-style" value="colored-text"> Colored text</button>
         <button name="hh-style" value="redacted"> Redacted</button>
         <button name="hh-remove">Remove</button>
         <button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-content="a" data-accessibility-label="Footnote [a]"></span><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="🙂" data-accessibility-label="Smile emoji"></span></span><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="✅" data-accessibility-label="Checkmark emoji"></span></span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-content="a" data-accessibility-label="Footnote [a]">&NoBreak;</span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="🙂" data-accessibility-label="Smile emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="✅" data-accessibility-label="Checkmark emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
@@ -243,8 +248,8 @@
         containerSelector: 'main',
         paragraphSelector: 'main [id]',
         wrappers: {
-          'footnote': { start: '<span class="footnote-marker" data-content="{content}" data-accessibility-label="{accessibilityLabel}"></span>', end: '', },
-          'margin-note': { start: '<span class="note-container"><span class="note" data-content="{content}" data-accessibility-label="{accessibilityLabel}"></span></span>', end: '', },
+          'footnote': { start: '<span class="footnote-marker" data-content="{content}" data-accessibility-label="{accessibilityLabel}"></span>&NoBreak;', end: '', },
+          'margin-note': { start: '<span class="note-container"><span class="note" data-content="{content}" data-accessibility-label="{accessibilityLabel}"></span></span>&NoBreak;', end: '', },
         },
       });
       highlighter.loadHighlights(highlights);
@@ -325,10 +330,8 @@
         const annotatedParagraphs = container.querySelectorAll(`#${event.detail.highlight.rangeParagraphIds.join(', #')}`);
         for (const annotatedParagraph of annotatedParagraphs) {
           const snippetParagraph = annotatedParagraph.cloneNode(true);
+          for (const element of snippetParagraph.querySelectorAll('[data-highlight-id]')) element.remove();
           snippetParagraph.id = `${snippetParagraph.id}_${event.detail.highlight.highlightId}`;
-          for (const wrapperEl of snippetParagraph.querySelectorAll('[data-highlight-id]')) {
-            wrapperEl.dataset.highlightId = wrapperEl.dataset.highlightId + '_snippet';
-          }
           snippetDiv.append(snippetParagraph);
         }
         const snippetHighlights = [

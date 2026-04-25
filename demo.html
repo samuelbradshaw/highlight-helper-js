@@ -208,6 +208,7 @@
           highlightId: 'hh-1729991847468',
           color: 'red', style: 'single-underline', wrapper: 'footnote',
           wrapperVariables: { content: 'a', accessibilityLabel: 'Footnote [a]', },
+          readOnly: true,
           startParagraphId: 'p2', startParagraphOffset: 119,
           endParagraphId: 'p2', endParagraphOffset: 127,
         },
@@ -279,12 +280,12 @@
       const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
       const pointerModeRadioButtons = document.getElementsByName('hh-pointer-mode');
       const drawingModeRadioButtons = document.getElementsByName('hh-drawing-mode');
-      rememberStyleCheckbox.addEventListener('change', (event) => { highlighter.setOption('rememberStyle', event.currentTarget.checked); });
-      snapToWordCheckbox.addEventListener('change', (event) => { highlighter.setOption('snapToWord', event.currentTarget.checked); });
+      rememberStyleCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ rememberStyle: event.currentTarget.checked }) });
+      snapToWordCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ snapToWord: event.currentTarget.checked }); });
       for (const pointerModeRadioButton of pointerModeRadioButtons) {
         pointerModeRadioButton.addEventListener('change', (event) => {
           let pointerMode = document.querySelector('[name="hh-pointer-mode"]:checked').value;
-          highlighter.setOption('pointerMode', pointerMode);
+          highlighter.setOptions({ pointerMode: pointerMode });
         });
       }
       for (const drawingModeRadioButton of drawingModeRadioButtons) {
@@ -293,16 +294,16 @@
           if (drawingMode === 'highlight-api' && !CSS.highlights) {
             alert('Your browser doesn’t support the Custom Highlight API.');
           } else {
-            highlighter.setOption('drawingMode', drawingMode);
+            highlighter.setOptions({ drawingMode: drawingMode });
           }
         });
       }
       const selectionHandlesActiveHighlightsCheckbox = document.getElementById('hh-selection-handles-active-highlights');
-      selectionHandlesActiveHighlightsCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesForActiveHighlights', event.currentTarget.checked); });
+      selectionHandlesActiveHighlightsCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomSelectionHandlesForActiveHighlights: event.currentTarget.checked }); });
       const selectionHandlesTextSelectionCheckbox = document.getElementById('hh-selection-handles-text-selection');
-      selectionHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesForTextSelection', event.currentTarget.checked); });
+      selectionHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomSelectionHandlesForTextSelection: event.currentTarget.checked }); });
       const selectionHandlesOnTouchCheckbox = document.getElementById('hh-selection-handles-touch');
-      selectionHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOption('showCustomSelectionHandlesOnTouch', event.currentTarget.checked); });
+      selectionHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomSelectionHandlesOnTouch: event.currentTarget.checked }); });
 
       const container = document.querySelector(highlighter.getOptions().containerSelector);
       const snippetDiv = document.getElementById('snippet');

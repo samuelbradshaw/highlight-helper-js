@@ -15,7 +15,7 @@ function Highlighter(options = _defaultOptions) {
 
   // DOM references
   this._annotatableContainer = null;
-  this._relativeAncestorElement = null;
+  this._hhAdditionsDiv = null;
   this._annotatableParagraphs = null;
   this._svgBackground = null;
   this._svgActiveOverlay = null;
@@ -79,34 +79,27 @@ Highlighter.prototype._initializeHighlighter = function (previousContainerSelect
     return false;
   }
 
-  // Get the closest ancestor element with `position: relative`, or the root element (this is used to calculate the position of selection handles and SVG highlights)
-  let ancestorElement = this._annotatableContainer;
-  while (ancestorElement) {
-    if (ancestorElement === document.documentElement || globalThis.getComputedStyle(ancestorElement).position === 'relative') {
-      this._relativeAncestorElement = ancestorElement;
-      break;
-    }
-    ancestorElement = ancestorElement.parentElement;
-  }
-
   // Abort controller can be used to cancel event listeners if the highlighter is removed
   this._controller = new AbortController;
 
   // Setting tabIndex -1 on <body> allows focus to be set programmatically (needed to initialize text selection in iOS Safari). It also prevents "tap to search" from interfering with text selection in Android Chrome.
   document.body.tabIndex = -1;
 
-  // Set up SVG background and selection handles
+  // Set up additions (SVG background and selection handles)
+  this._hhAdditionsDiv = document.createElement('div');
+  this._hhAdditionsDiv.dataset.hhAdditions = '';
+  this._annotatableContainer.appendChild(this._hhAdditionsDiv);
   this._svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   this._svgActiveOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   this._svgActiveOverlay.dataset.activeOverlay = '';
   this._svgBackground.appendChild(this._svgActiveOverlay);
   this._svgBackground.classList.add('hh-svg-background');
-  this._annotatableContainer.appendChild(this._svgBackground);
-  this._annotatableContainer.insertAdjacentHTML('beforeend', `
+  this._hhAdditionsDiv.appendChild(this._svgBackground);
+  this._hhAdditionsDiv.insertAdjacentHTML('beforeend', `
     <div class="hh-selection-handle" data-side="left" data-position="start" data-hh-ignore=""><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
     <div class="hh-selection-handle" data-side="right" data-position="end" data-hh-ignore=""><div draggable="true"></div><div class="hh-selection-handle-content"></div></div>
   `);
-  this._selectionHandles = this._annotatableContainer.getElementsByClassName('hh-selection-handle');
+  this._selectionHandles = this._hhAdditionsDiv.getElementsByClassName('hh-selection-handle');
 
   // Check for hyperlinks on the page
   this._hyperlinkElements = this._annotatableContainer.getElementsByTagName('a');
@@ -185,6 +178,13 @@ Highlighter.prototype._loadStyles = function () {
     .hh-selection-handle[data-side="right"] .hh-default-handle {
       left: 0;
       border-radius: 0 1em 0.6em 0.6em;
+    }
+    [data-hh-additions] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      overflow: visible;
     }
     .hh-svg-background {
       position: absolute;
@@ -394,8 +394,8 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   const startTimestamp = Date.now();
 
   // Hide container (repeated DOM manipulations are faster if the container is hidden)
+  let containerToHide = this._options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer;
   if (highlights.length > 1) {
-    let containerToHide = this._options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer;
     containerToHide.style.display = 'none';
   }
 
@@ -419,7 +419,7 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   }
   if (knownHighlightIds.length > 0) this.removeHighlights(knownHighlightIds);
 
-  (this._options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer).style.display = '';
+  containerToHide.style.display = '';
   this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
     addedCount: addedCount, removedCount: knownHighlightIds.length, updatedCount: updatedCount,
     totalCount: Object.keys(this._highlightsById).length,
@@ -432,8 +432,8 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   const options = this._options;
 
   // Hide container (repeated DOM manipulations is faster if the container is hidden)
+  let containerToHide = options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer;
   if (highlightIds.length > 1) {
-    let containerToHide = options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer;
     containerToHide.style.display = 'none';
   }
 
@@ -581,7 +581,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   }
 
   // Show container
-  (options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer).style.display = '';
+  containerToHide.style.display = '';
 }
 
 // Create a new highlight, or update an existing highlight when it changes
@@ -890,7 +890,7 @@ Highlighter.prototype.getOptions = function () {
 // Remove this Highlighter instance and its highlights
 Highlighter.prototype.removeHighlighter = function () {
   this.loadHighlights([]);
-  this._annotatableContainer.querySelectorAll('.hh-svg-background, .hh-selection-handle').forEach(el => el.remove())
+  this._hhAdditionsDiv.remove();
   removeStylesheets(this._stylesheets);
   this._resizeObserver.disconnect();
   this._controller.abort();
@@ -1088,7 +1088,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
       const selectionRangeRects = selectionRange.getClientRects();
       const startRect = selectionRangeRects[0];
       const endRect = selectionRangeRects[selectionRangeRects.length - 1];
-      const relativeAncestorClientRect = this._relativeAncestorElement.getBoundingClientRect();
+      const additionsRect = this._hhAdditionsDiv.getBoundingClientRect();
       const startNodeIsRtl = globalThis.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
       const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
 
@@ -1101,14 +1101,14 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
           let side;
           if (selectionHandle.dataset.position === 'start') {
             side = startNodeIsRtl ? 'right' : 'left';
-            selectionHandle.style.left = startRect[side] - relativeAncestorClientRect.left + 'px';
+            selectionHandle.style.left = startRect[side] - additionsRect.left + 'px';
             selectionHandle.style.height = startRect.height + 'px';
-            selectionHandle.style.top = startRect.top - relativeAncestorClientRect.top + 'px';
+            selectionHandle.style.top = startRect.top - additionsRect.top + 'px';
           } else {
             side = endNodeIsRtl ? 'left' : 'right';
-            selectionHandle.style.left = endRect[side] - relativeAncestorClientRect.left + 'px';
+            selectionHandle.style.left = endRect[side] - additionsRect.left + 'px';
             selectionHandle.style.height = endRect.height + 'px';
-            selectionHandle.style.top = endRect.top - relativeAncestorClientRect.top + 'px';
+            selectionHandle.style.top = endRect.top - additionsRect.top + 'px';
           }
           if (selectionHandle.dataset.side !== side) {
             selectionHandle.dataset.side = side;
@@ -1308,16 +1308,16 @@ Highlighter.prototype._getStyleTemplate = function (style, type, clientRect = nu
     return;
   }
   if (type === 'svg' && clientRect) {
-    const relativeAncestorClientRect = this._relativeAncestorElement.getBoundingClientRect();
+    const additionsRect = this._hhAdditionsDiv.getBoundingClientRect();
     styleTemplate = styleTemplate
-      .replaceAll('{x}', clientRect.x - relativeAncestorClientRect.x)
-      .replaceAll('{y}', clientRect.y - relativeAncestorClientRect.y)
+      .replaceAll('{x}', clientRect.x - additionsRect.x)
+      .replaceAll('{y}', clientRect.y - additionsRect.y)
       .replaceAll('{width}', clientRect.width)
       .replaceAll('{height}', clientRect.height)
-      .replaceAll('{top}', clientRect.top - relativeAncestorClientRect.top)
-      .replaceAll('{right}', clientRect.right - relativeAncestorClientRect.right)
-      .replaceAll('{bottom}', clientRect.bottom - relativeAncestorClientRect.bottom)
-      .replaceAll('{left}', clientRect.left - relativeAncestorClientRect.left);
+      .replaceAll('{top}', clientRect.top - additionsRect.top)
+      .replaceAll('{right}', clientRect.right - additionsRect.right)
+      .replaceAll('{bottom}', clientRect.bottom - additionsRect.bottom)
+      .replaceAll('{left}', clientRect.left - additionsRect.left);
   }
   return styleTemplate;
 }

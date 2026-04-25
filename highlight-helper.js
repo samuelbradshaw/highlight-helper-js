@@ -470,7 +470,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
     // Insert wrappers before drawing highlights, so any layout shift from wrapper content is reflected in drawing positions
     if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
-      const insertWrapper = (position, range, existingEl, innerHtml) => {
+      const insertWrapper = (position, insertionRange, existingEl, innerHtml) => {
         const serializedWrapperVariables = JSON.stringify(highlightInfo.wrapperVariables);
         for (const key of Object.keys(highlightInfo.wrapperVariables)) {
           innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
@@ -491,22 +491,24 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
           template.innerHTML = `<span class="hh-wrapper-${position}" data-highlight-id="${highlightId}" data-color="${highlightInfo.color}" data-style="${highlightInfo.style}" data-wrapper="${highlightInfo.wrapper}" data-wrapper-variables='${serializedWrapperVariables}' data-hh-ignore="">${innerHtml}</span>`;
           htmlElement = template.content.firstChild;
         }
-        range.insertNode(htmlElement);
-        return htmlElement;
+        if (position === 'start') {
+          insertionRange.insertNode(htmlElement);
+        } else {
+          insertionRange.endContainer.splitText(insertionRange.endOffset);
+          insertionRange.endContainer.after(htmlElement);
+        }
       }
-      const startRange = highlightInfo.rangeObj;
-      const endRange = document.createRange();
-      endRange.setStart(highlightInfo.rangeObj.endContainer, highlightInfo.rangeObj.endOffset);
       const wrapperInfo = options.wrappers[highlightInfo.wrapper];
-      insertWrapper('start', startRange, existingStartWrapper, wrapperInfo.start);
-      insertWrapper('end', endRange, existingEndWrapper, wrapperInfo.end);
+      insertWrapper('start', range, existingStartWrapper, wrapperInfo.start);
+      range = this._getCorrectedRangeObj(highlightId);
+      insertWrapper('end', range, existingEndWrapper, wrapperInfo.end);
       range = this._getCorrectedRangeObj(highlightId);
 
       // If current highlight is active, update selection range to match highlight range
-      const selection = window.getSelection();
+      const selection = globalThis.getSelection();
       const selectionRange = selection.type !== 'None' ? selection.getRangeAt(0) : null;
       if (highlightId === this._activeHighlightId && selectionRange && !(selectionRange.compareBoundaryPoints(Range.START_TO_START, range) === 0 && selectionRange.compareBoundaryPoints(Range.END_TO_END, range) === 0)) {
-        window.getSelection().setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+        globalThis.getSelection().setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
       }
     }
 
@@ -925,16 +927,25 @@ Highlighter.prototype.removeHighlighter = function () {
 Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
   if (!pointerEvent) return;
 
-  // Check for tapped highlights
+  // Check for tapped highlights (using text node walker to skip invalid text nodes)
   const tappedHighlightIds = [];
-  if (!pointerEvent.target.closest('[data-hh-ignore]')) {
-    for (const highlightId of Object.keys(this._highlightsById)) {
-      const highlightInfo = this._highlightsById[highlightId];
-      const highlightRange = highlightInfo.rangeObj;
-      for (const rangeRect of highlightRange.getClientRects()) {
-        if (this._isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rangeRect, 5)) {
+  const textNodeRange = document.createRange();
+  for (const highlightId of Object.keys(this._highlightsById)) {
+    const highlightRange = this._highlightsById[highlightId].rangeObj;
+    const root = highlightRange.commonAncestorContainer;
+    const walker = this._getTextNodeWalker(root.nodeType === Node.TEXT_NODE ? root.parentElement : root);
+    let textNode;
+    textNodeLoop: while (textNode = walker.nextNode()) {
+      if (!highlightRange.intersectsNode(textNode)) continue;
+      const start = textNode === highlightRange.startContainer ? highlightRange.startOffset : 0;
+      const end = textNode === highlightRange.endContainer ? highlightRange.endOffset : textNode.length;
+      if (start >= end) continue;
+      textNodeRange.setStart(textNode, start);
+      textNodeRange.setEnd(textNode, end);
+      for (const rect of textNodeRange.getClientRects()) {
+        if (this._isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rect, 5)) {
           tappedHighlightIds.push(highlightId);
-          break;
+          break textNodeLoop;
         }
       }
     }
@@ -1408,36 +1419,9 @@ Highlighter.prototype._isPointInRect = function (x, y, rect, padding = 0) {
 
 // Get merged client rects from the highlight range
 Highlighter.prototype._getMergedClientRects = function (range, paragraphs) {
-  const unmergedRects = Array.from(range.getClientRects());
   const mergedRects = [];
+  const textNodeRange = document.createRange();
 
-  // Remove element rects (only text node rects are needed)
-  const ancestorElementsInRange = new Set();
-  for (const paragraph of paragraphs) {
-    let element = paragraph;
-    while (range.commonAncestorContainer.contains(element)) {
-      ancestorElementsInRange.add(element);
-      element = element.parentElement;
-    }
-  }
-  for (let ur = unmergedRects.length - 1; ur >= 0; ur--) {
-    const rect = unmergedRects[ur];
-    if (rect.width === 0) {
-      // Remove zero-width rects
-      unmergedRects.splice(ur, 1);
-      continue;
-    }
-    for (const element of ancestorElementsInRange) {
-      // Remove element rects (only text node rects are needed)
-      const elementRect = element.getBoundingClientRect();
-      if (Math.round(elementRect.width) === Math.round(rect.width) && Math.round(elementRect.height) === Math.round(rect.height) && Math.round(elementRect.top) === Math.round(rect.top) && Math.round(elementRect.left) === Math.round(rect.left)) {
-        unmergedRects.splice(ur, 1);
-        break;
-      }
-    }
-  }
-
-  // Loop through the highlight's paragraphs
   for (const paragraph of paragraphs) {
     const paragraphRect = paragraph.getBoundingClientRect();
     const paragraphStyle = getComputedStyle(paragraph);
@@ -1445,32 +1429,44 @@ Highlighter.prototype._getMergedClientRects = function (range, paragraphs) {
     const topPadding = Number.parseInt(paragraphStyle.paddingTop);
     const textIndent = Number.parseInt(paragraphStyle.textIndent);
 
-    // Build line positions from paragraph text nodes
+    // Build line positions and collect highlight rects
     const linePositions = {};
     const lineBottomKeys = [];
+    const unmergedRects = [];
     const walker = this._getTextNodeWalker(paragraph);
-    const textNodeRange = document.createRange();
     let textNode;
     while (textNode = walker.nextNode()) {
-      // Skip text nodes in elements that are higher or lower than surrounding text
-      if (textNode.parentElement.closest('sup, sub, rt')) continue;
-      textNodeRange.selectNode(textNode);
-      for (const rect of textNodeRange.getClientRects()) {
-        // Round to a nearby line position if close
-        const lineBottom = lineBottomKeys.find(b => Math.abs(b - rect.bottom) < snapTolerance) ?? rect.bottom;
-        if (!linePositions[lineBottom]) lineBottomKeys.push(lineBottom);
-        const pos = linePositions[lineBottom] ??= {
-          minLeft: rect.left, maxRight: rect.right,
-          highlightLeft: null, highlightRight: null,
-        };
-        pos.minLeft = Math.min(pos.minLeft, rect.left);
-        pos.maxRight = Math.max(pos.maxRight, rect.right);
+      // Build line positions (skip text nodes in elements that are higher or lower than surrounding text)
+      if (!textNode.parentElement.closest('sup, sub, rt')) {
+        textNodeRange.selectNode(textNode);
+        for (const rect of textNodeRange.getClientRects()) {
+          const lineBottom = lineBottomKeys.find(b => Math.abs(b - rect.bottom) < snapTolerance) ?? rect.bottom;
+          if (!linePositions[lineBottom]) lineBottomKeys.push(lineBottom);
+          const pos = linePositions[lineBottom] ??= {
+            minLeft: rect.left, maxRight: rect.right,
+            highlightLeft: null, highlightRight: null,
+          };
+          pos.minLeft = Math.min(pos.minLeft, rect.left);
+          pos.maxRight = Math.max(pos.maxRight, rect.right);
+        }
+      }
+
+      // Collect highlight rects from text nodes that intersect the range
+      if (range.intersectsNode(textNode)) {
+        const start = textNode === range.startContainer ? range.startOffset : 0;
+        const end = textNode === range.endContainer ? range.endOffset : textNode.length;
+        if (start < end) {
+          textNodeRange.setStart(textNode, start);
+          textNodeRange.setEnd(textNode, end);
+          for (const rect of textNodeRange.getClientRects()) {
+            if (rect.width > 0) unmergedRects.push(rect);
+          }
+        }
       }
     }
 
-    const lineBottoms = lineBottomKeys.sort((a, b) => a - b);
-
     // Assign highlight range rects to matching line positions
+    const lineBottoms = lineBottomKeys.sort((a, b) => a - b);
     for (const rect of unmergedRects) {
       const centerY = rect.y + rect.height / 2;
       for (let i = 0; i < lineBottoms.length; i++) {
@@ -1623,8 +1619,8 @@ const _defaultOptions = {
   },
   wrappers: {
     'screen-reader-label': {
-      start: '<span class="sr-only">{startLabel}</span>',
-      end: '<span class="sr-only">{endLabel}</span>',
+      start: '<span class="sr-only">{startLabel} </span>',
+      end: '<span class="sr-only"> {endLabel}</span>',
     },
   },
   selectionHandles: {

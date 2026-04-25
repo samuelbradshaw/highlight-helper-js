@@ -9,7 +9,13 @@
 
 function Highlighter(options = _defaultOptions) {
   for (const key of Object.keys(_defaultOptions)) {
-    options[key] = options[key] ?? _defaultOptions[key];
+    if (['colors', 'styles', 'wrappers'].includes(key) && options[key] != null) {
+      for (const subKey of Object.keys(_defaultOptions[key])) {
+        options[key][subKey] ??= _defaultOptions[key][subKey];
+      }
+    } else {
+      options[key] = options[key] ?? _defaultOptions[key];
+    }
   }
   this._options = options;
 
@@ -201,6 +207,15 @@ Highlighter.prototype._loadStyles = function () {
     mark[data-highlight-id] {
       background-color: transparent;
       color: inherit;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
   `);
 }
@@ -845,7 +860,11 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
 Highlighter.prototype.setOptions = function (optionsToUpdate) {
   const options = this._options;
   for (const key in optionsToUpdate) {
-    options[key] = optionsToUpdate[key] ?? options[key];
+    if (['colors', 'styles', 'wrappers'].includes(key) && optionsToUpdate[key] != null) {
+      options[key] = { ...options[key], ...optionsToUpdate[key] };
+    } else {
+      options[key] = optionsToUpdate[key] ?? options[key];
+    }
   }
   if ('containerSelector' in optionsToUpdate) {
     this.removeHighlighter();
@@ -1272,7 +1291,7 @@ Highlighter.prototype._getPreviousValidTextNode = function (currentNode) {
 // Determine if text node should be skipped when snapping to word or calculating character offsets
 Highlighter.prototype._shouldSkipTextNode = function (textNode) {
   const parentParagraph = textNode.parentNode.closest(this._options.paragraphSelector);
-  const hhIgnore = textNode.parentNode.closest('[data-hh-ignore]');
+  const hhIgnore = textNode.parentNode.closest('[data-hh-ignore], .sr-only');
   if (!parentParagraph || hhIgnore || textNode.textContent === '') return true;
   return false;
 }
@@ -1301,7 +1320,7 @@ Highlighter.prototype._getStyleTemplate = function (style, type, clientRect = nu
   style = Object.hasOwn(options.styles, style) ? style : options.defaultStyle;
   let styleTemplate = options.styles[style]?.[type] ?? '';
   if (active) {
-    styleTemplate = options.styles[style]?.[`${type}-active`] ?? styleTemplate;
+    styleTemplate = options.styles[style]?.[`${type}Active`] ?? styleTemplate;
   }
   if (!styleTemplate) {
     console.warn(`Highlight style "${style}" in options does not have a defined "${type}" value.`);
@@ -1585,45 +1604,32 @@ const _defaultOptions = {
   },
   styles: {
     'fill': {
-      'css': 'background-color: hsl(from var(--hh-color) h s l / 50%);',
-      'svg': '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
-      'css-active': 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-      'svg-active': `
+      css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
+      svg: '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
+      cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
+      svgActive: `
         <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 80%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
       `,
     },
-    'single-underline': {
-      'css': 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      'svg': '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
-      'css-active': 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      'svg-active': `
+    'underline': {
+      css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
+      svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
+      cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
+      svgActive: `
         <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
         <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />
       `,
     },
-    'double-underline': {
-      'css': 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
-      'svg': '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" /><rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />',
-      'css-active': 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
-      'svg-active': `
-        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
-        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" />
-        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />
-      `,
-    },
-    'colored-text': {
-      'css': 'color: var(--hh-color);',
-      'svg': '',
-    },
-    'redacted': {
-      'css': 'background-color: transparent; color: transparent;',
-      'svg': '',
+  },
+  wrappers: {
+    'screen-reader-label': {
+      start: '<span class="sr-only">{startLabel}</span>',
+      end: '<span class="sr-only">{endLabel}</span>',
     },
   },
-  wrappers: {},
   selectionHandles: {
-    'left': '<div class="hh-default-handle"></div>',
-    'right': '<div class="hh-default-handle"></div>',
+    left: '<div class="hh-default-handle"></div>',
+    right: '<div class="hh-default-handle"></div>',
   },
   rememberStyle: true,
   snapToWord: false,

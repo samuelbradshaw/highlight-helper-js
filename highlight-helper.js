@@ -7,82 +7,27 @@
 
 /********************** Highlighter Initialization **********************/
 
-function Highlighter(options = _defaultOptions) {
-  for (const key of Object.keys(_defaultOptions)) {
-    if (['colors', 'styles', 'wrappers'].includes(key) && options[key] != null) {
-      for (const subKey of Object.keys(_defaultOptions[key])) {
-        options[key][subKey] ??= _defaultOptions[key][subKey];
-      }
-    } else {
-      options[key] = options[key] ?? _defaultOptions[key];
-    }
+function Highlighter(containerSelector, paragraphSelector) {
+  this._containerSelector = containerSelector;
+  const { highlightIdFunction, ...cloneableDefaults } = _defaultOptions;
+  this._options = structuredClone(cloneableDefaults);
+  this._options.highlightIdFunction = highlightIdFunction;
+
+  // Qualify paragraph selector with the container selector if needed
+  if (!paragraphSelector.includes(containerSelector)) {
+    paragraphSelector = paragraphSelector.split(',').map(selector => `${containerSelector} ${selector}`).join(',');
   }
-  this._options = options;
-
-  // DOM references
-  this._annotatableContainer = null;
-  this._additionsDiv = null;
-  this._annotatableParagraphs = null;
-  this._svgBackground = null;
-  this._svgActiveOverlay = null;
-  this._customHandles = null;
-
-  // Stylesheets
-  this._stylesheets = null;
-  this._generalStylesheet = null;
-  this._appearanceStylesheet = null;
-  this._highlightApiStylesheet = null;
-  this._selectionStylesheet = null;
-
-  // Data and state
-  this._annotatableParagraphIds = null;
-  this._hyperlinkElements = null;
-  this._hyperlinksByIndex = null;
-  this._highlightsById = null;
-
-  // Abort controller
-  this._controller = null;
-
-  const isInitialized = this._initializeHighlighter();
-  if (!isInitialized) return;
-
-  // Interaction state
-  this._activeHighlightId = undefined;
-  this._previousSelectionRange = undefined;
-  this._activeHandle = undefined;
-  this._dragAnchorNode = undefined;
-  this._dragAnchorOffset = undefined;
-  this._pointerType = undefined;
-  this._tapResult = undefined;
-  this._doubleTapTimeoutId = undefined;
-  this._longPressTimeoutId = undefined;
-  this._allowHyperlinkClick = false;
-
-  this._loadStyles();
-  this._loadEventListeners();
-
-  this._updateAppearanceStylesheet();
-  this._updateSelectionUi('appearance');
-  this.setOptions({ customHandles: this._options.customHandles });
-}
-
-Highlighter.prototype._initializeHighlighter = function (previousContainerSelector = null) {
-  const options = this._options;
-  if (!options.paragraphSelector.includes(options.containerSelector)) {
-    const paragraphSelectorList = options.paragraphSelector.split(',').map(selector => `${options.containerSelector} ${selector}`);
-    options.paragraphSelector = paragraphSelectorList.join(',');
-  }
-  this._annotatableContainer = document.querySelector(options.containerSelector);
-  this._annotatableParagraphs = this._annotatableContainer.querySelectorAll(options.paragraphSelector);
+  this._paragraphSelector = paragraphSelector;
+  this._annotatableContainer = document.querySelector(containerSelector);
+  this._annotatableParagraphs = this._annotatableContainer.querySelectorAll(paragraphSelector);
   this._annotatableParagraphIds = Array.from(this._annotatableParagraphs, paragraph => paragraph.id);
 
   // Handle cases where a highlighter already exists for the container, or one of its children or ancestors
-  const previousContainer = document.querySelector(previousContainerSelector) ?? this._annotatableContainer;
-  if (previousContainer.highlighter) {
-    previousContainer.highlighter.removeHighlighter();
+  if (this._annotatableContainer.highlighter) {
+    this._annotatableContainer.highlighter.removeHighlighter();
   } else if (this._annotatableContainer.closest('[data-hh-container]') || this._annotatableContainer.querySelector('[data-hh-container]')) {
-    console.error(`Unable to create Highlighter with container selector "${options.containerSelector}" (annotatable container can't be an child or ancestor of another annotatable container).`);
-    return false;
+    console.error(`Unable to create Highlighter with container selector "${containerSelector}" (annotatable container can't be a child or ancestor of another annotatable container).`);
+    return;
   }
 
   // Abort controller can be used to cancel event listeners if the highlighter is removed
@@ -92,19 +37,16 @@ Highlighter.prototype._initializeHighlighter = function (previousContainerSelect
   document.body.tabIndex = -1;
 
   // Set up additions (SVG background and selection handles)
-  this._additionsDiv = document.createElement('div');
-  this._additionsDiv.dataset.hhAdditions = '';
-  this._annotatableContainer.appendChild(this._additionsDiv);
-  this._svgBackground = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  this._svgActiveOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  this._svgActiveOverlay.dataset.hhSvgActiveOverlay = '';
-  this._svgBackground.appendChild(this._svgActiveOverlay);
-  this._svgBackground.dataset.hhSvgBackground = '';
-  this._additionsDiv.appendChild(this._svgBackground);
-  this._additionsDiv.insertAdjacentHTML('beforeend', `
-    <div data-hh-handle="" data-hh-side="left" data-hh-position="start" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
-    <div data-hh-handle="" data-hh-side="right" data-hh-position="end" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
+  this._annotatableContainer.insertAdjacentHTML('beforeend', `
+    <div data-hh-additions="">
+      <svg data-hh-svg-background=""><g data-hh-svg-active-overlay=""></g></svg>
+      <div data-hh-handle="" data-hh-side="left" data-hh-position="start" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
+      <div data-hh-handle="" data-hh-side="right" data-hh-position="end" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
+    </div>
   `);
+  this._additionsDiv = this._annotatableContainer.querySelector('[data-hh-additions]');
+  this._svgBackground = this._additionsDiv.querySelector('[data-hh-svg-background]');
+  this._svgActiveOverlay = this._additionsDiv.querySelector('[data-hh-svg-active-overlay]');
   this._customHandles = this._additionsDiv.querySelectorAll('[data-hh-handle]');
 
   // Check for hyperlinks on the page
@@ -124,9 +66,14 @@ Highlighter.prototype._initializeHighlighter = function (previousContainerSelect
   this._highlightsById = {};
   this._annotatableContainer.dataset.hhContainer = '';
   this._annotatableContainer.highlighter = this;
-  _highlighters.push(this);
 
-  return true;
+  this._loadStyles();
+  this._loadEventListeners();
+  this._updateAppearanceStylesheet();
+  this._updateSelectionUi('appearance');
+  for (const handle of this._customHandles) {
+    handle.children[1].innerHTML = this._options.customHandles[handle.dataset.hhSide] ?? '';
+  }
 }
 
 Highlighter.prototype._loadStyles = function () {
@@ -139,7 +86,7 @@ Highlighter.prototype._loadStyles = function () {
   this._highlightApiStylesheet = _addStylesheet(this._stylesheets, 'highlight-api');
   this._selectionStylesheet = _addStylesheet(this._stylesheets, 'selection');
   this._generalStylesheet.replaceSync(`
-    ${options.containerSelector} {
+    ${this._containerSelector} {
       -webkit-tap-highlight-color: transparent;
     }
     [data-hh-wrapper], [data-hh-handle] {
@@ -586,9 +533,9 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       highlightObj.add(range);
       const styleTemplate = this._getStyleTemplate(highlightInfo.style, 'css', null);
       const colorString = options.colors[highlightInfo.color];
-      this._highlightApiStylesheet.insertRule(`${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleTemplate} }`);
-      this._highlightApiStylesheet.insertRule(`${options.containerSelector} rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
-      this._highlightApiStylesheet.insertRule(`${options.containerSelector} img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+      this._highlightApiStylesheet.insertRule(`${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleTemplate} }`);
+      this._highlightApiStylesheet.insertRule(`${this._containerSelector} rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
+      this._highlightApiStylesheet.insertRule(`${this._containerSelector} img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
 
     // Draw highlights with SVG shapes
     } else if (options.drawingMode === 'svg') {
@@ -876,31 +823,16 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
       options[key] = optionsToUpdate[key] ?? options[key];
     }
   }
-  if ('containerSelector' in optionsToUpdate) {
-    this.removeHighlighter();
-    this._initializeHighlighter();
-    this._loadStyles();
-    this._loadEventListeners();
+  if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate || 'colors' in optionsToUpdate) {
     this._updateAppearanceStylesheet();
-    this._updateSelectionUi('appearance');
+  }
+  if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate) {
+    if (supportsHighlightApi) CSS.highlights.clear();
+    this.drawHighlights();
+  }
+  if ('customHandles' in optionsToUpdate) {
     for (const handle of this._customHandles) {
       handle.children[1].innerHTML = options.customHandles[handle.dataset.hhSide] ?? '';
-    }
-  } else {
-    if ('paragraphSelector' in optionsToUpdate) {
-      this._initializeHighlighter();
-    }
-    if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate || 'colors' in optionsToUpdate) {
-      this._updateAppearanceStylesheet();
-    }
-    if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate) {
-      if (supportsHighlightApi) CSS.highlights.clear();
-      this.drawHighlights();
-    }
-    if ('customHandles' in optionsToUpdate) {
-      for (const handle of this._customHandles) {
-        handle.children[1].innerHTML = options.customHandles[handle.dataset.hhSide] ?? '';
-      }
     }
   }
 }
@@ -920,7 +852,6 @@ Highlighter.prototype.removeHighlighter = function () {
 
   delete this._annotatableContainer.dataset.hhContainer;
   this._annotatableContainer.highlighter = undefined;
-  _highlighters = _highlighters.filter(h => h._annotatableContainer !== this._annotatableContainer);
 }
 
 
@@ -1091,25 +1022,25 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
     if (this._activeHighlightId && options.drawingMode === 'svg') {
       this._selectionStylesheet.replaceSync(`
-        ${options.containerSelector} g[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { display: none; }
-        ${options.containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
-        ${options.containerSelector} ::selection { background-color: transparent; }
+        ${this._containerSelector} g[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { display: none; }
+        ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
+        ${this._containerSelector} ::selection { background-color: transparent; }
       `);
     } else if (this._activeHighlightId) {
       const styleTemplate = this._getStyleTemplate(style, 'css', null, true);
       this._selectionStylesheet.replaceSync(`
-        ${options.containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
-        ${options.containerSelector} mark[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { all: unset; }
-        ${options.containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
-        ${options.containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
-        ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
+        ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+        ${this._containerSelector} mark[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { all: unset; }
+        ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
+        ${this._containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
+        ${this._containerSelector} rt::selection, ${this._containerSelector} img::selection { background-color: transparent; }
       `);
 
     // No active highlight (show the regular selection UI)
     } else {
       this._selectionStylesheet.replaceSync(`
-        ${options.containerSelector} ::selection { background-color: Highlight; color: inherit; }
-        ${options.containerSelector} rt::selection, ${options.containerSelector} img::selection { background-color: transparent; }
+        ${this._containerSelector} ::selection { background-color: Highlight; color: inherit; }
+        ${this._containerSelector} rt::selection, ${this._containerSelector} img::selection { background-color: transparent; }
       `);
     }
 
@@ -1238,7 +1169,7 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
 
 // Get the character offset relative to the annotatable paragraph
 Highlighter.prototype._getParagraphOffset = function (referenceTextNode, referenceTextNodeOffset) {
-  const paragraph = referenceTextNode.parentElement.closest(this._options.paragraphSelector);
+  const paragraph = referenceTextNode.parentElement.closest(this._paragraphSelector);
   const walker = this._getTextNodeWalker(paragraph);
   let currentOffset = 0;
   let textNode;
@@ -1310,7 +1241,7 @@ Highlighter.prototype._getPreviousValidTextNode = function (currentNode) {
 
 // Determine if text node should be skipped when snapping to word or calculating character offsets
 Highlighter.prototype._shouldSkipTextNode = function (textNode) {
-  const parentParagraph = textNode.parentNode.closest(this._options.paragraphSelector);
+  const parentParagraph = textNode.parentNode.closest(this._paragraphSelector);
   const ignoreParent = textNode.parentNode.closest('[data-hh-ignore], .sr-only');
   if (!parentParagraph || ignoreParent || textNode.textContent === '') return true;
   return false;
@@ -1406,7 +1337,7 @@ Highlighter.prototype._getCaretFromCoordinates = function (clientX, clientY, che
     if (checkXDistance && Math.abs(clientX - caretClientRect.x) > maxDistance) return;
     if (checkYDistance && Math.abs(clientY - caretClientRect.top) > maxDistance && Math.abs(clientY - caretClientRect.bottom) > maxDistance) return;
   }
-  if (checkAnnotatable && !range.startContainer.parentElement?.closest(this._options.paragraphSelector)) return;
+  if (checkAnnotatable && !range.startContainer.parentElement?.closest(this._paragraphSelector)) return;
   return range;
 }
 
@@ -1570,9 +1501,6 @@ const _getNewHighlightId = () => {
 
 /********************** Constants **********************/
 
-// Keep track of all Highlighter instances
-let _highlighters = [];
-
 // Check browser type
 const isTouchDevice = navigator.maxTouchPoints > 0;
 const isWebKit = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
@@ -1588,8 +1516,6 @@ const _reNonWhitespaceDash = /[^\s|\p{Pd}]/u;
 
 // Default options
 const _defaultOptions = {
-  containerSelector: 'body',
-  paragraphSelector: 'h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]',
   colors: {
     'red': 'hsl(360, 100%, 70%)',
     'orange': 'hsl(30, 100%, 60%)',

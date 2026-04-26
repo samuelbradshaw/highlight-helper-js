@@ -122,31 +122,30 @@
     
       const highlightsCountElement = document.getElementById('highlights-count');
       const timeToLoadElement = document.getElementById('time-to-load');
-      const currentOptions = {
-        containerSelector: 'main',
-        paragraphSelector: 'main [id]',
-        drawingMode: 'svg',
-      };
-    
+      const containerSelector = 'main';
+      const paragraphSelector = 'main [id]';
+      const currentOptions = { drawingMode: 'svg' };
+
       let highlighter;
-    
+
       function loadHighlighter() {
         highlightsCountElement.textContent = '';
         timeToLoadElement.textContent = '(loading…)';
         requestAnimationFrame(() => requestAnimationFrame(() => {
           if (highlighter) highlighter.removeHighlighter();
-          highlighter = new Highlighter({ ...currentOptions });
+          highlighter = new Highlighter(containerSelector, paragraphSelector);
+          highlighter.setOptions({ ...currentOptions });
           highlighter.loadHighlights(highlights);
         }));
       }
-    
+
       // Attach once to <main> — persists across highlighter recreations
-      document.querySelector(currentOptions.containerSelector).addEventListener('hh:highlightsload', (event) => {
+      document.querySelector(containerSelector).addEventListener('hh:highlightsload', (event) => {
         const seconds = Math.round(event.detail.timeToLoad / 10) / 100;
         highlightsCountElement.textContent = event.detail.totalCount;
         timeToLoadElement.textContent = `(${seconds} seconds)`;
       });
-    
+
       // Handle drawing mode radio buttons — recreate highlighter for a fair timing comparison
       for (const drawingModeRadioButton of document.getElementsByName('hh-drawing-mode')) {
         drawingModeRadioButton.addEventListener('change', (event) => {
@@ -156,7 +155,7 @@
       }
 
       // Activate the first highlight when the tap is ambiguous
-      document.querySelector(currentOptions.containerSelector).addEventListener('hh:ambiguousaction', (event) => {
+      document.querySelector(containerSelector).addEventListener('hh:ambiguousaction', (event) => {
         const firstHighlight = event.detail.highlights[0];
         if (firstHighlight) highlighter.activateHighlight(firstHighlight.highlightId);
       });

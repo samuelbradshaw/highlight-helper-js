@@ -243,11 +243,8 @@
           endParagraphId: 'p4', endParagraphOffset: 207,
         },
       ];
-
-      // Initialize a Highlighter instance, then load highlights
-      const highlighter = new Highlighter({
-        containerSelector: 'main',
-        paragraphSelector: 'main [id]',
+      
+      const options = {
         styles: {
           'double-underline': {
             css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
@@ -278,7 +275,11 @@
             end: '',
           },
         },
-      });
+      }
+
+      // Initialize a Highlighter instance, then load highlights
+      const highlighter = new Highlighter('main', 'main [id]');
+      highlighter.setOptions(options);
       highlighter.loadHighlights(highlights);
 
       // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
@@ -337,7 +338,7 @@
       const customHandlesOnTouchCheckbox = document.getElementById('hh-custom-handles-touch');
       customHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesOnTouch: event.currentTarget.checked }); });
 
-      const container = document.querySelector(highlighter.getOptions().containerSelector);
+      const container = document.querySelector('main');
       const snippetDiv = document.getElementById('snippet');
       const infoDiv = document.getElementById('highlight-info');
 

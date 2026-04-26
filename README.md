@@ -16,6 +16,8 @@ An HTML demo page that shows basic functionality can be found here: [HighlightHe
 - [Known issues](#known-issues)
 - [Getting started](#getting-started)
     - [Installation options](#installation-options)
+    - [Basic usage](#basic-usage)
+    - [Constructor](#constructor)
 - [Methods, options, and custom events](#methods-options-and-custom-events)
     - [Methods](#methods)
     - [Options](#options)
@@ -33,16 +35,6 @@ There are a few known issues:
 
 
 ## <a name="getting-started"></a>Getting started
-
-The easiest way to get started is to download demo.html and highlight-helper.js, open demo.html in a text editor and browser, and make changes to adapt it for your needs.
-
-In the source of demo.html, you’ll see CSS styles, followed by the HTML body, followed by JavaScript code. The JavaScript code does the following:
-1. Links to highlight-helper.js,
-2. Initializes a “Highlighter” instance with options,
-3. Pre-loads and draws a few existing highlights,
-3. Sets up logic to call HighlightHelper.js methods when buttons on the demo page are tapped, and
-4. Sets up listeners to respond to custom event messages that come back from HighlightHelper.js.
-
 
 ### <a name="installation-options"></a>Installation options
 
@@ -78,6 +70,47 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 % npm i @samuelbradshaw/highlight-helper-js
 ```
 
+### <a name="basic-usage"></a>Basic usage
+
+```html
+<!-- Annotatable container (element that includes content to be highlighted) -->
+<div id="annotatable-container"></div>
+
+<!-- Import HighlightHelper.js (classic JavaScript) -->
+<script src="https://cdn.jsdelivr.net/gh/samuelbradshaw/highlight-helper-js@main/highlight-helper.min.js"></script>
+
+<script>
+  // Prepare highlights
+  const highlights = [
+    {
+      highlightId: 'hh-1729991847207',
+      color: 'green', style: 'fill',
+      startParagraphId: 'p1', startParagraphOffset: 27,
+      endParagraphId: 'p1', endParagraphOffset: 59,
+    },
+  ];
+  
+  // Create a Highlighter instance
+  const containerSelector = 'main';
+  const paragraphSelector = 'main [id]';
+  const highlighter = new Highlighter(containerSelector, paragraphSelector);
+  
+  // Set options
+  const options = { drawingMode: 'svg' };
+  highlighter.setOptions(options);
+  
+  // Load highlights
+  highlighter.loadHighlights(highlights);  
+</script>
+```
+
+### <a name="constructor"></a>Constructor
+
+- **new Highlighter(containerSelector, paragraphSelector)** – Create a Highlighter instance. Parameters:
+- * **containerSelector** – CSS selector for the “annotatable container” – the section of the page with content to be highlighted. You can have multiple highlighters on a page, but they must be in different, non-overlapping containers. Required. Default: `body`.
+- * **paragraphSelector** – CSS selector for the paragraphs (or other block elements) that can be highlighted within the annotatable container. Each paragraph is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Required. Default: `h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]`.
+
+
 ## <a name="methods-options-and-custom-events"></a>Methods, options, and custom events
 
 ### <a name="methods"></a>Methods
@@ -93,15 +126,13 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 - **getHighlightInfo(highlightIds, paragraphId)** – Get highlight information for an array of highlight IDs. If no highlight IDs are passed, information for all relevant highlights will be returned. If `paragraphId` is provided, only highlights that start in the specified paragraph will be returned. Highlights will be sorted based on their position on the page.
 - **setOptions(optionsToUpdate)** – Change one or more options. `optionsToUpdate` is an object with one or more of the option keys described below.
 - **getOptions()** – Get the initialized options, including defaults for any options that weren’t explicitly set.
-- **removeHighlighter()** – Removes the current Highlighter instance and all of its highlights from the page. If a new Highlighter instance is created with the same container (as defined by the `containerSelector` option), the previous instance for that container will be removed automatically (there can be multiple Highlighter instances on a page, but each one needs to have a different container).
+- **removeHighlighter()** – Removes the current Highlighter instance and all of its highlights from the page. If a new Highlighter instance is created with the same annotatable container, the previous Highlighter instance for that container will be removed.
 
 
 ### <a name="options"></a>Options
 
 Options can be provided when HighlightHelper.js is initialized. They can also be updated after initialization using `setOptions()`. Options that aren’t defined will fall back to default values.
 
-- **containerSelector** – CSS selector for the section of the page that should be annotatable. Default: `body`.
-- **paragraphSelector** – CSS selector for the paragraphs (or other block elements) on the page that should be annotatable. Each paragraph is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Default: `h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]`.
 - **colors** – Object that describes available highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default: red, orange, yellow, green, blue (see full default values at the bottom of highlight-helper.js).
 - **styles** – Object that describes available highlight styles. Keys are style names, and there are four properties for each style: `css`, `svg`, `cssActive` (optional), and `svgActive` (optional). `css` is a CSS string used for styling highlights in `highlight-api` and `mark-elements` drawing modes, as well as for read-only highlights. `svg` is an SVG string (one or more SVG shapes) to represent the highlight in `svg` drawing mode. `cssActive` and `svgActive` are alternative styles to be used when a highlight is active. The CSS custom property `var(--hh-color)` can be used to reference the highlight color value. For SVG highlights, the following variables (if present) will be replaced with relevant values from the highlight’s DOMRect: `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}`. Default: fill, underline (see full default values at the bottom of highlight-helper.js).
 - **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with two optional properties: `start` (HTML string to be inserted at the beginning of the highlight), and `end` (HTML string to be inserted at the end of the highlight). `var(--hh-color)` can be used to reference the highlight color value. Variables surrounded by curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. Default: screen-reader-label. See default values at the bottom of highlight-helper.js.
@@ -123,7 +154,7 @@ Options can be provided when HighlightHelper.js is initialized. They can also be
 
 ### <a name="custom-events"></a>Custom events
 
-HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the container element (defined in the `containerSelector` option) that can be listened for and responded to:
+HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the annotatable container that can be responded to:
 
 - **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added, removed, or updated, the total number of loaded highlights, and the time they took to load (in milliseconds).
 - **hh:highlightcreate** – Sent when a new highlight is created. Includes information about the highlight.

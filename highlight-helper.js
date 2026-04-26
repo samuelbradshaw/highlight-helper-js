@@ -905,12 +905,6 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
   }
 }
 
-/** @deprecated Use setOptions({ key: value }) instead */
-Highlighter.prototype.setOption = function (key, value) {
-  console.warn('setOption() is deprecated. Use setOptions({ key: value }) instead.');
-  this.setOptions({ [key]: value });
-}
-
 // Get all of the initialized options
 Highlighter.prototype.getOptions = function () {
   return this._options;
@@ -924,6 +918,7 @@ Highlighter.prototype.removeHighlighter = function () {
   this._resizeObserver.disconnect();
   this._controller.abort();
 
+  delete this._annotatableContainer.dataset.hhContainer;
   this._annotatableContainer.highlighter = undefined;
   _highlighters = _highlighters.filter(h => h._annotatableContainer !== this._annotatableContainer);
 }

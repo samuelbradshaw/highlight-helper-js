@@ -326,16 +326,14 @@ Highlighter.prototype._loadEventListeners = function () {
   let latestMoveEvent = null;
   const handleHoverEvent = (event) => {
     const targets = this._getTargetsAtPoint(event);
-  
-    const newHoverKey = ({ highlights, wrappers, hyperlinks }) => [
+    const { highlights, wrappers, hyperlinks } = targets;
+    const newHoverKey = [
       ...highlights.map(h => h.highlightId),
       ...wrappers.map(w => `${w.highlightInfo.highlightId}:${w.position}`),
       ...hyperlinks.map(h => h.index),
     ].sort().join('\x00');
     if (newHoverKey === this._hoverKey) return;
     this._hoverKey = newHoverKey;
-  
-    const { highlights, wrappers, hyperlinks } = targets;
     const targetCount = highlights.length + wrappers.length + hyperlinks.length;
     this._annotatableContainer.dispatchEvent(new CustomEvent('hh:hover', {
       detail: { targetCount, targetFound: targetCount > 0, ...targets, pointerEvent: event },
@@ -385,19 +383,10 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   if (document.readyState !== 'complete') return setTimeout(this.loadHighlights.bind(this), 10, highlights);
   const startTimestamp = Date.now();
 
-  // Hide container (repeated DOM manipulations are faster if the container is hidden)
-  let containerToHide = this._options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer;
-  if (highlights.length > 1) {
-    containerToHide.style.display = 'none';
-  }
-
-  // Load read-only highlights first (read-only highlights change the DOM, affecting other highlights' ranges)
-  const sortedHighlights = highlights.sort((a,b) => a.readOnly === b.readOnly ? 0 : a.readOnly ? -1 : 1);
-  
   const highlightIdsToRedraw = new Set();
   const knownHighlightIds = new Set(Object.keys(this._highlightsById));
   let addedCount = 0, updatedCount = 0;
-  for (const highlight of sortedHighlights) {
+  for (const highlight of highlights) {
     if (knownHighlightIds.has(highlight.highlightId)) {
       knownHighlightIds.delete(highlight.highlightId);
       const highlightInfo = this._diffHighlight(highlight, this._highlightsById[highlight.highlightId]);
@@ -416,8 +405,7 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   }
   if (knownHighlightIds.size > 0) this.removeHighlights([...knownHighlightIds]);
   this.drawHighlights(highlightIdsToRedraw);
-  
-  containerToHide.style.display = '';
+
   this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
     addedCount: addedCount, removedCount: knownHighlightIds.size, updatedCount: updatedCount,
     totalCount: Object.keys(this._highlightsById).length,
@@ -431,20 +419,15 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   const additionsRect = this._additionsDiv.getBoundingClientRect();
 
   // Hide container (repeated DOM manipulations is faster if the container is hidden)
-  let containerToHide = options.drawingMode === 'svg' ? this._svgBackground : this._annotatableContainer;
   if (highlightIds.length > 1) {
-    containerToHide.style.display = 'none';
+    this._annotatableContainer.style.display = 'none';
   }
-  
+
   const sortedHighlights = this.getHighlightInfo(highlightIds);
   for (const highlightInfo of sortedHighlights) {
     const highlightId = highlightInfo.highlightId
     let range = this._getCorrectedRangeObj(highlightId);
     const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-    const wasDrawnAsReadOnly = this._annotatableContainer.querySelector(`[data-hh-highlight-id="${highlightId}"][data-hh-read-only]`);
-
-    // Don't redraw a read-only highlight that's already drawn
-    if (wasDrawnAsReadOnly && highlightInfo.readOnly) continue;
 
     // Remove old highlight and wrapper elements
     const existingStartWrapper = this._annotatableContainer.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${highlightId}"]`);
@@ -497,10 +480,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
     }
 
-    // Compute merged rects for tap detection (null for mark elements highlights)
-    const useMarkElements = highlightInfo.readOnly || options.drawingMode === 'mark-elements';
+    // Compute merged rects for tap detection (null for highlights drawn as mark elements)
+    highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
+    const useMarkElements = highlightInfo.resolvedDrawingMode === 'mark-elements';
     const mergedRects = useMarkElements ? null : this._getMergedRects(range, rangeParagraphs, additionsRect);
-    this._highlightsById[highlightId].mergedRects = mergedRects;
+    highlightInfo.mergedRects = mergedRects;
 
     // Draw highlights with mark elements
     if (useMarkElements) {
@@ -520,7 +504,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       const createStyledMark = () => {
         const mark = document.createElement('mark');
         mark.dataset.hhHighlightId = highlightId;
-        if (highlightInfo.readOnly) mark.dataset.hhReadOnly = '';
         mark.dataset.hhColorKey = highlightInfo.color;
         mark.dataset.hhStyleKey = highlightInfo.style;
         return mark;
@@ -556,7 +539,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
 
     // Draw highlights with Custom Highlight API
-    } else if (options.drawingMode === 'highlight-api' && supportsHighlightApi) {
+    } else if (options.drawingMode === 'highlight-api') {
       let cssHighlight;
       if (CSS.highlights.has(highlightId)) {
         cssHighlight = CSS.highlights.get(highlightId);
@@ -588,7 +571,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   }
 
   // Show container
-  containerToHide.style.display = '';
+  this._annotatableContainer.style.display = '';
 }
 
 // Create a new highlight, or update an existing highlight when it changes
@@ -711,8 +694,10 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
     rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
     rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
     mergedRects: oldHighlightInfo?.mergedRects ?? null,
+    resolvedDrawingMode: null,
   };
   this._highlightsById[highlightId] = newHighlightInfo;
+  newHighlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(newHighlightInfo);
 
   const detail = {
     highlight: newHighlightInfo,
@@ -730,8 +715,8 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
   const wrapperChanged = appearanceChanges.some(k => k.startsWith('wrapper'));
   if (wrapperChanged) {
     highlightIdsToRedraw.add(highlightId);
-    if (options.drawingMode === 'mark-elements') {
-      // In mark elements drawing mode, deactivate before redrawing (prevents an invalid selection range when the DOM changes)
+    if (newHighlightInfo.resolvedDrawingMode === 'mark-elements') {
+      // In mark elements drawing mode (or when the highlight is drawn as mark elements), deactivate before redrawing (prevents an invalid selection range when the DOM changes)
       this.deactivateHighlights();
     } else if (options.drawingMode === 'svg') {
       // In SVG drawing mode, redraw all highlights after the current highlight (wrapper change may reflow text, causing misaligned highlights)
@@ -755,7 +740,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
   } else {
     this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
   }
-  
+
   return highlightIdsToRedraw
 }
 
@@ -990,6 +975,7 @@ Highlighter.prototype._undrawHighlight = function (highlightInfo) {
 
   // Normalize text nodes
   const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`);
+  const r = highlightInfo.rangeObj;
   rangeParagraphs.forEach(p => p.normalize());
   this._getCorrectedRangeObj(highlightId);
 
@@ -1022,7 +1008,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
 
   // Draw SVG selection rects (SVG drawing mode only)
   this._svgActiveOverlay.innerHTML = '';
-  if (this._activeHighlightId && options.drawingMode === 'svg') {
+  if (this._activeHighlightId && highlightInfo?.resolvedDrawingMode === 'svg') {
     let range = this._getCorrectedRangeObj(this._activeHighlightId);
     range = this._snapRangeToBoundaries(range);
     const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
@@ -1047,7 +1033,7 @@ Highlighter.prototype._updateSelectionUi = function (changeType = 'appearance') 
     this._annotatableContainer.style.setProperty('--hh-color', colorString);
 
     // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
-    if (this._activeHighlightId && options.drawingMode === 'svg') {
+    if (this._activeHighlightId && highlightInfo?.resolvedDrawingMode === 'svg') {
       this._selectionStylesheet.replaceSync(`
         ${this._containerSelector} g[data-hh-highlight-id="${this._activeHighlightId}"][data-hh-style-key] { display: none; }
         ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${this._activeHighlightId}"] { visibility: hidden; }
@@ -1293,6 +1279,17 @@ Highlighter.prototype._updateAppearanceStylesheet = function () {
   this._appearanceStylesheet.replaceSync(css);
 }
 
+// Get the resolved drawing mode for a highlight
+Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
+  const options = this._options;
+  const resolvedStyle = Object.hasOwn(options.styles, highlightInfo.style) ? highlightInfo.style : options.defaultStyle;
+  if ((options.drawingMode === 'svg' && !options.styles[resolvedStyle]?.svg)
+    || (options.drawingMode === 'highlight-api' && !supportsHighlightApi)) {
+    return 'mark-elements';
+  }
+  return options.drawingMode;
+}
+
 // Get style template for a given highlight style
 Highlighter.prototype._getStyleTemplate = function (style, type, mergedRect = null, active = false) {
   const options = this._options;
@@ -1301,11 +1298,7 @@ Highlighter.prototype._getStyleTemplate = function (style, type, mergedRect = nu
   if (active) {
     styleTemplate = options.styles[style]?.[`${type}Active`] ?? styleTemplate;
   }
-  if (!styleTemplate) {
-    console.warn(`Highlight style "${style}" in options does not have a defined "${type}" value.`);
-    return;
-  }
-  if (type === 'svg' && mergedRect) {
+  if (styleTemplate && type === 'svg' && mergedRect) {
     styleTemplate = styleTemplate.replace(/\{(x|y|width|height|top|right|bottom|left)\}/g, (_, key) => mergedRect[key]);
   }
   return styleTemplate;
@@ -1553,16 +1546,16 @@ const _defaultOptions = {
   styles: {
     'fill': {
       css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
-      svg: '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
+      svg: '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
       svgActive: `
         <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 80%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
       `,
     },
     'underline': {
       css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
+      svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
       svgActive: `
         <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
         <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />

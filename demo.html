@@ -67,7 +67,7 @@
           }
         }
       }
-     
+
       [data-hh-wrapper] {
         /* Prevent line breaks mid-wrapper. You can also prevent line breaks between the wrapper and the highlight by adding &NoBreak; at the start or end of the wrapper content. */
         white-space: nowrap;
@@ -246,13 +246,15 @@
           endParagraphId: 'p4', endParagraphOffset: 207,
         },
       ];
-      
+
       const options = {
+        drawingMode: 'svg',
+        hoverEnabled: true,
         styles: {
           'double-underline': {
             css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
-            svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" /><rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />',
             cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
+            svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" /><rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />',
             svgActive: `
               <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
               <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" />
@@ -261,11 +263,9 @@
           },
           'colored-text': {
             css: 'color: var(--hh-color);',
-            svg: '',
           },
           'redacted': {
             css: 'background-color: transparent; color: transparent;',
-            svg: '',
           },
         },
         wrappers: {
@@ -283,7 +283,6 @@
       // Initialize a Highlighter instance, then load highlights
       const highlighter = new Highlighter('main', 'main [id]');
       highlighter.setOptions(options);
-      highlighter.setOptions({ hoverEnabled: true });
       highlighter.loadHighlights(highlights);
 
       // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
@@ -376,6 +375,10 @@
           },
         ];
         const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
+        snippetHighlighter.setOptions({
+          ...options,
+          drawingMode: 'mark-elements',
+        });
         snippetHighlighter.loadHighlights(snippetHighlights);
       }
 

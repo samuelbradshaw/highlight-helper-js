@@ -25,7 +25,10 @@
         line-height: 1.4;
       }
       main { margin-inline-end: 2em; }
-      a { color: var(--gray-50); }
+      main a {
+        color: var(--gray-50);
+        cursor: unset;
+      }
       button {
         cursor: pointer;
         user-select: none;
@@ -238,7 +241,7 @@
         },
         {
           highlightId: 'hh-1735479727958',
-          color: 'yellow', style: 'fill',
+          color: 'yellow', style: 'colored-text',
           startParagraphId: 'p4', startParagraphOffset: 191,
           endParagraphId: 'p4', endParagraphOffset: 207,
         },
@@ -280,6 +283,7 @@
       // Initialize a Highlighter instance, then load highlights
       const highlighter = new Highlighter('main', 'main [id]');
       highlighter.setOptions(options);
+      highlighter.setOptions({ hoverEnabled: true });
       highlighter.loadHighlights(highlights);
 
       // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
@@ -371,10 +375,7 @@
             endParagraphId: `${event.detail.highlight.endParagraphId}_${event.detail.highlight.highlightId}`, endParagraphOffset: event.detail.highlight.endParagraphOffset,
           },
         ];
-        const snippetHighlighter = new Highlighter({
-          containerSelector: '#snippet-container',
-          paragraphSelector: '#snippet [id]',
-        });
+        const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
         snippetHighlighter.loadHighlights(snippetHighlights);
       }
 
@@ -384,6 +385,11 @@
         snippetDiv.innerHTML = '';
         infoDiv.innerHTML = 'N/A';
       }
+
+      // Respond to hover
+      container.addEventListener('hh:hover', (event) => {
+        container.style.cursor = (event.detail.targetFound && !highlighter.getActiveHighlightId()) ? 'pointer' : '';
+      });
 
       // Respond to tap
       container.addEventListener('hh:tap', respondToTap);

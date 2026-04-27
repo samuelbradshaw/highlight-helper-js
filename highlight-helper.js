@@ -321,6 +321,36 @@ Highlighter.prototype._loadEventListeners = function () {
   globalThis.addEventListener('pointerup', (event) => respondToWindowPointerUp(event), { signal: this._controller.signal });
   globalThis.addEventListener('pointercancel', (event) => respondToWindowPointerUp(event), { signal: this._controller.signal });
 
+  // Mouse move in annotatable container (for hh:hover events)
+  let rafId = null;
+  let latestMoveEvent = null;
+  const handleHoverEvent = (event) => {
+    const targets = this._getTargetsAtPoint(event);
+  
+    const newHoverKey = ({ highlights, wrappers, hyperlinks }) => [
+      ...highlights.map(h => h.highlightId),
+      ...wrappers.map(w => `${w.highlightInfo.highlightId}:${w.position}`),
+      ...hyperlinks.map(h => h.index),
+    ].sort().join('\x00');
+    if (newHoverKey === this._hoverKey) return;
+    this._hoverKey = newHoverKey;
+  
+    const { highlights, wrappers, hyperlinks } = targets;
+    const targetCount = highlights.length + wrappers.length + hyperlinks.length;
+    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:hover', {
+      detail: { targetCount, targetFound: targetCount > 0, ...targets, pointerEvent: event },
+    }));
+  };
+  this._annotatableContainer.addEventListener('mousemove', (event) => {
+    if (!options.hoverEnabled) return;
+    latestMoveEvent = event;
+    rafId ??= requestAnimationFrame(() => { rafId = null; handleHoverEvent(latestMoveEvent); });
+  }, { signal: this._controller.signal });
+  this._annotatableContainer.addEventListener('mouseleave', (event) => {
+    if (!options.hoverEnabled) return;
+    handleHoverEvent(event);
+  }, { signal: this._controller.signal });
+
   // Hyperlink click (for each hyperlink in annotatable container)
   for (const hyperlinkElement of this._hyperlinkElements) {
     hyperlinkElement.addEventListener('click', (event) => {
@@ -467,8 +497,13 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
     }
 
+    // Compute merged rects for tap detection (null for mark elements highlights)
+    const useMarkElements = highlightInfo.readOnly || options.drawingMode === 'mark-elements';
+    const mergedRects = useMarkElements ? null : this._getMergedRects(range, rangeParagraphs, additionsRect);
+    this._highlightsById[highlightId].mergedRects = mergedRects;
+
     // Draw highlights with mark elements
-    if (highlightInfo.readOnly || options.drawingMode === 'mark-elements') {
+    if (useMarkElements) {
       // Inject HTML <mark> elements
       if (range.startOffset < range.startContainer.length) range.startContainer.splitText(range.startOffset);
       if (range.endOffset > 0 && range.endOffset < range.endContainer.length) range.endContainer.splitText(range.endOffset);
@@ -522,15 +557,15 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
     // Draw highlights with Custom Highlight API
     } else if (options.drawingMode === 'highlight-api' && supportsHighlightApi) {
-      let highlightObj;
+      let cssHighlight;
       if (CSS.highlights.has(highlightId)) {
-        highlightObj = CSS.highlights.get(highlightId);
-        highlightObj.clear();
+        cssHighlight = CSS.highlights.get(highlightId);
+        cssHighlight.clear();
       } else {
-        highlightObj = new Highlight();
-        CSS.highlights.set(highlightId, highlightObj);
+        cssHighlight = new Highlight();
+        CSS.highlights.set(highlightId, cssHighlight);
       }
-      highlightObj.add(range);
+      cssHighlight.add(range);
       const styleTemplate = this._getStyleTemplate(highlightInfo.style, 'css', null);
       const colorString = options.colors[highlightInfo.color];
       this._highlightApiStylesheet.insertRule(`${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleTemplate} }`);
@@ -539,7 +574,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
     // Draw highlights with SVG shapes
     } else if (options.drawingMode === 'svg') {
-      const mergedRects = this._getMergedRects(range, rangeParagraphs, additionsRect);
       let group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       group.dataset.hhHighlightId = highlightId;
       group.dataset.hhColorKey = highlightInfo.color;
@@ -676,6 +710,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
     rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
     rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
     rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
+    mergedRects: oldHighlightInfo?.mergedRects ?? null,
   };
   this._highlightsById[highlightId] = newHighlightInfo;
 
@@ -835,6 +870,7 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
       handle.children[1].innerHTML = options.customHandles[handle.dataset.hhSide] ?? '';
     }
   }
+  if ('hoverEnabled' in optionsToUpdate && !optionsToUpdate.hoverEnabled) this._hoverKey = null;
 }
 
 // Get all of the initialized options
@@ -857,65 +893,56 @@ Highlighter.prototype.removeHighlighter = function () {
 
 /********************** Private Methods **********************/
 
-// Check if the tap hits any highlights, wrappers, or links
-Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
-  if (!pointerEvent) return;
-
-  // Check for tapped highlights (using text node walker to skip invalid text nodes)
-  const tappedHighlightIds = [];
-  const textNodeRange = document.createRange();
-  for (const highlightId of Object.keys(this._highlightsById)) {
-    const highlightRange = this._getCorrectedRangeObj(highlightId);
-    const root = highlightRange.commonAncestorContainer;
-    const walker = this._getTextNodeWalker(root.nodeType === Node.TEXT_NODE ? root.parentElement : root);
-    let textNode;
-    textNodeLoop: while (textNode = walker.nextNode()) {
-      if (!highlightRange.intersectsNode(textNode)) continue;
-      const start = textNode === highlightRange.startContainer ? highlightRange.startOffset : 0;
-      const end = textNode === highlightRange.endContainer ? highlightRange.endOffset : textNode.length;
-      if (start >= end) continue;
-      textNodeRange.setStart(textNode, start);
-      textNodeRange.setEnd(textNode, end);
-      for (const rect of textNodeRange.getClientRects()) {
-        if (this._isPointInRect(pointerEvent.clientX, pointerEvent.clientY, rect, 5)) {
-          tappedHighlightIds.push(highlightId);
-          break textNodeLoop;
-        }
-      }
-    }
-  }
-  const tappedHighlights = this.getHighlightInfo(tappedHighlightIds);
-
-  // Check for tapped wrappers and hyperlinks
-  const tappedWrappers = [];
-  const tappedHyperlinks = [];
-  const tappedWrapperElements = new Set()
+// Get highlights, wrappers, and hyperlinks at a given point
+Highlighter.prototype._getTargetsAtPoint = function (pointerEvent) {
+  const highlightIds = new Set();
+  const wrappers = [];
+  const hyperlinks = [];
+  const wrapperElements = new Set();
   const targetElements = document.elementsFromPoint(pointerEvent.clientX, pointerEvent.clientY);
   for (const element of targetElements) {
+    if (element === this._annotatableContainer) break;
+    if (element.matches('mark[data-hh-highlight-id]')) {
+      highlightIds.add(element.dataset.hhHighlightId);
+    }
     const wrapper = element.closest('[data-hh-wrapper]');
-    if (wrapper && !tappedWrapperElements.has(wrapper)) {
-      tappedWrappers.push({
+    if (wrapper && !wrapperElements.has(wrapper)) {
+      wrappers.push({
         position: wrapper.dataset.hhPosition,
         wrapperElement: wrapper,
         highlightInfo: this._highlightsById[wrapper.dataset.hhHighlightId],
       });
-      tappedWrapperElements.add(wrapper);
+      wrapperElements.add(wrapper);
     } else if (element.matches('a') && element.dataset.hhIndex) {
-      const hyperlinkInfo = this._hyperlinksByIndex[element.dataset.hhIndex];
-      tappedHyperlinks.push(hyperlinkInfo);
+      hyperlinks.push(this._hyperlinksByIndex[element.dataset.hhIndex]);
     }
   }
-
-  const targetCount = tappedHighlights.length + tappedWrappers.length + tappedHyperlinks.length;
-  return {
-    'targetCount': targetCount,
-    'targetFound': targetCount > 0,
-    'tapRange': this._getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
-    'pointerEvent': pointerEvent,
-    'highlights': tappedHighlights,
-    'wrappers': tappedWrappers,
-    'hyperlinks': tappedHyperlinks,
+  const additionsRect = this._additionsDiv.getBoundingClientRect();
+  const x = pointerEvent.clientX - additionsRect.left;
+  const y = pointerEvent.clientY - additionsRect.top - 5; // Shift hit area down 5 pixels
+  for (const highlightId of Object.keys(this._highlightsById)) {
+    if (highlightIds.has(highlightId)) continue;
+    const mergedRects = this._highlightsById[highlightId].mergedRects;
+    if (!mergedRects) continue;
+    for (const rect of mergedRects) {
+      if (this._isPointInRect(x, y, rect)) { highlightIds.add(highlightId); break; }
+    }
   }
+  return { highlights: this.getHighlightInfo(highlightIds), wrappers, hyperlinks };
+}
+
+// Check if the tap hits any highlights, wrappers, or links
+Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
+  if (!pointerEvent) return;
+  const targets = this._getTargetsAtPoint(pointerEvent);
+  const targetCount = targets.highlights.length + targets.wrappers.length + targets.hyperlinks.length;
+  return {
+    targetCount: targetCount,
+    targetFound: targetCount > 0,
+    tapRange: this._getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
+    pointerEvent: pointerEvent,
+    ...targets,
+  };
 }
 
 // Compare new highlight information to old highlight information, returning an object with the properties that changed
@@ -1565,6 +1592,7 @@ const _defaultOptions = {
   showCustomHandlesForActiveHighlights: true,
   showCustomHandlesForTextSelection: false,
   showCustomHandlesOnTouch: false,
+  hoverEnabled: false,
 }
 
 // Workaround to allow programmatic text selection on tap in iOS Safari

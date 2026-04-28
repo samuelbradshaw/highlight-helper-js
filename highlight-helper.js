@@ -418,11 +418,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   const options = this._options;
   const additionsRect = this._additionsDiv.getBoundingClientRect();
 
-  // Hide container (repeated DOM manipulations is faster if the container is hidden)
-  if (highlightIds.length > 1) {
-    this._annotatableContainer.style.display = 'none';
-  }
-
   const sortedHighlights = this.getHighlightInfo(highlightIds);
   for (const highlightInfo of sortedHighlights) {
     const highlightId = highlightInfo.highlightId
@@ -569,13 +564,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       this._svgBackground.appendChild(group);
     }
   }
-
-  // Show container
-  this._annotatableContainer.style.display = '';
 }
 
 // Create a new highlight, or update an existing highlight when it changes
 Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, triggeredByUserAction = true, isBatchProcess = false) {
+  const highlightIdsToRedraw = new Set();
   const options = this._options;
   let highlightId = attributes.highlightId ?? this._activeHighlightId ?? options.highlightIdFunction();
   const appearanceChanges = [];
@@ -621,7 +614,10 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
   }
 
   // If the highlight was and still is read-only, return
-  if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) return this.deactivateHighlights();
+  if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) {
+    this.deactivateHighlights();
+    return highlightIdsToRedraw;
+  }
 
   // Calculate the bounds of the highlight range, if it's changed
   let adjustedSelectionRange, highlightRange;
@@ -673,7 +669,9 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
   }
 
   // If there are no valid changes, return
-  if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) return;
+  if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) {
+    return highlightIdsToRedraw;
+  }
 
   // Update saved highlight info
   const newHighlightInfo = {
@@ -711,7 +709,6 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
   }
 
   // Queue highlights to be redrawn
-  const highlightIdsToRedraw = new Set();
   const wrapperChanged = appearanceChanges.some(k => k.startsWith('wrapper'));
   if (wrapperChanged) {
     highlightIdsToRedraw.add(highlightId);
@@ -820,7 +817,7 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
   let filteredHighlights = []
   for (const highlightId of highlightIds) {
     const highlightInfo = this._highlightsById[highlightId];
-    if (highlightInfo && !paragraphId || paragraphId === highlightInfo.startParagraphId) {
+    if (highlightInfo && (!paragraphId || paragraphId === highlightInfo.startParagraphId)) {
       filteredHighlights.push(highlightInfo);
     }
   }
@@ -847,7 +844,12 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
     this._updateAppearanceStylesheet();
   }
   if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate) {
-    if (supportsHighlightApi) CSS.highlights.clear();
+    if (supportsHighlightApi) {
+      // Instead of a global CSS.highlights.clear(), only clear CSS highlights in this Highlighter instanace
+      for (const highlightInfo of Object.values(this._highlightsById)) {
+        this._undrawHighlight(highlightInfo);
+      }
+    }
     this.drawHighlights();
   }
   if ('customHandles' in optionsToUpdate) {
@@ -975,9 +977,9 @@ Highlighter.prototype._undrawHighlight = function (highlightInfo) {
 
   // Normalize text nodes
   const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`);
-  const r = highlightInfo.rangeObj;
   rangeParagraphs.forEach(p => p.normalize());
-  this._getCorrectedRangeObj(highlightId);
+  // After normalizing, the highlight range is valid, but not correct. Passing true forces the range to be recalculated.
+  this._getCorrectedRangeObj(highlightId, true);
 
   // Remove SVG highlights
   this._svgBackground.querySelectorAll(`g[data-hh-highlight-id="${highlightId}"]`).forEach(element => {
@@ -1320,10 +1322,11 @@ Highlighter.prototype._getRestoredSelectionOrCaret = function (selection, pointe
 }
 
 // Fix highlight range if the DOM changed and made the previous highlight range invalid
-Highlighter.prototype._getCorrectedRangeObj = function (highlightId) {
+Highlighter.prototype._getCorrectedRangeObj = function (highlightId, force = false) {
   const highlightInfo = this._highlightsById[highlightId];
   const highlightRange = highlightInfo?.rangeObj;
   if (highlightRange && (
+    force || highlightRange.collapsed ||
     highlightRange.startContainer.nodeType !== Node.TEXT_NODE || highlightRange.endContainer.nodeType !== Node.TEXT_NODE ||
     highlightRange.startOffset >= highlightRange.startContainer.length ||
     highlightRange.endOffset > highlightRange.endContainer.length

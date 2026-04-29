@@ -428,60 +428,71 @@ Highlighter.prototype.loadHighlights = function (highlights) {
 Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
   const options = this._options;
   const additionsRect = this._additionsDiv.getBoundingClientRect();
-
   const sortedHighlights = this.getHighlightInfo(highlightIds);
+
+  // Build wrappers
+  const wrappersByHighlightId = {};
+  for (const highlightInfo of sortedHighlights) {
+    if (!highlightInfo.wrapper) continue;
+    const highlightId = highlightInfo.highlightId;
+    wrappersByHighlightId[highlightId] = {};
+    for (const position of ['start', 'end']) {
+      if (!options.wrappers[highlightInfo.wrapper][position]) continue;
+      // Reuse previous wrapper element if it exists (to preserve its state if it was interacted with)
+      let wrapper = this._annotatableContainer.querySelector(`[data-hh-wrapper][data-hh-position="${position}"][data-hh-highlight-id="${highlightId}"]`);
+      wrapper?.remove();
+      if (!wrapper) {
+        wrapper = document.createElement('span');
+        wrapper.dataset.hhWrapper = '';
+        wrapper.dataset.hhPosition = position;
+        wrapper.dataset.hhHighlightId = highlightId;
+        wrapper.dataset.hhIgnore = '';
+      }
+      wrapper.dataset.hhColorKey = highlightInfo.color;
+      wrapper.dataset.hhStyleKey = highlightInfo.style;
+      const serializedWrapperVariables = JSON.stringify(highlightInfo.wrapperVariables);
+      if (highlightInfo.wrapper !== wrapper.dataset.hhWrapperKey || serializedWrapperVariables !== wrapper.dataset.hhWrapperVariables) {
+        let innerHtml = options.wrappers[highlightInfo.wrapper][position];
+        for (const key of Object.keys(highlightInfo.wrapperVariables)) {
+          innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
+        }
+        wrapper.dataset.hhWrapperKey = highlightInfo.wrapper;
+        wrapper.dataset.hhWrapperVariables = serializedWrapperVariables;
+        wrapper.innerHTML = innerHtml;
+      }
+      wrappersByHighlightId[highlightId][position] = wrapper;
+    }
+  }
+
+  // Undraw any highlights that are already drawn
+  this._undrawHighlights(highlightIds);
+
+  // Loop through highlights
   for (const highlightInfo of sortedHighlights) {
     const highlightId = highlightInfo.highlightId
     let range = this._getCorrectedRangeObj(highlightId);
     const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-
-    // Remove old highlight and wrapper elements
-    const existingStartWrapper = this._annotatableContainer.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${highlightId}"]`);
-    const existingEndWrapper = this._annotatableContainer.querySelector(`[data-hh-wrapper][data-hh-position="end"][data-hh-highlight-id="${highlightId}"]`);
-    existingStartWrapper?.remove();
-    existingEndWrapper?.remove();
-    this._undrawHighlight(highlightInfo);
-
-    // Insert wrappers before drawing highlights, so any layout shift from wrapper content is reflected in drawing positions
-    if (highlightInfo.wrapper && (options.wrappers[highlightInfo.wrapper]?.start || options.wrappers[highlightInfo.wrapper]?.end)) {
-      const insertWrapper = (position, insertionRange, existingEl, innerHtml) => {
-        const serializedWrapperVariables = JSON.stringify(highlightInfo.wrapperVariables);
-        for (const key of Object.keys(highlightInfo.wrapperVariables)) {
-          innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
-        }
-        let htmlElement;
-        if (existingEl) {
-          existingEl.dataset.hhColorKey = highlightInfo.color;
-          existingEl.dataset.hhStyleKey = highlightInfo.style;
-          const wrapperContentChanged = existingEl.dataset.hhWrapperKey !== highlightInfo.wrapper || existingEl.dataset.hhWrapperVariables !== serializedWrapperVariables;
-          if (wrapperContentChanged) {
-            existingEl.dataset.hhWrapperKey = highlightInfo.wrapper;
-            existingEl.dataset.hhWrapperVariables = serializedWrapperVariables;
-            existingEl.innerHTML = innerHtml;
-          }
-          htmlElement = existingEl;
-        } else {
-          const template = document.createElement('template');
-          template.innerHTML = `<span data-hh-wrapper="" data-hh-position="${position}" data-hh-highlight-id="${highlightId}" data-hh-color-key="${highlightInfo.color}" data-hh-style-key="${highlightInfo.style}" data-hh-wrapper-key="${highlightInfo.wrapper}" data-hh-wrapper-variables='${serializedWrapperVariables}' data-hh-ignore="">${innerHtml}</span>`;
-          htmlElement = template.content.firstChild;
-        }
-        if (position === 'start') {
-          insertionRange.insertNode(htmlElement);
-        } else {
-          insertionRange.endContainer.splitText(insertionRange.endOffset);
-          insertionRange.endContainer.after(htmlElement);
-        }
+ 
+    // Insert wrappers before drawing highlight, so any layout shift from wrapper content is accounted for
+    if (highlightInfo.wrapper) {
+      const { start: startWrapper, end: endWrapper } = wrappersByHighlightId[highlightId];
+      if (options.wrappers[highlightInfo.wrapper]?.start) {
+        range.insertNode(startWrapper);
       }
-      const wrapperInfo = options.wrappers[highlightInfo.wrapper];
-      insertWrapper('start', range, existingStartWrapper, wrapperInfo.start);
       range = this._getCorrectedRangeObj(highlightId);
-      insertWrapper('end', range, existingEndWrapper, wrapperInfo.end);
+      if (options.wrappers[highlightInfo.wrapper]?.end) {
+        range.endContainer.splitText(range.endOffset);
+        range.endContainer.after(endWrapper);
+      }
       range = this._getCorrectedRangeObj(highlightId);
 
       // If current highlight is active, update selection range to match highlight range
       const selection = globalThis.getSelection();
       const selectionRange = selection.type !== 'None' ? selection.getRangeAt(0) : null;
-      if (highlightId === this._activeHighlightId && selectionRange && !(selectionRange.compareBoundaryPoints(Range.START_TO_START, range) === 0 && selectionRange.compareBoundaryPoints(Range.END_TO_END, range) === 0)) {
+      const rangesMatch = selectionRange
+            && selectionRange.compareBoundaryPoints(Range.START_TO_START, range) === 0
+            && selectionRange.compareBoundaryPoints(Range.END_TO_END, range) === 0;
+      if (highlightId === this._activeHighlightId && selectionRange && !rangesMatch) {
         globalThis.getSelection().setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
       }
     }
@@ -808,15 +819,12 @@ Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = t
 // Remove the specified highlights, or all highlights on the page
 Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
   this.deactivateHighlights();
+  this._undrawHighlights(highlightIds);
   for (const highlightId of highlightIds) {
-    const highlightInfo = this._highlightsById[highlightId];
-    if (highlightInfo) {
-      delete this._highlightsById[highlightId];
-      this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
-        highlightId: highlightId,
-      }}));
-      this._undrawHighlight(highlightInfo);
-    }
+    delete this._highlightsById[highlightId];
+    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
+      highlightId: highlightId,
+    }}));
   }
 }
 
@@ -857,12 +865,6 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
     this._updateAppearanceStylesheet();
   }
   if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate) {
-    if (supportsHighlightApi) {
-      // Instead of a global CSS.highlights.clear(), only clear CSS highlights in this Highlighter instanace
-      for (const highlightInfo of Object.values(this._highlightsById)) {
-        this._undrawHighlight(highlightInfo);
-      }
-    }
     this.drawHighlights();
   }
   if ('customHandles' in optionsToUpdate) {
@@ -965,53 +967,77 @@ Highlighter.prototype._diffHighlight = function (newHighlightInfo, oldHighlightI
 }
 
 // Undraw the specified highlight
-Highlighter.prototype._undrawHighlight = function (highlightInfo) {
-  const highlightId = highlightInfo.highlightId;
+Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
+  const highlightIdSet = new Set(highlightIds);
+  const paragraphsToNormalize = new Set();
 
-  // Remove <mark> highlights and HTML wrappers
-  const overlappingHighlightIds = new Set();
-  this._annotatableContainer.querySelectorAll(`[data-hh-highlight-id="${highlightId}"]:not(g)`).forEach(element => {
-    if (element.parentElement.dataset.hhHighlightId) {
-      overlappingHighlightIds.add(element.parentElement.dataset.hhHighlightId);
+  // Remove <mark> highlights and HTML wrappers; remove SVG highlights; collect paragraphs to normalize
+  for (const highlightId of highlightIds) {
+    const overlappingHighlightIds = new Set();
+    for (const element of this._annotatableContainer.querySelectorAll(`[data-hh-highlight-id="${highlightId}"]`)) {
+      if (element.matches('g')) {
+        element.remove();
+        continue;
+      }
+      if (element.parentElement.dataset.hhHighlightId) {
+        overlappingHighlightIds.add(element.parentElement.dataset.hhHighlightId);
+      }
+      for (const childHighlight of element.querySelectorAll('[data-hh-highlight-id]')) {
+        overlappingHighlightIds.add(childHighlight.dataset.hhHighlightId);
+      }
+      if (element.matches('mark')) {
+        // If removing a mark-elements highlight that's currently active, deactivate first to avoid an invalid selection range
+        if (highlightId === this._activeHighlightId) this.deactivateHighlights();
+        element.replaceWith(...element.childNodes);
+      } else {
+        element.remove();
+      }
     }
-    for (const childHighlight of element.querySelectorAll('[data-hh-highlight-id]')) {
-      overlappingHighlightIds.add(childHighlight.dataset.hhHighlightId);
-    }
-    if (element.matches('mark')) {
-      // If removing a mark-elements highlight that's currently active, deactivate first to avoid an invalid selection range
-      if (highlightInfo.highlightId === this._activeHighlightId) this.deactivateHighlights();
-      element.replaceWith(...element.childNodes);
-    } else {
-      element.remove();
-    }
-  });
 
-  // Redraw overlapping highlights
-  overlappingHighlightIds.delete(highlightId);
-  if (overlappingHighlightIds.size > 0) {
-    for (const overlappingHighlightId of overlappingHighlightIds) {
-      this._undrawHighlight(this._highlightsById[overlappingHighlightId]);
+    // Redraw overlapping highlights
+    overlappingHighlightIds.delete(highlightId);
+    if (overlappingHighlightIds.size > 0) {
+      for (const overlappingHighlightId of overlappingHighlightIds) {
+        if (highlightIdSet.has(overlappingHighlightId)) {
+          overlappingHighlightIds.delete(overlappingHighlightId);
+        } else {
+          this._undrawHighlights([overlappingHighlightId]);
+        }
+      }
+      this.drawHighlights(overlappingHighlightIds);
     }
-    this.drawHighlights(overlappingHighlightIds);
+
+    // Collect paragraphs to normalize
+    const highlightInfo = this._highlightsById[highlightId];
+    paragraphsToNormalize.add(highlightInfo.startParagraphId);
+    paragraphsToNormalize.add(highlightInfo.endParagraphId);
   }
 
-  // Normalize text nodes
-  const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.startParagraphId}, #${highlightInfo.endParagraphId}`);
-  rangeParagraphs.forEach(p => p.normalize());
-  // After normalizing, the highlight range is valid, but not correct. Passing true forces the range to be recalculated.
-  this._getCorrectedRangeObj(highlightId, true);
-
-  // Remove SVG highlights
-  this._svgBackground.querySelectorAll(`g[data-hh-highlight-id="${highlightId}"]`).forEach(element => {
-    element.remove();
-  });
-
-  // Remove Highlight API highlights
-  if (supportsHighlightApi && CSS.highlights.has(highlightId)) {
-    for (let r = this._highlightApiStylesheet.cssRules.length - 1; r >= 0; r--) {
-      if (this._highlightApiStylesheet.cssRules[r].selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`)) this._highlightApiStylesheet.deleteRule(r);
+  // Normalize paragraphs, then recalculate ranges for all highlights
+  if (paragraphsToNormalize.size > 0) {
+    const selector = [...paragraphsToNormalize].map(id => `#${id}`).join(', ');
+    const rangeParagraphs = this._annotatableContainer.querySelectorAll(selector);
+    if (rangeParagraphs.length > 0) {
+      for (const p of rangeParagraphs) p.normalize();
+      // After normalizing, the highlight range is valid, but not correct. Passing true forces the range to be recalculated.
+      for (const highlightId of highlightIds) this._getCorrectedRangeObj(highlightId, true);
     }
-    CSS.highlights.delete(highlightId);
+  }
+
+  // Remove Highlight API highlights (looping in reverse to avoid indexes changing as items are removed)
+  // Instead of a global CSS.highlights.clear(), only clear CSS highlights in this Highlighter instance
+  if (supportsHighlightApi) {
+    for (let r = this._highlightApiStylesheet.cssRules.length - 1; r >= 0; r--) {
+      const selectorText = this._highlightApiStylesheet.cssRules[r].selectorText;
+      for (const highlightId of highlightIdSet) {
+        const highlightInfo = this._highlightsById[highlightId];
+        if (selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`)) {
+          this._highlightApiStylesheet.deleteRule(r);
+          CSS.highlights.delete(highlightId);
+          break;
+        }
+      }
+    }
   }
 }
 

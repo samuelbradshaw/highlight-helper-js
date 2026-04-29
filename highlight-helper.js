@@ -623,13 +623,6 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, trigg
     console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
   }
 
-  // Update defaults
-  if (options.rememberStyle && triggeredByUserAction) {
-    if (attributes.color) options.defaultColor = attributes.color;
-    if (attributes.style) options.defaultStyle = attributes.style;
-    if (attributes.wrapper) options.defaultWrapper = attributes.wrapper;
-  }
-
   // Check which appearance properties changed
   for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
     if (isNewHighlight || (attributes[key] != null && attributes[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
@@ -1683,7 +1676,6 @@ const _defaultOptions = {
     left: '<div data-hh-default-handle=""></div>',
     right: '<div data-hh-default-handle=""></div>',
   },
-  rememberStyle: true,
   snapToWord: false,
   autoTapToActivate: true,
   longPressTimeout: 500,

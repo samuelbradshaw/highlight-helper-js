@@ -284,15 +284,25 @@
       const highlighter = new Highlighter('main', 'main [id]');
       highlighter.setOptions(options);
       highlighter.loadHighlights(highlights);
+      
+      let rememberStyle = true;
+      const rememberStyleCheckbox = document.getElementById('hh-remember-style');
+      rememberStyleCheckbox.addEventListener('change', (event) => { rememberStyle = event.currentTarget.checked });
 
       // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
       const colorButtons = document.getElementsByName('hh-color');
       for (const colorButton of colorButtons) {
-        colorButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ color: colorButton.value }); });
+        colorButton.addEventListener('click', () => {
+          highlighter.createOrUpdateHighlight({ color: colorButton.value });
+          if (rememberStyle) highlighter.setOptions({ defaultColor: colorButton.value });
+        });
       }
       const styleButtons = document.getElementsByName('hh-style');
       for (const styleButton of styleButtons) {
-        styleButton.addEventListener('click', () => { highlighter.createOrUpdateHighlight({ style: styleButton.value }); });
+        styleButton.addEventListener('click', () => {
+          highlighter.createOrUpdateHighlight({ style: styleButton.value });
+          if (rememberStyle) highlighter.setOptions({ defaultStyle: styleButton.value });
+        });
       }
       const wrapperButtons = document.getElementsByName('hh-wrapper');
       for (const wrapperButton of wrapperButtons) {
@@ -312,11 +322,9 @@
       }
 
       // Call HighlightHelper.js methods when options are changed
-      const rememberStyleCheckbox = document.getElementById('hh-remember-style');
       const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
       const pointerModeRadioButtons = document.getElementsByName('hh-pointer-mode');
       const drawingModeRadioButtons = document.getElementsByName('hh-drawing-mode');
-      rememberStyleCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ rememberStyle: event.currentTarget.checked }) });
       snapToWordCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ snapToWord: event.currentTarget.checked }); });
       for (const pointerModeRadioButton of pointerModeRadioButtons) {
         pointerModeRadioButton.addEventListener('change', (event) => {

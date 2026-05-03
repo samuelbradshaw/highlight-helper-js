@@ -45,7 +45,7 @@ function Highlighter(containerSelector, paragraphSelector) {
   this._additionsDiv = this._annotatableContainer.querySelector('[data-hh-additions]');
   this._svgBackground = this._additionsDiv.querySelector('[data-hh-svg-background]');
   this._svgActiveOverlay = this._additionsDiv.querySelector('[data-hh-svg-active-overlay]');
-  this._customHandles = this._additionsDiv.querySelectorAll('[data-hh-handle]');
+  this._dragHandles = this._additionsDiv.querySelectorAll('[data-hh-handle]');
 
   // Check for hyperlinks on the page
   this._hyperlinkElements = this._annotatableContainer.getElementsByTagName('a');
@@ -80,8 +80,8 @@ function Highlighter(containerSelector, paragraphSelector) {
   this._loadEventListeners();
   this._updateAppearanceStylesheet();
   this._updateSelectionState();
-  for (const handle of this._customHandles) {
-    handle.children[1].innerHTML = this._options.customHandles[handle.dataset.hhSide] ?? '';
+  for (const handle of this._dragHandles) {
+    handle.children[1].innerHTML = this._options.dragHandles[handle.dataset.hhSide] ?? '';
   }
 }
 
@@ -108,6 +108,7 @@ Highlighter.prototype._loadStyles = function () {
       visibility: hidden;
     }
     [data-hh-pointer-down="true"] [data-hh-handle] {
+      /* Hiding selection handle reduces jumpiness when dragging (and makes it easier to see the selection) */
       visibility: hidden !important;
     }
     [data-hh-handle-content] {
@@ -188,7 +189,7 @@ Highlighter.prototype._loadEventListeners = function () {
     const selectionInOtherContainer = selectionContainer !== null && !selectionInThisContainer;
 
     // In "Mac (Designed for iPad)" apps (iPad app running on macOS – most recently tested with macOS Sequoia 15.3.1), in-app webviews have several quirks related to text selection. One of these is text selection collapsing to a caret more often than expected. This code attempts to restore the previous selection range if it unexpectedly collapses to a caret in these scenarios:
-    // 1. While dragging custom selection handles (happens randomly). TODO: Dragging custom selection handles in this environment is still sometimes a little jumpy.
+    // 1. While dragging custom handles (happens randomly). TODO: Dragging custom handles in this environment is still sometimes a little jumpy.
     // 2. Just after clicking to activate a highlight (happens if it's the first click after the page loads).
     if (!selectionInOtherContainer && isWKWebView && !isTouchDevice && selection.type !== 'Range' && this._previousSelectionRange && (this._activeHandle || (this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_START, selectionRange) <= 0 && this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_END, selectionRange) >= 0))) {
       selection.setBaseAndExtent(this._previousSelectionRange.startContainer, this._previousSelectionRange.startOffset, this._previousSelectionRange.endContainer, this._previousSelectionRange.endOffset);
@@ -232,7 +233,7 @@ Highlighter.prototype._loadEventListeners = function () {
         const selectionRange = globalThis.getSelection().getRangeAt(0);
         this._dragAnchorNode = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
         this._dragAnchorOffset = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
-        this._annotatableContainer.addEventListener('pointermove', respondToCustomHandleDrag, { signal: this._controller.signal });
+        this._annotatableContainer.addEventListener('pointermove', respondToHandleDrag, { signal: this._controller.signal });
         this._updateSelectionState();
       }
       // Prevent default drag interaction (which would show a thumbnail and drag selected text)
@@ -246,18 +247,19 @@ Highlighter.prototype._loadEventListeners = function () {
       this._doubleTapTimeoutId = setTimeout(() => this._doubleTapTimeoutId = clearTimeout(this._doubleTapTimeoutId), 500);
     }
 
-    // Return if it's not a regular click, or if the user is tapping away from an existing selection
-    if (this._previousSelectionRange || isSecondaryClick) return;
+    // Return if it's not a regular click
+    if (isSecondaryClick) return;
 
     // Trigger a long-press event if the user doesn't lift their finger within the specified time
     if (options.longPressTimeout) this._longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
 
+    console.log('AAAAAA')
     this._tapResult = this._checkForTapTargets(event);
   }
   this._annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
 
   // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
-  const respondToCustomHandleDrag = (event) => {
+  const respondToHandleDrag = (event) => {
     this._activeHandle.dataset.hhPointerXPosition = event.clientX;
     this._activeHandle.dataset.hhPointerYPosition = event.clientY;
     const selection = globalThis.getSelection();
@@ -271,7 +273,7 @@ Highlighter.prototype._loadEventListeners = function () {
     const dragPositionRelativeToSelectionStart = dragCaret.compareBoundaryPoints(Range.START_TO_END, selectionRange);
     const dragPositionRelativeToSelectionEnd = dragCaret.compareBoundaryPoints(Range.END_TO_END, selectionRange);
     if (this._activeHandle.dataset.hhPosition === 'start' && dragPositionRelativeToSelectionEnd === 1 || this._activeHandle.dataset.hhPosition === 'end' && dragPositionRelativeToSelectionStart === -1) {
-      for (const handle of this._customHandles) {
+      for (const handle of this._dragHandles) {
         handle.dataset.hhPosition = handle.dataset.hhPosition === 'start' ? 'end' : 'start';
       }
     }
@@ -316,7 +318,7 @@ Highlighter.prototype._loadEventListeners = function () {
     if (this._activeHandle) {
       this._activeHandle = null;
       this._updateSelectionState();
-      this._annotatableContainer.removeEventListener('pointermove', respondToCustomHandleDrag);
+      this._annotatableContainer.removeEventListener('pointermove', respondToHandleDrag);
     }
   }
   globalThis.addEventListener('pointerup', (event) => respondToWindowPointerUp(event), { signal: this._controller.signal });
@@ -326,27 +328,26 @@ Highlighter.prototype._loadEventListeners = function () {
   let rafId = null;
   let latestMoveEvent = null;
   const handleHoverEvent = (event) => {
-    const targets = this.getTargetsAtPoint(event);
-    const { highlights, wrappers, hyperlinks } = targets;
-    const newHoverKey = [
+    const targets = this.getTargetsAtPoint(event.clientX, event.clientY);
+    const { targetCount, highlights, wrappers, hyperlinks } = targets;
+    const newHoverHash = [
       ...highlights.map(h => h.highlightId),
       ...wrappers.map(w => `${w.highlight.highlightId}:${w.position}`),
       ...hyperlinks.map(h => h.index),
     ].sort().join('\x00');
-    if (newHoverKey === this._hoverKey) return;
-    this._hoverKey = newHoverKey;
-    const targetCount = highlights.length + wrappers.length + hyperlinks.length;
+    if (newHoverHash === this._hoverHash) return;
+    this._hoverHash = newHoverHash;
     this._annotatableContainer.dispatchEvent(new CustomEvent('hh:hover', {
-      detail: { targetCount, ...targets, nativeEvent: event },
+      detail: { targetCount, highlights, wrappers, hyperlinks, nativeEvent: event },
     }));
   };
   this._annotatableContainer.addEventListener('mousemove', (event) => {
-    if (!options.hoverEnabled) return;
+    if (!options.enableHover) return;
     latestMoveEvent = event;
     rafId ??= requestAnimationFrame(() => { rafId = null; handleHoverEvent(latestMoveEvent); });
   }, { signal: this._controller.signal });
   this._annotatableContainer.addEventListener('mouseleave', (event) => {
-    if (!options.hoverEnabled) return;
+    if (!options.enableHover) return;
     handleHoverEvent(event);
   }, { signal: this._controller.signal });
 
@@ -451,7 +452,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     if (!highlightInfo.wrapper) continue;
     const highlightId = highlightInfo.highlightId;
     for (const position of ['start', 'end']) {
-      if (!options.wrappers[highlightInfo.wrapper][position]) continue;
+      if (!options.wrapperDefs[highlightInfo.wrapper]?.[position]) continue;
       // Reuse previous wrapper element if it exists (to preserve its state if it was interacted with)
       let wrapper = wrapperElements.get(`${highlightId}:${position}`) ?? null;
       if (wrapper) {
@@ -467,7 +468,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       wrapper.dataset.hhWrapper = highlightInfo.wrapper;
       const wrapperHash = this._getWrapperHash(highlightInfo);
       if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
-        let innerHtml = options.wrappers[highlightInfo.wrapper][position];
+        let innerHtml = options.wrapperDefs[highlightInfo.wrapper][position];
         for (const key of Object.keys(highlightInfo.wrapperVariables)) {
           innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
         }
@@ -491,11 +492,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     if (highlightInfo.wrapper) {
       const startWrapper = wrapperElements.get(`${highlightId}:start`);
       const endWrapper   = wrapperElements.get(`${highlightId}:end`);
-      if (options.wrappers[highlightInfo.wrapper]?.start) {
+      if (options.wrapperDefs[highlightInfo.wrapper]?.start) {
         range.insertNode(startWrapper);
       }
       range = this._getCorrectedRangeObj(highlightId);
-      if (options.wrappers[highlightInfo.wrapper]?.end) {
+      if (options.wrapperDefs[highlightInfo.wrapper]?.end) {
         range.endContainer.splitText(range.endOffset);
         range.endContainer.after(endWrapper);
       }
@@ -570,7 +571,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         this._getCorrectedRangeObj(overlappingHighlightId);
       }
 
-    // Draw highlights with Custom Highlight API
+    // Draw highlights with CSS Highlight API
     } else if (options.drawingMode === 'highlight-api') {
       let cssHighlight;
       if (CSS.highlights.has(highlightId)) {
@@ -581,9 +582,9 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         CSS.highlights.set(highlightId, cssHighlight);
       }
       cssHighlight.add(range);
-      const styleTemplate = this._getStyleTemplate(highlightInfo.style, 'css', null);
-      const colorString = options.colors[highlightInfo.color];
-      this._highlightApiStylesheet.insertRule(`${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleTemplate} }`);
+      const styleString = this._getStyleString(highlightInfo.style, 'css', null);
+      const colorString = options.colorDefs[highlightInfo.color];
+      this._highlightApiStylesheet.insertRule(`${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }`);
       this._highlightApiStylesheet.insertRule(`${this._containerSelector} rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
       this._highlightApiStylesheet.insertRule(`${this._containerSelector} img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
 
@@ -595,7 +596,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       group.dataset.hhStyle = highlightInfo.style;
       let svgContent = '';
       for (const mergedRect of mergedRects) {
-        svgContent += this._getStyleTemplate(highlightInfo.style, 'svg', mergedRect);
+        svgContent += this._getStyleString(highlightInfo.style, 'svg', mergedRect);
       }
       group.innerHTML = svgContent;
       this._svgBackground.appendChild(group);
@@ -622,13 +623,13 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, draw 
   }
 
   // Warn if color, style, or wrapper attributes are invalid
-  if (attributes.color && !Object.hasOwn(options.colors, attributes.color)) {
+  if (attributes.color && !Object.hasOwn(options.colorDefs, attributes.color)) {
     console.warn(`Highlight color "${attributes.color}" is not defined in options (highlightId: ${highlightId}).`);
   }
-  if (attributes.style && !Object.hasOwn(options.styles, attributes.style)) {
+  if (attributes.style && !Object.hasOwn(options.styleDefs, attributes.style)) {
     console.warn(`Highlight style "${attributes.style}" is not defined in options (highlightId: ${highlightId}).`);
   }
-  if (attributes.wrapper && !Object.hasOwn(options.wrappers, attributes.wrapper)) {
+  if (attributes.wrapper && !Object.hasOwn(options.wrapperDefs, attributes.wrapper)) {
     console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
   }
 
@@ -835,24 +836,24 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
 Highlighter.prototype.setOptions = function (optionsToUpdate) {
   const options = this._options;
   for (const key in optionsToUpdate) {
-    if (['colors', 'styles', 'wrappers'].includes(key) && optionsToUpdate[key] != null) {
-      options[key] = { ...options[key], ...optionsToUpdate[key] };
+    if (['colorDefs', 'styleDefs', 'wrapperDefs'].includes(key) && optionsToUpdate[key] != null) {
+      options[key] = { ..._defaultOptions[key], ...options[key], ...optionsToUpdate[key] };
     } else {
-      options[key] = optionsToUpdate[key] ?? options[key];
+      options[key] = optionsToUpdate[key] ?? options[key] ?? _defaultOptions[key];
     }
   }
-  if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate || 'colors' in optionsToUpdate) {
+  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate || 'colorDefs' in optionsToUpdate) {
     this._updateAppearanceStylesheet();
   }
-  if ('drawingMode' in optionsToUpdate || 'styles' in optionsToUpdate) {
+  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate) {
     this.drawHighlights();
   }
-  if ('customHandles' in optionsToUpdate) {
-    for (const handle of this._customHandles) {
-      handle.children[1].innerHTML = options.customHandles[handle.dataset.hhSide] ?? '';
+  if ('dragHandles' in optionsToUpdate) {
+    for (const handle of this._dragHandles) {
+      handle.children[1].innerHTML = options.dragHandles[handle.dataset.hhSide] ?? '';
     }
   }
-  if ('hoverEnabled' in optionsToUpdate && !optionsToUpdate.hoverEnabled) this._hoverKey = null;
+  if ('enableHover' in optionsToUpdate && !optionsToUpdate.enableHover) this._hoverHash = null;
 }
 
 // Get all of the initialized options
@@ -877,16 +878,13 @@ Highlighter.prototype.removeHighlighter = function () {
   this._annotatableContainer.highlighter = undefined;
 }
 
-
-/********************** Private Methods **********************/
-
 // Get highlights, wrappers, and hyperlinks at a given point
-Highlighter.prototype.getTargetsAtPoint = function (pointerEvent) {
+Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
   const highlightIds = new Set();
   const wrappers = [];
   const hyperlinks = [];
   const wrapperElements = new Set();
-  const targetElements = document.elementsFromPoint(pointerEvent.clientX, pointerEvent.clientY);
+  const targetElements = document.elementsFromPoint(clientX, clientY);
   for (const element of targetElements) {
     if (element === this._annotatableContainer) break;
     if (element.matches('mark[data-hh-highlight-id]')) {
@@ -905,8 +903,8 @@ Highlighter.prototype.getTargetsAtPoint = function (pointerEvent) {
     }
   }
   const additionsRect = this._additionsDiv.getBoundingClientRect();
-  const x = pointerEvent.clientX - additionsRect.left;
-  const y = pointerEvent.clientY - additionsRect.top - 5; // Shift hit area down 5 pixels
+  const x = clientX - additionsRect.left;
+  const y = clientY - additionsRect.top - 5; // Shift hit area down 5 pixels
   for (const highlightId of Object.keys(this._highlightsById)) {
     if (highlightIds.has(highlightId)) continue;
     const mergedRects = this._highlightsById[highlightId].mergedRects;
@@ -915,19 +913,28 @@ Highlighter.prototype.getTargetsAtPoint = function (pointerEvent) {
       if (this._isPointInRect(x, y, rect)) { highlightIds.add(highlightId); break; }
     }
   }
-  return { highlights: this.getHighlightInfo(highlightIds), wrappers, hyperlinks };
+  return {
+    targetCount: highlightIds.size + wrappers.length + hyperlinks.length,
+    highlights: this.getHighlightInfo(highlightIds),
+    wrappers,
+    hyperlinks,
+    selectionType: globalThis.getSelection().type,
+    activeHighlightId: this._activeHighlightId,
+  };
 }
+
+
+/********************** Private Methods **********************/
 
 // Check if the tap hits any highlights, wrappers, or links
 Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
   if (!pointerEvent) return;
-  const targets = this.getTargetsAtPoint(pointerEvent);
-  const targetCount = targets.highlights.length + targets.wrappers.length + targets.hyperlinks.length;
+  const targets = this.getTargetsAtPoint(pointerEvent.clientX, pointerEvent.clientY);
+  console.log(targets)
   return {
-    targetCount: targetCount,
-    tapRange: this._getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
-    nativeEvent: pointerEvent,
     ...targets,
+    nativeEvent: pointerEvent,
+    tapRange: this._getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
   };
 }
 
@@ -1065,7 +1072,7 @@ Highlighter.prototype._updateSelectionState = function () {
     this._svgActiveOverlay.dataset.hhStyle = style;
     let svgContent = '';
     for (const mergedRect of mergedRects) {
-      svgContent += this._getStyleTemplate(highlightInfo.style, 'svg', mergedRect, true);
+      svgContent += this._getStyleString(highlightInfo.style, 'svg', mergedRect, true);
     }
     this._svgActiveOverlay.innerHTML = svgContent;
 
@@ -1077,7 +1084,7 @@ Highlighter.prototype._updateSelectionState = function () {
 
   // Update selection stylesheet
   if (changes.activeHighlightIdChanged || changes.colorChanged || changes.styleChanged) {
-    const colorString = options.colors[color] ?? (supportsAccentColor ? 'AccentColor' : 'dodgerblue');
+    const colorString = options.colorDefs[color] ?? (supportsAccentColor ? 'AccentColor' : 'dodgerblue');
     this._annotatableContainer.style.setProperty('--hh-color', colorString);
 
     // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
@@ -1092,12 +1099,12 @@ Highlighter.prototype._updateSelectionState = function () {
       for (const svgHighlight of this._svgBackground.querySelectorAll(`g[data-hh-highlight-id="${activeHighlightId}"]`)) {
         svgHighlight.remove();
       }
-      const styleTemplate = this._getStyleTemplate(style, 'css', null, true);
+      const styleString = this._getStyleString(style, 'css', null, true);
       this._selectionStylesheet.replaceSync(`
         ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
         ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
         ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
-        ${this._containerSelector} ::selection { --hh-color: ${colorString}; ${styleTemplate} }
+        ${this._containerSelector} ::selection { --hh-color: ${colorString}; ${styleString} }
         ${this._containerSelector} rt::selection, ${this._containerSelector} img::selection { background-color: transparent; }
       `);
 
@@ -1111,15 +1118,15 @@ Highlighter.prototype._updateSelectionState = function () {
   }
 
   // Update selection handle location and visibility
-  const showCustomHandles =
-    (options.showCustomHandlesOnTouch || this._pointerType === 'mouse')
-    && (options.showCustomHandlesForActiveHighlights && activeHighlightId
-      || options.showCustomHandlesForTextSelection && !activeHighlightId);
-  if (selection.type === 'Range' && showCustomHandles) {
+  const showDragHandles =
+    (options.showDragHandles.includes('touch') || this._pointerType === 'mouse')
+    && (options.showDragHandles.includes('highlights') && activeHighlightId
+      || options.showDragHandles.includes('selection') && !activeHighlightId);
+  if (selection.type === 'Range' && showDragHandles) {
     const additionsRect = this._additionsDiv.getBoundingClientRect();
     const startNodeIsRtl = globalThis.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
     const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
-    for (const handle of this._customHandles) {
+    for (const handle of this._dragHandles) {
       let side;
       if (handle.dataset.hhPosition === 'start') {
         side = startNodeIsRtl ? 'right' : 'left';
@@ -1134,20 +1141,20 @@ Highlighter.prototype._updateSelectionState = function () {
       }
       if (handle.dataset.hhSide !== side) {
         handle.dataset.hhSide = side;
-        this.setOptions({ customHandles: options.customHandles });
+        this.setOptions({ dragHandles: options.dragHandles });
       }
     }
-    this._setCustomHandleVisibility(true);
+    this._setDragHandleVisibility(true);
   } else {
-    this._setCustomHandleVisibility(false);
+    this._setDragHandleVisibility(false);
   }
 
   // Send event
   this._annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionchange', { detail: this._selectionState }));
 }
 
-Highlighter.prototype._setCustomHandleVisibility = function (visible = this._customHandles[0].style.visibility === 'hidden') {
-  for (const handle of this._customHandles) {
+Highlighter.prototype._setDragHandleVisibility = function (visible = this._dragHandles[0].style.visibility === 'hidden') {
+  for (const handle of this._dragHandles) {
     handle.style.visibility = visible ? 'visible' : 'hidden';
   }
 }
@@ -1320,12 +1327,12 @@ Highlighter.prototype._getTextNodeWalker = function (root = this._annotatableCon
 Highlighter.prototype._updateAppearanceStylesheet = function () {
   const options = this._options;
   let css = '';
-  for (const color of Object.keys(options.colors)) {
-    css += `[data-hh-color="${color}"] { --hh-color: ${options.colors[color]}; }\n`;
+  for (const color of Object.keys(options.colorDefs)) {
+    css += `[data-hh-color="${color}"] { --hh-color: ${options.colorDefs[color]}; }\n`;
   }
-  for (const style of Object.keys(options.styles)) {
-    const styleTemplate = this._getStyleTemplate(style, 'css', null);
-    css += `mark[data-hh-highlight-id][data-hh-style="${style}"] { ${styleTemplate} }\n`;
+  for (const style of Object.keys(options.styleDefs)) {
+    const styleString = this._getStyleString(style, 'css', null);
+    css += `mark[data-hh-highlight-id][data-hh-style="${style}"] { ${styleString} }\n`;
   }
   this._appearanceStylesheet.replaceSync(css);
 }
@@ -1333,8 +1340,8 @@ Highlighter.prototype._updateAppearanceStylesheet = function () {
 // Get the resolved drawing mode for a highlight
 Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
   const options = this._options;
-  const resolvedStyle = Object.hasOwn(options.styles, highlightInfo.style) ? highlightInfo.style : options.defaultStyle;
-  if ((options.drawingMode === 'svg' && !options.styles[resolvedStyle]?.svg)
+  const resolvedStyle = Object.hasOwn(options.styleDefs, highlightInfo.style) ? highlightInfo.style : options.defaultStyle;
+  if ((options.drawingMode === 'svg' && !options.styleDefs[resolvedStyle]?.svg)
     || (options.drawingMode === 'highlight-api' && !supportsHighlightApi)) {
     return 'mark-elements';
   }
@@ -1349,21 +1356,21 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo) {
   return hash;
 }
 
-// Get style template for a given highlight style
-Highlighter.prototype._getStyleTemplate = function (style, type, mergedRect = null, active = false) {
+// Get style string for a given highlight style
+Highlighter.prototype._getStyleString = function (style, type, mergedRect = null, active = false) {
   const options = this._options;
-  style = Object.hasOwn(options.styles, style) ? style : options.defaultStyle;
-  let styleTemplate = options.styles[style]?.[type] ?? '';
+  style = Object.hasOwn(options.styleDefs, style) ? style : options.defaultStyle;
+  let styleString = options.styleDefs[style]?.[type] ?? '';
   if (active) {
-    styleTemplate = options.styles[style]?.[`${type}Active`] ?? styleTemplate;
+    styleString = options.styleDefs[style]?.[`${type}Active`] ?? styleString;
   }
-  if (styleTemplate && type === 'svg' && mergedRect) {
-    styleTemplate = styleTemplate.replace(/\{(x|y|width|height|top|right|bottom|left)\}/g, (_, key) => mergedRect[key]);
+  if (styleString && type === 'svg' && mergedRect) {
+    styleString = styleString.replace(/\{(x|y|width|height|top|right|bottom|left)\}/g, (_, key) => mergedRect[key]);
   }
-  return styleTemplate;
+  return styleString;
 }
 
-// Check if the text selection is being resized. If a new selection range is within 2 characters of the previous selection range, the selection is assumed to be resizing. There's not a reliable way to track dragging of a native OS selection handle from JavaScript, but this can be used as an approximation. It will also trigger when dragging a custom selection handle, and when expanding a selection with arrow keys.
+// Check if the text selection is being resized. If a new selection range is within 2 characters of the previous selection range, the selection is assumed to be resizing. There's not a reliable way to track dragging of a native OS selection handle from JavaScript, but this can be used as an approximation. It will also trigger when dragging a custom handle, and when expanding a selection with arrow keys.
 Highlighter.prototype._detectSelectionResize = function (prevRange, newRange) {
   this._handleDragTimeoutId = clearTimeout(this._handleDragTimeoutId);
   if (prevRange && newRange) {
@@ -1632,20 +1639,29 @@ const _reNonWhitespaceDash = /[^\s|\p{Pd}]/u;
 
 // Default options
 const _defaultOptions = {
-  colors: {
+  drawingMode: 'svg',
+  snapToWord: false,
+  longPressTimeout: 500,
+  enableHover: false,
+  dragHandles: {
+    left: '<div data-hh-default-handle=""></div>',
+    right: '<div data-hh-default-handle=""></div>',
+  },
+  showDragHandles: ['highlights'],
+  colorDefs: {
     'red': 'hsl(360, 100%, 70%)',
     'orange': 'hsl(30, 100%, 60%)',
     'yellow': 'hsl(50, 100%, 60%)',
     'green': 'hsl(80, 100%, 45%)',
     'blue': 'hsl(180, 100%, 45%)',
   },
-  styles: {
+  styleDefs: {
     'fill': {
       css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-      svg: '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
+      svg: '<rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.14));" />',
       svgActive: `
-        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 80%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
+        <rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.14));" />
       `,
     },
     'underline': {
@@ -1658,23 +1674,12 @@ const _defaultOptions = {
       `,
     },
   },
-  wrappers: {
+  wrapperDefs: {
     'screen-reader-label': {
       start: '<span class="sr-only">{startLabel} </span>',
       end: '<span class="sr-only"> {endLabel}</span>',
     },
   },
-  customHandles: {
-    left: '<div data-hh-default-handle=""></div>',
-    right: '<div data-hh-default-handle=""></div>',
-  },
-  snapToWord: false,
-  longPressTimeout: 500,
-  drawingMode: 'svg',
-  showCustomHandlesForActiveHighlights: true,
-  showCustomHandlesForTextSelection: false,
-  showCustomHandlesOnTouch: false,
-  hoverEnabled: false,
 }
 
 // Workaround to allow programmatic text selection on tap in iOS Safari

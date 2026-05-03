@@ -173,10 +173,10 @@
         <label><input type="radio" name="hh-drawing-mode" value="mark-elements"> HTML mark elements</label><br>
       </p>
       <p>
-        Show custom selection handles:<br>
-        <label><input type="checkbox" id="hh-custom-handles-active-highlights" checked> For active highlights</label><br>
-        <label><input type="checkbox" id="hh-custom-handles-text-selection"> For text selection</label><br>
-        <label><input type="checkbox" id="hh-custom-handles-touch"> On touch devices</label><br>
+        Show custom drag handles:<br>
+        <label><input type="checkbox" name="hh-drag-handles" value="highlights" checked> For active highlights</label><br>
+        <label><input type="checkbox" name="hh-drag-handles" value="selection"> For text selection</label><br>
+        <label><input type="checkbox" name="hh-drag-handles" value="touch"> On touch devices</label><br>
       </p>
       <b>Active highlight:</b>
       <div id="snippet-container">
@@ -249,8 +249,25 @@
 
       const options = {
         drawingMode: 'svg',
-        hoverEnabled: true,
-        styles: {
+        enableHover: true,
+        styleDefs: {
+          'fill': {
+            css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
+            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
+            svg: '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />',
+            svgActive: `
+              <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 80%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
+            `,
+          },
+          'underline': {
+            css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
+            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
+            svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
+            svgActive: `
+              <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
+              <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />
+            `,
+          },
           'double-underline': {
             css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
             cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
@@ -268,7 +285,7 @@
             css: 'background-color: transparent; color: transparent;',
           },
         },
-        wrappers: {
+        wrapperDefs: {
           'footnote': {
             start: '<span class="footnote-marker" data-content="{content}" aria-label="{ariaLabel}"></span>&NoBreak;',
             end: '',
@@ -333,20 +350,20 @@
       for (const radioButton of document.getElementsByName('hh-drawing-mode')) {
         radioButton.addEventListener('change', (event) => {
           if (event.target.value === 'highlight-api' && !CSS.highlights) {
-            alert('Your browser doesn’t support the Custom Highlight API.');
+            alert('Your browser doesn’t support the CSS Highlight API.');
           } else {
             highlighter.setOptions({ drawingMode: event.target.value });
           }
         })
       }
-      for (const [id, option] of [
-        ['hh-custom-handles-active-highlights', 'showCustomHandlesForActiveHighlights'],
-        ['hh-custom-handles-text-selection', 'showCustomHandlesForTextSelection'],
-        ['hh-custom-handles-touch', 'showCustomHandlesOnTouch'],
-      ]) {
-        document.getElementById(id).addEventListener('change', (event) =>
-          highlighter.setOptions({ [option]: event.target.checked })
-        );
+
+      const dragHandleCheckboxes = document.querySelectorAll('[name="hh-drag-handles"]');
+      for (const dragHandleCheckbox of dragHandleCheckboxes) {
+        dragHandleCheckbox.addEventListener('change', (event) => {
+          const showDragHandles = Array.from(dragHandleCheckboxes).filter(el => el.checked).map(el => el.value);
+          console.log(showDragHandles);
+          highlighter.setOptions({ showDragHandles: showDragHandles });
+        })
       }
 
       // ── Highlight event handlers ──────────────────────────────────────────────
@@ -400,13 +417,13 @@
 
       // Respond to hover
       container.addEventListener('hh:hover', (event) => {
-        container.style.cursor = (event.detail.targetFound && !highlighter.getActiveHighlightId()) ? 'pointer' : '';
+        container.style.cursor = (event.detail.targetCount > 0 && !highlighter.getActiveHighlightId()) ? 'pointer' : '';
       });
 
       // Respond to tap
       container.addEventListener('hh:tap', respondToTap);
       function respondToTap(event) {
-        if (event.detail.targetCount === 0 || event.detail.isLongPress) return;
+        if (event.detail.targetCount === 0 || event.detail.isLongPress || event.detail.selectionType === 'Range') return;
         if (event.detail.targetCount > 1) {
           handleAmbiguousAction(event);
         } else if (event.detail.targetCount === 1) {
@@ -449,7 +466,7 @@
         for (const wrapper of event.detail.wrappers) highlightIds.add(wrapper.highlightInfo.highlightId);
         const highlights = highlighter.getHighlightInfo(highlightIds);
         for (const highlight of highlights) {
-          let buttonStyle = highlighter.getOptions().styles[highlight.style]['css']
+          let buttonStyle = highlighter.getOptions().styleDefs[highlight.style]['css']
           let buttonHtml = `
             <button data-hh-color="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
               <span style="${buttonStyle}">${highlight.rangeHtml}</span>

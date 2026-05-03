@@ -2,7 +2,7 @@
 <html lang="en" translate="no">
   <head>
     <meta charset="utf-8">
-    <title>HighlightHelper.js Demo</title>
+    <title>HighlightHelper.js Load Test</title>
     <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">
     <meta name="google" content="notranslate">
   </head>
@@ -155,7 +155,7 @@
       }
 
       // Activate the first highlight when the tap is ambiguous
-      document.querySelector(containerSelector).addEventListener('hh:ambiguousaction', (event) => {
+      document.querySelector(containerSelector).addEventListener('hh:tap', (event) => {
         const firstHighlight = event.detail.highlights[0];
         if (firstHighlight) highlighter.activateHighlight(firstHighlight.highlightId);
       });

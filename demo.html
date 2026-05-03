@@ -81,13 +81,13 @@
           content: attr(data-content);
         }
       }
-      .note-container {
+      .margin-container {
         display: inline-block;
         visibility: visible;
         font-style: normal;
         height: 1em;
       }
-      .note {
+      .margin-container .note {
         position: absolute;
         inset-inline-end: 0.5rem;
         font-size: 1.2rem;
@@ -145,16 +145,16 @@
         <button name="hh-color" value="yellow">Yellow</button>
         <button name="hh-color" value="green">Green</button>
         <button name="hh-color" value="blue">Blue</button>
-        <button name="hh-style" value="fill" checked> Fill</button>
+        <button name="hh-style" value="fill"> Fill</button>
         <button name="hh-style" value="underline"> Underline</button>
         <button name="hh-style" value="double-underline"> Double underline</button>
         <button name="hh-style" value="colored-text"> Colored text</button>
         <button name="hh-style" value="redacted"> Redacted</button>
         <button name="hh-remove">Remove</button>
         <button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-content="a" aria-label="Footnote [a]">&NoBreak;</span><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="🙂" aria-label="Smile emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="margin-note" title="Margin note"><span class="note-container"><span class="note" data-content="✅" aria-label="Checkmark emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-content="a" data-aria-label="Footnote [a]">&NoBreak;</span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="margin-indicator" title="Margin indicator"><span class="margin-container"><span class="note" data-content="🙂" data-aria-label="Smile emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
+        <button name="hh-wrapper" value="margin-indicator" title="Margin indicator"><span class="margin-container"><span class="note" data-content="✅" data-aria-label="Checkmark emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
       </div>
       <p>
         <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
@@ -220,7 +220,7 @@
         },
         {
           highlightId: 'hh-1729991847300',
-          color: 'blue', style: 'fill', wrapper: 'margin-note',
+          color: 'blue', style: 'fill', wrapper: 'margin-indicator',
           wrapperVariables: { content: '🙂', ariaLabel: 'Smile emoji', },
           startParagraphId: 'p2', startParagraphOffset: 27,
           endParagraphId: 'p2', endParagraphOffset: 42,
@@ -273,82 +273,83 @@
             start: '<span class="footnote-marker" data-content="{content}" aria-label="{ariaLabel}"></span>&NoBreak;',
             end: '',
           },
-          'margin-note': {
-            start: '<span class="note-container"><span class="note" data-content="{content}" aria-label="{ariaLabel}"></span></span>&NoBreak;',
+          'margin-indicator': {
+            start: '<span class="margin-container"><span class="note" data-content="{content}" aria-label="{ariaLabel}"></span></span>&NoBreak;',
             end: '',
           },
         },
       }
 
-      // Initialize a Highlighter instance, then load highlights
+      // Set defaults
+      let defaultColor = 'yellow';
+      let defaultStyle = 'fill';
+      let pointerMode = 'auto';
+
+      // ── Initialization ────────────────────────────────────────────────────────
       const highlighter = new Highlighter('main', 'main [id]');
       highlighter.setOptions(options);
       highlighter.loadHighlights(highlights);
-      
-      let rememberStyle = true;
-      const rememberStyleCheckbox = document.getElementById('hh-remember-style');
-      rememberStyleCheckbox.addEventListener('change', (event) => { rememberStyle = event.currentTarget.checked });
 
-      // Call HighlightHelper.js methods when color, style, wrapper, or remove buttons on this demo page are tapped
-      const colorButtons = document.getElementsByName('hh-color');
-      for (const colorButton of colorButtons) {
+      // ── Annotation buttons (color / style / wrapper / remove) ────────────────
+      let rememberStyle = true;
+      document.getElementById('hh-remember-style').addEventListener('change', (event) => { rememberStyle = event.target.checked; });
+
+      for (const colorButton of document.getElementsByName('hh-color')) {
         colorButton.addEventListener('click', () => {
           highlighter.createOrUpdateHighlight({ color: colorButton.value });
-          if (rememberStyle) highlighter.setOptions({ defaultColor: colorButton.value });
+          if (rememberStyle) defaultColor = colorButton.value;
         });
       }
-      const styleButtons = document.getElementsByName('hh-style');
-      for (const styleButton of styleButtons) {
+      for (const styleButton of document.getElementsByName('hh-style')) {
         styleButton.addEventListener('click', () => {
           highlighter.createOrUpdateHighlight({ style: styleButton.value });
-          if (rememberStyle) highlighter.setOptions({ defaultStyle: styleButton.value });
+          if (rememberStyle) defaultStyle = styleButton.value;
         });
       }
-      const wrapperButtons = document.getElementsByName('hh-wrapper');
-      for (const wrapperButton of wrapperButtons) {
+      for (const wrapperButton of document.getElementsByName('hh-wrapper')) {
         const contentSpan = wrapperButton.querySelector('[data-content]');
         wrapperButton.addEventListener('click', () => {
           highlighter.createOrUpdateHighlight({
             wrapper: wrapperButton.value === 'none' ? null : wrapperButton.value,
-            wrapperVariables: { content: contentSpan?.dataset?.content ?? '', ariaLabel: contentSpan?.dataset?.ariaLabel ?? '', },
+            wrapperVariables: { content: contentSpan?.dataset?.content ?? '', ariaLabel: contentSpan?.dataset?.ariaLabel ?? '' },
           });
         });
       }
-      const removeButton = document.getElementsByName('hh-remove')[0];
-      removeButton.addEventListener('click', () => { highlighter.removeHighlights([highlighter.getActiveHighlightId()]); });
+      document.getElementsByName('hh-remove')[0].addEventListener('click', () => {
+        highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
+      });
       document.addEventListener('keydown', respondToKeyPress);
       function respondToKeyPress(event) {
         if (event.key === 'Backspace') highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
       }
 
-      // Call HighlightHelper.js methods when options are changed
-      const snapToWordCheckbox = document.getElementById('hh-snap-to-word');
-      const pointerModeRadioButtons = document.getElementsByName('hh-pointer-mode');
-      const drawingModeRadioButtons = document.getElementsByName('hh-drawing-mode');
-      snapToWordCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ snapToWord: event.currentTarget.checked }); });
-      for (const pointerModeRadioButton of pointerModeRadioButtons) {
-        pointerModeRadioButton.addEventListener('change', (event) => {
-          let pointerMode = document.querySelector('[name="hh-pointer-mode"]:checked').value;
-          highlighter.setOptions({ pointerMode: pointerMode });
-        });
+      // ── Options controls (checkboxes, radio buttons) ──────────────────────────
+      document.getElementById('hh-snap-to-word').addEventListener('change', (event) => {
+        highlighter.setOptions({ snapToWord: event.target.checked });
+      });
+      for (const radioButton of document.getElementsByName('hh-pointer-mode')) {
+        radioButton.addEventListener('change', (event) => { pointerMode = event.target.value });
       }
-      for (const drawingModeRadioButton of drawingModeRadioButtons) {
-        drawingModeRadioButton.addEventListener('change', (event) => {
-          let drawingMode = document.querySelector('[name="hh-drawing-mode"]:checked').value;
-          if (drawingMode === 'highlight-api' && !CSS.highlights) {
+      for (const radioButton of document.getElementsByName('hh-drawing-mode')) {
+        radioButton.addEventListener('change', (event) => {
+          if (event.target.value === 'highlight-api' && !CSS.highlights) {
             alert('Your browser doesn’t support the Custom Highlight API.');
           } else {
-            highlighter.setOptions({ drawingMode: drawingMode });
+            highlighter.setOptions({ drawingMode: event.target.value });
           }
-        });
+        })
       }
-      const customHandlesActiveHighlightsCheckbox = document.getElementById('hh-custom-handles-active-highlights');
-      customHandlesActiveHighlightsCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesForActiveHighlights: event.currentTarget.checked }); });
-      const customHandlesTextSelectionCheckbox = document.getElementById('hh-custom-handles-text-selection');
-      customHandlesTextSelectionCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesForTextSelection: event.currentTarget.checked }); });
-      const customHandlesOnTouchCheckbox = document.getElementById('hh-custom-handles-touch');
-      customHandlesOnTouchCheckbox.addEventListener('change', (event) => { highlighter.setOptions({ showCustomHandlesOnTouch: event.currentTarget.checked }); });
+      for (const [id, option] of [
+        ['hh-custom-handles-active-highlights', 'showCustomHandlesForActiveHighlights'],
+        ['hh-custom-handles-text-selection', 'showCustomHandlesForTextSelection'],
+        ['hh-custom-handles-touch', 'showCustomHandlesOnTouch'],
+      ]) {
+        document.getElementById(id).addEventListener('change', (event) =>
+          highlighter.setOptions({ [option]: event.target.checked })
+        );
+      }
 
+      // ── Highlight event handlers ──────────────────────────────────────────────
       const container = document.querySelector('main');
       const snippetDiv = document.getElementById('snippet');
       const infoDiv = document.getElementById('highlight-info');
@@ -370,7 +371,7 @@
         for (const annotatedParagraph of annotatedParagraphs) {
           const snippetParagraph = annotatedParagraph.cloneNode(true);
           for (const element of snippetParagraph.querySelectorAll('[data-hh-highlight-id]')) element.remove();
-          snippetParagraph.id = `${snippetParagraph.id}_${event.detail.highlight.highlightId}`;
+          snippetParagraph.id = `${snippetParagraph.id}_snippet`;
           snippetDiv.append(snippetParagraph);
         }
         const snippetHighlights = [
@@ -378,8 +379,8 @@
             highlightId: event.detail.highlight.highlightId + '_snippet',
             readOnly: true,
             color: event.detail.highlight.color, style: event.detail.highlight.style,
-            startParagraphId: `${event.detail.highlight.startParagraphId}_${event.detail.highlight.highlightId}`, startParagraphOffset: event.detail.highlight.startParagraphOffset,
-            endParagraphId: `${event.detail.highlight.endParagraphId}_${event.detail.highlight.highlightId}`, endParagraphOffset: event.detail.highlight.endParagraphOffset,
+            startParagraphId: `${event.detail.highlight.startParagraphId}_snippet`, startParagraphOffset: event.detail.highlight.startParagraphOffset,
+            endParagraphId: `${event.detail.highlight.endParagraphId}_snippet`, endParagraphOffset: event.detail.highlight.endParagraphOffset,
           },
         ];
         const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
@@ -405,12 +406,37 @@
       // Respond to tap
       container.addEventListener('hh:tap', respondToTap);
       function respondToTap(event) {
-        if (event.detail.wrappers.length === 1) {
-          highlighter.activateHighlight(event.detail.wrappers[0].highlightInfo.highlightId);
+        if (event.detail.targetCount === 0 || event.detail.isLongPress) return;
+        if (event.detail.targetCount > 1) {
+          handleAmbiguousAction(event);
+        } else if (event.detail.targetCount === 1) {
+          if (event.detail.highlights.length === 1) {
+            highlighter.activateHighlight(event.detail.highlights[0].highlightId);
+          } else if (event.detail.wrappers.length === 1) {
+            highlighter.activateHighlight(event.detail.wrappers[0].highlight.highlightId);
+          } else if (event.detail.hyperlinks.length === 1) {
+            highlighter.activateHyperlink(event.detail.hyperlinks[0].index);
+          }
         }
       }
 
-      // Respond to ambiguous action events (when a user taps on overlapping highlights, wrappers, and/or links)
+      // Respond to selection change
+      // Live highlighting
+      function respondToSelectionChange(event) {
+        if (
+          (pointerMode === 'live' || (pointerMode === 'auto' && event.detail.pointerType === 'pen'))
+          && !highlighter.getActiveHighlightId()
+        ) {
+          highlighter.createOrUpdateHighlight({
+            color: defaultColor,
+            style: defaultStyle,
+          });
+        }
+      }
+      container.addEventListener('hh:selectionchange', respondToSelectionChange);
+
+
+      // ── Disambiguation dialog ─────────────────────────────────────────────────
       const disambiguationPanel = document.getElementById('disambiguation-panel');
       const disambiguationButtonsDiv = document.getElementById('disambiguation-buttons');
       const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
@@ -425,7 +451,7 @@
         for (const highlight of highlights) {
           let buttonStyle = highlighter.getOptions().styles[highlight.style]['css']
           let buttonHtml = `
-            <button data-hh-color-key="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
+            <button data-hh-color="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
               <span style="${buttonStyle}">${highlight.rangeHtml}</span>
             </button>
           `;
@@ -444,8 +470,9 @@
         setTimeout(function() { disambiguationPanel.showModal(); }, 10);
       }
 
+      // ── Margin note positioning ───────────────────────────────────────────────
       // Update margin note position when a highlight with a start wrapper is active
-      function updateMarginNotePosition(event) {
+      function moveMarginIndicator(event) {
         const activeHighlightId = highlighter.getActiveHighlightId();
         if (!activeHighlightId) return;
         const note = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
@@ -454,8 +481,8 @@
         const startRect = selection.type === 'Range' ? selection.getRangeAt(0).getBoundingClientRect() : null;
         if (startRect) note.style.top = (startRect.top + window.scrollY - 1) + 'px';
       }
-      container.addEventListener('hh:highlightactivate', updateMarginNotePosition);
-      document.addEventListener('selectionchange', updateMarginNotePosition);
+      container.addEventListener('hh:highlightactivate', moveMarginIndicator);
+      container.addEventListener('hh:selectionchange', moveMarginIndicator);
 
       // Log events for debugging
       container.addEventListener('hh:highlightcreate', console.info)

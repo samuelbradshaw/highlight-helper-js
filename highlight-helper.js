@@ -253,7 +253,6 @@ Highlighter.prototype._loadEventListeners = function () {
     // Trigger a long-press event if the user doesn't lift their finger within the specified time
     if (options.longPressTimeout) this._longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
 
-    console.log('AAAAAA')
     this._tapResult = this._checkForTapTargets(event);
   }
   this._annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
@@ -582,11 +581,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         CSS.highlights.set(highlightId, cssHighlight);
       }
       cssHighlight.add(range);
-      const styleString = this._getStyleString(highlightInfo.style, 'css', null);
-      const colorString = options.colorDefs[highlightInfo.color];
-      this._highlightApiStylesheet.insertRule(`${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }`);
-      this._highlightApiStylesheet.insertRule(`${this._containerSelector} rt::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
-      this._highlightApiStylesheet.insertRule(`${this._containerSelector} img::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }`);
 
     // Draw highlights with SVG shapes
     } else if (options.drawingMode === 'svg') {
@@ -602,10 +596,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       this._svgBackground.appendChild(group);
     }
   }
+  this._rebuildHighlightApiStylesheet();
 }
 
 // Create a new highlight, or update an existing highlight when it changes
-Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, draw = true, activate = true) {
+Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = true, activate = true) {
   const options = this._options;
   const highlightId = attributes.highlightId ?? this._activeHighlightId ?? _getNewHighlightId();
   const appearanceChanges = [];
@@ -710,14 +705,14 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes = {}, draw 
     startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
     endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
     endParagraphOffset: endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset,
-    // Read-only properties
-    escapedHighlightId: CSS.escape(highlightId),
+    // Generated properties
     rangeText: rangeText ?? oldHighlightInfo?.rangeText,
     rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
     rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
     rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
     mergedRects: oldHighlightInfo?.mergedRects ?? null,
     resolvedDrawingMode: null,
+    escapedHighlightId: CSS.escape(highlightId),
   };
   this._highlightsById[highlightId] = newHighlightInfo;
   newHighlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(newHighlightInfo);
@@ -811,6 +806,7 @@ Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(th
       highlightId: highlightId,
     }}));
   }
+  this._rebuildHighlightApiStylesheet();
 }
 
 // Get the active highlight ID (if there is one)
@@ -930,7 +926,6 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
 Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
   if (!pointerEvent) return;
   const targets = this.getTargetsAtPoint(pointerEvent.clientX, pointerEvent.clientY);
-  console.log(targets)
   return {
     ...targets,
     nativeEvent: pointerEvent,
@@ -1001,21 +996,27 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
     }
   }
 
-  // Remove Highlight API highlights (looping in reverse to avoid indexes changing as items are removed)
+  // Remove Highlight API highlights
   // Instead of a global CSS.highlights.clear(), only clear CSS highlights in this Highlighter instance
   if (supportsHighlightApi) {
-    for (let r = this._highlightApiStylesheet.cssRules.length - 1; r >= 0; r--) {
-      const selectorText = this._highlightApiStylesheet.cssRules[r].selectorText;
-      for (const highlightId of highlightIds) {
-        const highlightInfo = this._highlightsById[highlightId];
-        if (selectorText.includes(`::highlight(${highlightInfo.escapedHighlightId})`)) {
-          this._highlightApiStylesheet.deleteRule(r);
-          CSS.highlights.delete(highlightId);
-          break;
-        }
-      }
+    for (const highlightId of highlightIds) {
+      CSS.highlights.delete(highlightId);
     }
   }
+}
+
+// Rebuild the highlight-api stylesheet from scratch using all active highlights
+Highlighter.prototype._rebuildHighlightApiStylesheet = function () {
+  if (!supportsHighlightApi || this._options.drawingMode !== 'highlight-api') return;
+  let cssText = '';
+  for (const highlightInfo of Object.values(this._highlightsById)) {
+    if (highlightInfo.resolvedDrawingMode !== 'highlight-api') continue;
+    const styleString = this._getStyleString(highlightInfo.style, 'css', null);
+    const colorString = this._options.colorDefs[highlightInfo.color];
+    cssText += `${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }\n`;
+    cssText += `${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }\n`;
+  }
+  this._highlightApiStylesheet.replaceSync(cssText);
 }
 
 // Update selection background, handles, and state object
@@ -1616,7 +1617,7 @@ function _debounce(func, wait) {
 }
 
 // Default function for generating a highlight ID
-const _getNewHighlightId = () => {
+function _getNewHighlightId() {
   return 'hh-' + Date.now().toString();
 }
 

@@ -404,11 +404,21 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   if (knownHighlightIds.size > 0) this.removeHighlights([...knownHighlightIds]);
   this.drawHighlights(highlightIdsToDraw);
 
-  this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
+  const container = this._annotatableContainer;
+  const eventDetail = {
     addedCount: addedCount, removedCount: knownHighlightIds.size, updatedCount: updatedCount,
     totalCount: Object.keys(this._highlightsById).length,
-    timeToLoad: Date.now() - startTimestamp,
-  } }));
+  };
+  
+  // Fire event after browser paint (for accurate loadTimeMs)
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      container.dispatchEvent(new CustomEvent('hh:highlightsload', { detail: {
+        ...eventDetail, loadTimeMs: Date.now() - startTimestamp,
+      } }));
+    }, 0);
+  });
+}
 
 // Create a new highlight, or update an existing highlight when it changes
 Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = true, activate = true) {

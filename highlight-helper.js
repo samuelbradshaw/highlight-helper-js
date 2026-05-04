@@ -328,16 +328,15 @@ Highlighter.prototype._loadEventListeners = function () {
   let latestMoveEvent = null;
   const handleHoverEvent = (event) => {
     const targets = this.getTargetsAtPoint(event.clientX, event.clientY);
-    const { targetCount, highlights, wrappers, hyperlinks } = targets;
     const newHoverHash = [
-      ...highlights.map(h => h.highlightId),
-      ...wrappers.map(w => `${w.highlight.highlightId}:${w.position}`),
-      ...hyperlinks.map(h => h.index),
+      ...targets.highlights.map(h => h.highlightId),
+      ...targets.wrappers.map(w => `${w.highlight.highlightId}:${w.position}`),
+      ...targets.hyperlinks.map(h => h.index),
     ].sort().join('\x00');
     if (newHoverHash === this._hoverHash) return;
     this._hoverHash = newHoverHash;
     this._annotatableContainer.dispatchEvent(new CustomEvent('hh:hover', {
-      detail: { targetCount, highlights, wrappers, hyperlinks, nativeEvent: event },
+      detail: { ...targets, nativeEvent: event },
     }));
   };
   this._annotatableContainer.addEventListener('mousemove', (event) => {
@@ -410,6 +409,149 @@ Highlighter.prototype.loadHighlights = function (highlights) {
     totalCount: Object.keys(this._highlightsById).length,
     timeToLoad: Date.now() - startTimestamp,
   } }));
+
+// Create a new highlight, or update an existing highlight when it changes
+Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = true, activate = true) {
+  const options = this._options;
+  const highlightId = attributes.highlightId ?? this._activeHighlightId ?? _getNewHighlightId();
+  const appearanceChanges = [];
+  const boundsChanges = [];
+
+  const oldHighlightInfo = this._highlightsById[highlightId];
+  const isNewHighlight = !oldHighlightInfo;
+
+  // If the highlight is currently activate, ignore programmatic bounds changes (selection range takes priority)
+  if (highlightId === this._activeHighlightId) {
+    attributes.startParagraphId = null;
+    attributes.startParagraphOffset = null;
+    attributes.endParagraphId = null;
+    attributes.endParagraphOffset = null;
+  }
+
+  // Warn if color, style, or wrapper attributes are invalid
+  if (attributes.color && !Object.hasOwn(options.colorDefs, attributes.color)) {
+    console.warn(`Highlight color "${attributes.color}" is not defined in options (highlightId: ${highlightId}).`);
+  }
+  if (attributes.style && !Object.hasOwn(options.styleDefs, attributes.style)) {
+    console.warn(`Highlight style "${attributes.style}" is not defined in options (highlightId: ${highlightId}).`);
+  }
+  if (attributes.wrapper && !Object.hasOwn(options.wrapperDefs, attributes.wrapper)) {
+    console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
+  }
+
+  // Check which appearance properties changed
+  for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
+    if (isNewHighlight || (attributes[key] != null && attributes[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
+  }
+
+  // If the highlight was and still is read-only, return
+  if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) {
+    this.deactivateHighlights();
+    return;
+  }
+
+  // Calculate the bounds of the highlight range, if it's changed
+  let adjustedSelectionRange, highlightRange;
+  let rangeText, rangeHtml, rangeParagraphIds;
+  let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
+  const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
+  if (selection.type === 'Range') adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0));
+  if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
+    let startNode, startOffset, endNode, endOffset;
+    if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
+      startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
+      startParagraphOffset = Number.parseInt(attributes.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
+      endParagraphId = attributes.endParagraphId ?? oldHighlightInfo?.endParagraphId;
+      endParagraphOffset = Number.parseInt(attributes.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
+      ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
+      ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
+    } else if (adjustedSelectionRange) {
+      startNode = adjustedSelectionRange.startContainer;
+      startOffset = adjustedSelectionRange.startOffset;
+      endNode = adjustedSelectionRange.endContainer;
+      endOffset = adjustedSelectionRange.endOffset;
+      ([ startParagraphId, startParagraphOffset ] = this._getParagraphOffset(startNode, startOffset));
+      ([ endParagraphId, endParagraphOffset ] = this._getParagraphOffset(endNode, endOffset));
+    }
+
+    // Create a new highlight range
+    highlightRange = document.createRange();
+    highlightRange.setStart(startNode, startOffset);
+    highlightRange.setEnd(endNode, endOffset);
+
+    // Check which bounds properties changed
+    const boundsValues = { startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset };
+    for (const key of Object.keys(boundsValues)) {
+      if (isNewHighlight || boundsValues[key] !== oldHighlightInfo[key]) boundsChanges.push(key);
+    }
+
+    // Set variables that depend on the range
+    const temporaryHtmlElement = document.createElement('div');
+    temporaryHtmlElement.appendChild(highlightRange.cloneContents());
+    for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-hh-highlight-id]:not([data-hh-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
+    for (const element of temporaryHtmlElement.querySelectorAll(`[data-hh-ignore]`)) element.remove();
+    rangeText = temporaryHtmlElement.textContent;
+    rangeHtml = temporaryHtmlElement.innerHTML;
+    let startParagraphIndex = this._annotatableParagraphIds.indexOf(startParagraphId);
+    let endParagraphIndex = this._annotatableParagraphIds.indexOf(endParagraphId);
+    if (startParagraphIndex === -1) startParagraphIndex = 0;
+    if (endParagraphIndex === -1) endParagraphIndex = this._annotatableParagraphIds.length - 1;
+    rangeParagraphIds = this._annotatableParagraphIds.slice(startParagraphIndex, endParagraphIndex + 1);
+  }
+
+  // If there are no valid changes, return
+  if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) {
+    return;
+  }
+
+  // Update saved highlight info
+  const newHighlightInfo = {
+    highlightId: highlightId,
+    color: attributes.color ?? oldHighlightInfo?.color ?? options.defaultColor,
+    style: attributes.style ?? oldHighlightInfo?.style ?? options.defaultStyle,
+    wrapper: attributes.wrapper ?? oldHighlightInfo?.wrapper ?? options.defaultWrapper,
+    wrapperVariables: attributes.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
+    readOnly: attributes.readOnly ?? oldHighlightInfo?.readOnly ?? false,
+    startParagraphId: startParagraphId ?? oldHighlightInfo?.startParagraphId,
+    startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
+    endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
+    endParagraphOffset: endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset,
+    // Generated properties
+    rangeText: rangeText ?? oldHighlightInfo?.rangeText,
+    rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
+    rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
+    rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
+    mergedRects: oldHighlightInfo?.mergedRects ?? null,
+    resolvedDrawingMode: null,
+    escapedHighlightId: CSS.escape(highlightId),
+  };
+  this._highlightsById[highlightId] = newHighlightInfo;
+  newHighlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(newHighlightInfo);
+
+  // Draw highlight if needed
+  if (draw) {
+    if (highlightId !== this._activeHighlightId || appearanceChanges.some(k => k.startsWith('wrapper'))) {
+      this.drawHighlights([highlightId]);
+    } else {
+      // If the highlight is active, just update the selection style (the highlight will be redrawn on deactivate)
+      this._updateSelectionState();
+    }
+  }
+
+  // Activate highlight if needed
+  if (activate && highlightId !== this._activeHighlightId) {
+    this.activateHighlight(highlightId);
+  }
+
+  const detail = {
+    highlight: newHighlightInfo,
+    changes: appearanceChanges.concat(boundsChanges),
+  }
+  if (isNewHighlight) {
+    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightcreate', { detail: detail }));
+  } else {
+    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
+  }
 }
 
 // Draw (or redraw) specified highlights, or all highlights on the page
@@ -599,150 +741,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   this._rebuildHighlightApiStylesheet();
 }
 
-// Create a new highlight, or update an existing highlight when it changes
-Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = true, activate = true) {
-  const options = this._options;
-  const highlightId = attributes.highlightId ?? this._activeHighlightId ?? _getNewHighlightId();
-  const appearanceChanges = [];
-  const boundsChanges = [];
-
-  const oldHighlightInfo = this._highlightsById[highlightId];
-  const isNewHighlight = !oldHighlightInfo;
-
-  // If the highlight is currently activate, ignore programmatic bounds changes (selection range takes priority)
-  if (highlightId === this._activeHighlightId) {
-    attributes.startParagraphId = null;
-    attributes.startParagraphOffset = null;
-    attributes.endParagraphId = null;
-    attributes.endParagraphOffset = null;
-  }
-
-  // Warn if color, style, or wrapper attributes are invalid
-  if (attributes.color && !Object.hasOwn(options.colorDefs, attributes.color)) {
-    console.warn(`Highlight color "${attributes.color}" is not defined in options (highlightId: ${highlightId}).`);
-  }
-  if (attributes.style && !Object.hasOwn(options.styleDefs, attributes.style)) {
-    console.warn(`Highlight style "${attributes.style}" is not defined in options (highlightId: ${highlightId}).`);
-  }
-  if (attributes.wrapper && !Object.hasOwn(options.wrapperDefs, attributes.wrapper)) {
-    console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
-  }
-
-  // Check which appearance properties changed
-  for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
-    if (isNewHighlight || (attributes[key] != null && attributes[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
-  }
-
-  // If the highlight was and still is read-only, return
-  if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) {
-    this.deactivateHighlights();
-    return;
-  }
-
-  // Calculate the bounds of the highlight range, if it's changed
-  let adjustedSelectionRange, highlightRange;
-  let rangeText, rangeHtml, rangeParagraphIds;
-  let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
-  const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
-  if (selection.type === 'Range') adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0));
-  if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
-    let startNode, startOffset, endNode, endOffset;
-    if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
-      startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
-      startParagraphOffset = Number.parseInt(attributes.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
-      endParagraphId = attributes.endParagraphId ?? oldHighlightInfo?.endParagraphId;
-      endParagraphOffset = Number.parseInt(attributes.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
-      ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
-      ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
-    } else if (adjustedSelectionRange) {
-      startNode = adjustedSelectionRange.startContainer;
-      startOffset = adjustedSelectionRange.startOffset;
-      endNode = adjustedSelectionRange.endContainer;
-      endOffset = adjustedSelectionRange.endOffset;
-      ([ startParagraphId, startParagraphOffset ] = this._getParagraphOffset(startNode, startOffset));
-      ([ endParagraphId, endParagraphOffset ] = this._getParagraphOffset(endNode, endOffset));
-    }
-
-    // Create a new highlight range
-    highlightRange = document.createRange();
-    highlightRange.setStart(startNode, startOffset);
-    highlightRange.setEnd(endNode, endOffset);
-
-    // Check which bounds properties changed
-    const boundsValues = { startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset };
-    for (const key of Object.keys(boundsValues)) {
-      if (isNewHighlight || boundsValues[key] !== oldHighlightInfo[key]) boundsChanges.push(key);
-    }
-
-    // Set variables that depend on the range
-    const temporaryHtmlElement = document.createElement('div');
-    temporaryHtmlElement.appendChild(highlightRange.cloneContents());
-    for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-hh-highlight-id]:not([data-hh-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
-    for (const element of temporaryHtmlElement.querySelectorAll(`[data-hh-ignore]`)) element.remove();
-    rangeText = temporaryHtmlElement.textContent;
-    rangeHtml = temporaryHtmlElement.innerHTML;
-    let startParagraphIndex = this._annotatableParagraphIds.indexOf(startParagraphId);
-    let endParagraphIndex = this._annotatableParagraphIds.indexOf(endParagraphId);
-    if (startParagraphIndex === -1) startParagraphIndex = 0;
-    if (endParagraphIndex === -1) endParagraphIndex = this._annotatableParagraphIds.length - 1;
-    rangeParagraphIds = this._annotatableParagraphIds.slice(startParagraphIndex, endParagraphIndex + 1);
-  }
-
-  // If there are no valid changes, return
-  if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) {
-    return;
-  }
-
-  // Update saved highlight info
-  const newHighlightInfo = {
-    highlightId: highlightId,
-    color: attributes.color ?? oldHighlightInfo?.color ?? options.defaultColor,
-    style: attributes.style ?? oldHighlightInfo?.style ?? options.defaultStyle,
-    wrapper: attributes.wrapper ?? oldHighlightInfo?.wrapper ?? options.defaultWrapper,
-    wrapperVariables: attributes.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
-    readOnly: attributes.readOnly ?? oldHighlightInfo?.readOnly ?? false,
-    startParagraphId: startParagraphId ?? oldHighlightInfo?.startParagraphId,
-    startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
-    endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
-    endParagraphOffset: endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset,
-    // Generated properties
-    rangeText: rangeText ?? oldHighlightInfo?.rangeText,
-    rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
-    rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
-    rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
-    mergedRects: oldHighlightInfo?.mergedRects ?? null,
-    resolvedDrawingMode: null,
-    escapedHighlightId: CSS.escape(highlightId),
-  };
-  this._highlightsById[highlightId] = newHighlightInfo;
-  newHighlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(newHighlightInfo);
-
-  // Draw highlight if needed
-  if (draw) {
-    if (highlightId !== this._activeHighlightId || appearanceChanges.some(k => k.startsWith('wrapper'))) {
-      this.drawHighlights([highlightId]);
-    } else {
-      // If the highlight is active, just update the selection style (the highlight will be redrawn on deactivate)
-      this._updateSelectionState();
-    }
-  }
-
-  // Activate highlight if needed
-  if (activate && highlightId !== this._activeHighlightId) {
-    this.activateHighlight(highlightId);
-  }
-
-  const detail = {
-    highlight: newHighlightInfo,
-    changes: appearanceChanges.concat(boundsChanges),
-  }
-  if (isNewHighlight) {
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightcreate', { detail: detail }));
-  } else {
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
-  }
-}
-
 // Activate a highlight by ID
 Highlighter.prototype.activateHighlight = function (highlightId) {
   const highlightToActivate = this._highlightsById[highlightId];
@@ -796,19 +794,6 @@ Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = t
   }
 }
 
-// Remove the specified highlights, or all highlights on the page
-Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
-  this.deactivateHighlights();
-  this._undrawHighlights(highlightIds);
-  for (const highlightId of highlightIds) {
-    delete this._highlightsById[highlightId];
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
-      highlightId: highlightId,
-    }}));
-  }
-  this._rebuildHighlightApiStylesheet();
-}
-
 // Get the active highlight ID (if there is one)
 Highlighter.prototype.getActiveHighlightId = function () {
   return this._activeHighlightId;
@@ -827,52 +812,6 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
   );
   return highlights;
 };
-
-// Update initialized options
-Highlighter.prototype.setOptions = function (optionsToUpdate) {
-  const options = this._options;
-  for (const key in optionsToUpdate) {
-    if (['colorDefs', 'styleDefs', 'wrapperDefs'].includes(key) && optionsToUpdate[key] != null) {
-      options[key] = { ..._defaultOptions[key], ...options[key], ...optionsToUpdate[key] };
-    } else {
-      options[key] = optionsToUpdate[key] ?? options[key] ?? _defaultOptions[key];
-    }
-  }
-  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate || 'colorDefs' in optionsToUpdate) {
-    this._updateAppearanceStylesheet();
-  }
-  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate) {
-    this.drawHighlights();
-  }
-  if ('dragHandles' in optionsToUpdate) {
-    for (const handle of this._dragHandles) {
-      handle.children[1].innerHTML = options.dragHandles[handle.dataset.hhSide] ?? '';
-    }
-  }
-  if ('enableHover' in optionsToUpdate && !optionsToUpdate.enableHover) this._hoverHash = null;
-}
-
-// Get all of the initialized options
-Highlighter.prototype.getOptions = function () {
-  return this._options;
-}
-
-// Get the current selection state. Returns the same object that arrives in the most recent hh:selectionchange event's detail.
-Highlighter.prototype.getSelectionState = function () {
-  return this._selectionState;
-}
-
-// Remove this Highlighter instance and its highlights
-Highlighter.prototype.removeHighlighter = function () {
-  this.loadHighlights([]);
-  this._additionsDiv.remove();
-  _removeStylesheets(this._stylesheets);
-  this._resizeObserver.disconnect();
-  this._controller.abort();
-
-  delete this._annotatableContainer.dataset.hhContainer;
-  this._annotatableContainer.highlighter = undefined;
-}
 
 // Get highlights, wrappers, and hyperlinks at a given point
 Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
@@ -917,6 +856,65 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
     selectionType: globalThis.getSelection().type,
     activeHighlightId: this._activeHighlightId,
   };
+}
+
+// Update initialized options
+Highlighter.prototype.setOptions = function (optionsToUpdate) {
+  const options = this._options;
+  for (const key in optionsToUpdate) {
+    if (['colorDefs', 'styleDefs', 'wrapperDefs'].includes(key) && optionsToUpdate[key] != null) {
+      options[key] = { ..._defaultOptions[key], ...options[key], ...optionsToUpdate[key] };
+    } else {
+      options[key] = optionsToUpdate[key] ?? options[key] ?? _defaultOptions[key];
+    }
+  }
+  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate || 'colorDefs' in optionsToUpdate) {
+    this._updateAppearanceStylesheet();
+  }
+  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate) {
+    this.drawHighlights();
+  }
+  if ('dragHandles' in optionsToUpdate) {
+    for (const handle of this._dragHandles) {
+      handle.children[1].innerHTML = options.dragHandles[handle.dataset.hhSide] ?? '';
+    }
+  }
+  if ('enableHover' in optionsToUpdate && !optionsToUpdate.enableHover) this._hoverHash = null;
+}
+
+// Get all of the initialized options
+Highlighter.prototype.getOptions = function () {
+  return this._options;
+}
+
+// Get the current selection state. Returns the same object that arrives in the most recent hh:selectionchange event's detail.
+Highlighter.prototype.getSelectionState = function () {
+  return this._selectionState;
+}
+
+// Remove the specified highlights, or all highlights on the page
+Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
+  this.deactivateHighlights();
+  this._undrawHighlights(highlightIds);
+  for (const highlightId of highlightIds) {
+    delete this._highlightsById[highlightId];
+    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
+      highlightId: highlightId,
+    }}));
+  }
+  this._rebuildHighlightApiStylesheet();
+}
+
+// Remove this Highlighter instance and its highlights
+Highlighter.prototype.removeHighlighter = function () {
+  this.loadHighlights([]);
+  this._additionsDiv.remove();
+  _removeStylesheets(this._stylesheets);
+  this._resizeObserver.disconnect();
+  this._controller.abort();
+
+  delete this._annotatableContainer.dataset.hhContainer;
+  this._annotatableContainer.highlighter = undefined;
 }
 
 

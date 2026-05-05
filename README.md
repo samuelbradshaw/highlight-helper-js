@@ -1,37 +1,46 @@
 # HighlightHelper.js
 
-**HighlightHelper.js** is a JavaScript tool that enables highlighting or underlining text in an HTML page (such as a digital book or article). Highlighting text in an HTML document can be difficult, especially in cases where a highlight starts in one element but ends in another.
+**HighlightHelper.js** is a JavaScript library for drawing highlights in HTML content. It handles on-page rendering and provides events for user interaction, leaving other business logic such as data persistence to the consumer.
 
-Behind the scenes, HighlightHelper.js supports three different mechanisms for drawing highlights:
-
-1. [SVG shapes](https://developer.mozilla.org/en-US/docs/Web/SVG) drawn behind text (default).
-2. The [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) (experimental&ast;).
-3. Inserted [HTML mark elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark).
-
-An HTML demo page that shows basic functionality can be found here: [HighlightHelper.js Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html). Source code for the demo is in **demo.html**. HighlightHelper.js itself is in **highlight-helper.js**.
-
-&ast;The Custom Highlight API requires Safari 17.2+ or Chrome 105+, and may hang when rendering a large number of highlights. Additionally, only a few CSS styles are supported (see [Styling Highlights](https://www.w3.org/TR/css-pseudo-4/#highlight-styling)). Browser support and loading speed will hopefully improve in the future. See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html) for HighlightHelper.js.
+To see it in action, open the [HighlightHelper.js Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html).
 
 ### Documentation:
-- [Known issues](#known-issues)
+- [Features](#features)
 - [Getting started](#getting-started)
     - [Installation options](#installation-options)
     - [Basic usage](#basic-usage)
     - [Constructor](#constructor)
-- [Methods, options, and custom events](#methods-options-and-custom-events)
-    - [Methods](#methods)
-    - [Options](#options)
+    - [Public methods](#public-methods)
+- [Advanced usage](#advanced-usage)
     - [Custom events](#custom-events)
-- [Highlight attributes](#highlight-attributes)
+    - [Highlight objects](#highlight-objects)
+    - [Options](#options)
+    - [Element attributes](#element-attributes)
+- [Appendix](#appendix)
+    - [Known issues](#known-issues)
+    - [Choosing a drawing mode](#choosing-a-drawing-mode)
+    - [Code snippets](#code-snippets)
 
-## <a name="known-issues"></a>Known issues
+## <a name="features"></a>Features
 
-There are a few known issues:
+- Draw highlights across element boundaries.
+- Draw highlights as read-only, or enable editing with custom drag handles.
+- Respond to tap, hover, and other events.
+- Flexible “wrappers” API for attaching content to a highlight.
+- Define your own colors and styles in multiple drawing modes.
+- Compatibility with standard text selection APIs.
 
-- **Chrome on Android** doesn’t set focus (and therefore doesn’t show text selection handles) when text is programmatically selected (such as from a disambiguation panel), unless the selection is initiated directly by a user’s tap. However, if you’re working in a native app with a webview, you may be able to focus the webview from Android (see [StackOverflow](https://stackoverflow.com/a/6372903/1349044) and [GitHub](https://github.com/lawlsausage/save_gfy/pull/1)).
-- **Safari on iOS** doesn’t respect the text selection color set via CSS, so when a highlight is active for editing it has a blue overlay. However, if you’re working in a native app with a webview, you may be able to set colors natively with [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
-- **Safari on iOS** loses focus and doesn’t send a `visibilitychange` event if the device screen locks after a period of inactivity. This can cause selection handles to not show when unlocking your device and tapping on an existing highlight. Going to another app and back or manually triggering a `visibilitychange` event will allow HighlightHelper.js to set focus again. Focus will also be set again if the user long-presses to select text.
-- **Safari on iOS and macOS** doesn’t allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)). This will hopefully be fixed in a future version of Safari.
+### <a name="use-cases"></a>Use cases
+
+HighlightHelper.js can support many use cases where styles are applied dynamically to text. For example:
+
+- Study tools (highlight textbooks, articles, Bible/scripture content).
+- Commentaries (add indicators for footnotes or related content).
+- Drafting (insert comments, underline spelling errors, show collaborative editing).
+- Synced audio (show emphasis on the current word).
+- Accessibility (embed labels for screen readers).
+- Searching (highlight search matches, find on page).
+- Code editors (syntax highlighting).
 
 
 ## <a name="getting-started"></a>Getting started
@@ -73,9 +82,6 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 ### <a name="basic-usage"></a>Basic usage
 
 ```html
-<!-- Annotatable container (element that includes content to be highlighted) -->
-<div id="annotatable-container"></div>
-
 <!-- Import HighlightHelper.js (classic JavaScript) -->
 <script src="https://cdn.jsdelivr.net/gh/samuelbradshaw/highlight-helper-js@main/highlight-helper.min.js"></script>
 
@@ -89,103 +95,260 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
       endParagraphId: 'p1', endParagraphOffset: 59,
     },
   ];
-  
+
   // Create a Highlighter instance
   const containerSelector = 'main';
   const paragraphSelector = 'main [id]';
   const highlighter = new Highlighter(containerSelector, paragraphSelector);
-  
+
   // Set options
   const options = { drawingMode: 'svg' };
   highlighter.setOptions(options);
-  
+
   // Load highlights
-  highlighter.loadHighlights(highlights);  
+  highlighter.loadHighlights(highlights);
 </script>
 ```
 
 ### <a name="constructor"></a>Constructor
 
-- **new Highlighter(containerSelector, paragraphSelector)** – Create a Highlighter instance. Parameters:
-- * **containerSelector** – CSS selector for the “annotatable container” – the section of the page with content to be highlighted. You can have multiple highlighters on a page, but they must be in different, non-overlapping containers. Required. Default: `body`.
-- * **paragraphSelector** – CSS selector for the paragraphs (or other block elements) that can be highlighted within the annotatable container. Each paragraph is expected to have an ID attribute in the HTML, which is used to keep track of where a highlight starts and ends. Required. Default: `h1[id], h2[id], h3[id], h4[id], h5[id], h6[id], p[id], ol[id], ul[id], dl[id], tr[id]`.
+- **Highlighter(containerSelector, paragraphSelector)** – Create a Highlighter instance. Parameters:
+- * **containerSelector** – CSS selector for the “annotatable container” – the section of the page with content to be highlighted. You can have multiple highlighters on a page, but they must be in different, non-overlapping containers. Default: `body`.
+- * **paragraphSelector** – CSS selector for the paragraphs (or other block elements) that can be highlighted within the container. Each paragraph is expected to have an ID attribute for anchoring highlights. Default: `:is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]`.
 
 
-## <a name="methods-options-and-custom-events"></a>Methods, options, and custom events
+### <a name="public-methods"></a>Public methods
 
-### <a name="methods"></a>Methods
+- **loadHighlights(highlights)** – Load a set of highlights. If highlights are already loaded, this method will diff for changes and replace the loaded highlights. Parameters:
+    - **highlights** – Array of [highlight objects](#highlight-objects). Each highlight should have a `highlightId`, and one or more other attributes. Omitted or invalid properties will fall back to previous or default values.
+- **createOrUpdateHighlight(properties, draw = true, activate = true)** – Create and load a new highlight, or update an existing highlight. Parameters:
+    - **properties** – Object with one or more [highlight object](#highlight-objects) properties. When updating an existing highlight, only the `highlightId` and properties that changed need to be provided. If a highlight ID isn't provided, HighlightHelper.js will update the currently-active highlight or create a new highlight with a default ID.
+    - **draw** – Boolean. Indicates if the highlight should be drawn after loading. Default: `true`.
+    - **activate** – Boolean. Indicates if the highlight should be activated after loading. Default: `true`.
+- **drawHighlights(highlightIds = all)** – Draw or redraw highlights. In most cases, HighlightHelper.js will draw highlights automatically, but a manual redraw can be triggered if needed. Parameters:
+    - **highlightIds** – Array of highlight IDs. Default: all highlights.
+- **activateHighlight(highlightId)** – Activate the specified highlight (i.e. enable it for editing). Only one highlight can be active at a time (because it's tied to text selection, and there can only be one text selection on a page). This is usually called in response to an `hh:tap` event. Parameters:
+    - **highlightId** – The `highlightId` of the highlight to activate.
+- **activateHyperlink(index)** – Activate the specified hyperlink (i.e. open the link). A link without overlapping highlights will open automatically, but if there are overlaps it will need to be handled manually in response to the `hh:tap` event. Parameters:
+    - **index** – The 0-based index of the link, relative to other links in the container.
+- **deactivateHighlights(removeSelectionRanges = true)** – Deactivate the active highlight, if there is one. Highlights are deactivated automatically if the user taps away. Parameters:
+    - **removeSelectionRanges** – Boolean. Indicates whether text selection should be cleared. Default: `true`.
+- **getActiveHighlightId()** – Get the highlight ID of the active highlight (if there is one).
+- **getHighlightInfo(highlightIds = all, paragraphId = null)** – Get an array of [highlight objects](#highlight-objects) for specified highlight IDs. Highlights will be sorted based on their position on the page. Parameters:
+    - **highlightIds** – Array of highlight IDs. Default: all highlights.
+    - **paragraphId** – Paragraph ID. Filters highlights based on their start paragraph. Default: `null`.
+- **getTargetsAtPoint(clientX, clientY)** – Gets any highlights, wrappers, and hyperlinks at the given coordinates.
+    - **clientX** – Horizontal (x) coordinate relative to the viewport.
+    - **clientY** – Vertical (y) coordinate relative to the viewport.
+- **setOptions(optionsToUpdate)** – Change one or more options. Parameters:
+    - **optionsToUpdate** – Object with one or more [option keys and values](#options).
+- **getOptions()** – Get the current option values.
+- **getSelectionState()** – Get information about the current text selection and active highlight.
+- **removeHighlights(highlightIds = all)** – Remove the specified highlights. Parameters:
+    - **highlightIds** – Array of highlight IDs. Default: all highlights.
+- **removeHighlighter()** – Removes the current Highlighter instance and its highlights, resetting to a clean state. Called automatically if a new Highlighter instance is created on the same container.
 
-- **loadHighlights(highlights)** – Load an array of existing highlights into HighlightHelper.js. Each highlight should have one or more of the properties described under “Highlight attributes” below. Omitted or invalid properties will fall back to previous or default values. If highlights are already loaded, this method will replace the loaded highlights by diffing for changes, then adding, removing, or updating individual highlights as needed.
-- **createOrUpdateHighlight(attributes, triggeredByUserAction)** – Create or update an individual highlight. `attributes` is an object with one or more of the properties described under “Highlight attributes” below. If a highlight ID isn’t passed in, the currently-active highlight will be updated, if there is one, otherwise a new highlight will be created. If it’s a new highlight and start and end bounds aren’t passed in, the highlight will be created based on selected text. `triggeredByUserAction` is an optional boolean (default: `true`). If this is set to false, the highlight won’t be activated after editing, and the color and style won’t be saved as the default for the next highlight.
-- **drawHighlights(highlightIds)** – Draw or redraw highlights on the page, given an array of highlight IDs. If no highlight IDs are passed, all highlights will be drawn. This shouldn’t need to be called frequently (HighlightHelper.js will usually draw or redraw highlights automatically).
-- **activateHighlight(highlightId)** – Activate a highlight for editing, given its `highlightId`. Only one highlight can be active at a time (because it’s tied to text selection, and there can only be one text selection on a page). Normally, a highlight activates automatically when the user taps it; however, if there are overlapping highlights or if `autoTapToActivate` is set to `false`, this will need to be called manually.
-- **activateHyperlink(position)** – Activate the specified hyperlink (i.e. open the link). `position` is the 0-based position of the link in the annotatable area of the page, relative to other links. Normally, a link opens automatically when the user taps it; however, if a highlight overlaps the hyperlink or if `autoTapToActivate` is set to `false`, this will need to be called manually.
-- **deactivateHighlights()** – Clear the text selection and deactivate any active highlights. Normally, highlights are deactivated automatically when the user taps away.
-- **removeHighlights(highlightIds)** – Remove the specified highlights. If `highlightIds` isn’t provided, all highlights will be removed.
-- **getActiveHighlightId()** – Get the ID of the currently-active highlight (if there is one).
-- **getHighlightInfo(highlightIds, paragraphId)** – Get highlight information for an array of highlight IDs. If no highlight IDs are passed, information for all relevant highlights will be returned. If `paragraphId` is provided, only highlights that start in the specified paragraph will be returned. Highlights will be sorted based on their position on the page.
-- **setOptions(optionsToUpdate)** – Change one or more options. `optionsToUpdate` is an object with one or more of the option keys described below.
-- **getOptions()** – Get the initialized options, including defaults for any options that weren’t explicitly set.
-- **removeHighlighter()** – Removes the current Highlighter instance and all of its highlights from the page. If a new Highlighter instance is created with the same annotatable container, the previous Highlighter instance for that container will be removed.
+
+## <a name="advanced-usage"></a>Advanced usage
+
+### <a name="custom-events"></a>Custom events
+
+HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the annotatable container. These can be used to trigger actions.
+
+- **hh:tap** – Sent when a user taps in the annotatable container (potentially trying to tap a highlight, wrapper, or link).
+- **hh:hover** – Sent when a user hovers over a highlight, wrapper, or link. Requires `enableHover` to be set in [options](#options).
+- **hh:selectionchange** – Sent when the selection bounds or appearance changes.
+- **hh:highlightsload** – Sent when an array of highlights loads.
+- **hh:highlightcreate** – Sent when a new highlight is created.
+- **hh:highlightupdate** – Sent when a highlight is updated.
+- **hh:highlightactivate** – Sent when a highlight is activated.
+- **hh:highlightdeactivate** – Sent when a highlight is deactivated.
+- **hh:highlightremove** – Sent when a highlight is removed.
+
+Each event has a `detail` attribute that provides additional information. For example, the `hh:tap` event could be used to activate a highlight:
+
+```javascript
+const annotatableContainer = document.getElementById('annotatable-container');
+annotatableContainer.addEventListener('hh:tap', (event) => {
+  console.log(event.detail);
+  if (event.detail.highlights.length >= 1 {
+    highlighter.activateHighlight(event.detail.highlights[0].highlightId);
+  }
+});
+```
+
+
+## <a name="highlight-objects"></a>Highlight objects
+
+Highlight objects have the following editable properties:
+
+- **highlightId** – String. Unique identifier for the highlight. Example: `dQw4w9WgXcQ`. Default: `hh-[timestamp]`.
+- **color** – String. Highlight color (key from the `colorDefs` option). Default: `yellow`.
+- **style** – String. Highlight style (key from the `styleDefs` option). Default: `fill`.
+- **wrapper** – String. Highlight wrapper (key from the `wrapperDefs` option). Example: `{ startLabel: 'Start', }`. Default: `null`.
+- **wrapperVariables** – Object. Wrapper variables. Default: `null`.
+- **readOnly** – Boolean. Indicates whether the highlight should be read-only. Default: `false`.
+- **startParagraphId** – String. Paragraph ID where the highlight starts. Example: `p1`. Default based on selected text.
+- **startParagraphOffset** – Integer. Character offset* where the highlight starts, relative to the beginning of the paragraph. Example: `0`. Default based on selected text.
+- **endParagraphId** – String. Paragraph ID where the highlight ends. Example: `p1`. Default based on selected text.
+- **endParagraphOffset** – Integer. Character offset* where the highlight ends (exclusive), relative to the beginning of the paragraph. Example: `27`. Default based on selected text.
+
+These additional properties are updated on the fly:
+
+- **rangeText** – String. Plain text of the highlighted range.
+- **rangeHtml** – String. HTML content of the highlighted range.
+- **rangeParagraphIds** – Array of paragraph IDs. Paragraphs in the highlighted range.
+- **rangeObj** – [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
+- **mergedRects** – Array of DOMRects. Location of rendered highlights, relative to the top of the page (one rectangle for each line of text).
+- **resolvedDrawingMode** – String. Drawing mode used to render the highlight. Should be either the current drawing mode, or `mark-elements` (fallback when a highlight can't be rendered in the current drawing mode).
+- **escapedHighlightId** – Strong. Escaped highlight ID used internally in case the provided ID isn't a valid CSS identifier.
+
+*Elements with the attribute `data-hh-ignore` are skipped when calculating character offsets. See [element attributes](#element-attributes).
 
 
 ### <a name="options"></a>Options
 
-Options can be provided when HighlightHelper.js is initialized. They can also be updated after initialization using `setOptions()`. Options that aren’t defined will fall back to default values.
+The following options can be set using the `setOptions()` method. Options that aren't defined will fall back to default values. For complex options, it may help to reference the default values at the bottom of highlight-helper.js.
 
-- **colors** – Object that describes available highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default: red, orange, yellow, green, blue (see full default values at the bottom of highlight-helper.js).
-- **styles** – Object that describes available highlight styles. Keys are style names, and there are four properties for each style: `css`, `svg`, `cssActive` (optional), and `svgActive` (optional). `css` is a CSS string used for styling highlights in `highlight-api` and `mark-elements` drawing modes, as well as for read-only highlights. `svg` is an SVG string (one or more SVG shapes) to represent the highlight in `svg` drawing mode. `cssActive` and `svgActive` are alternative styles to be used when a highlight is active. The CSS custom property `var(--hh-color)` can be used to reference the highlight color value. For SVG highlights, the following variables (if present) will be replaced with relevant values from the highlight’s DOMRect: `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}`. Default: fill, underline (see full default values at the bottom of highlight-helper.js).
-- **wrappers** – Object that describes available highlight wrappers. Keys are wrapper names, and values are objects with two optional properties: `start` (HTML string to be inserted at the beginning of the highlight), and `end` (HTML string to be inserted at the end of the highlight). `var(--hh-color)` can be used to reference the highlight color value. Variables surrounded by curly brackets will be replaced with variables stored in the `wrapperVariables` attribute of the highlight, if applicable. Default: screen-reader-label. See default values at the bottom of highlight-helper.js.
-- **customHandles** – Object that describes custom selection handles that a user can drag to resize a selection or highlight. Because most touch devices have built-in selection handles, custom selection handles will only show when using a mouse or trackpad. There are two properties: `left` (HTML string to be used for the left selection handle) and `right` (HTML string to be used for the right selection handle). `var(--hh-color)` can be used to reference the highlight color value. See default values at the bottom of highlight-helper.js.
-- **rememberStyle** – Whether the most recent color, style, and wrapper should be remembered and used by default the next time the user creates a highlight. Boolean. Default: `true`.
-- **snapToWord** – Whether highlights should snap to the nearest word boundary. Spaces and dashes are considered word boundaries (this option may not work correctly in all languages). Boolean. Default: `false`.
-- **autoTapToActivate** – Whether HighlightHelper.js should automatically activate highlights and hyperlinks when they’re tapped. If set to false, you’ll need to listen for the `hh:tap` event and call `activateHighlight()` or `activateHyperlink()` manually when needed. Boolean. Default: `true`.
-- **longPressTimeout** – Duration in milliseconds before a tap turns into a long-press. On long-press, HighlightHelper.js will send an `hh:tap` event with `isLongPress: true`. If this option is set to 0, HighlightHelper.js will treat long-presses the same as regular taps, sending the `hh:tap` event after the user lifts their finger. If you have access to system APIs (such as in a mobile app), you may be able to get the system long-press duration to use for this value (which may vary based on accessibility settings). For example, Android has a [getLongPressTimeout()](https://developer.android.com/reference/kotlin/android/view/ViewConfiguration#getlongpresstimeout) method and iOS has a [minimumPressDuration](https://developer.apple.com/documentation/uikit/uilongpressgesturerecognizer/minimumpressduration) property. Default: `500`.
-- **pointerMode** – Mode for responding to pointer events. Options are `simple` (create highlights by selecting text, then tapping a color or style); `live` (create highlights immediately when selecting text, without needing to tap a button); and `auto` (`simple` for touch and mouse input, but `live` when a stylus or Apple Pencil is detected). Default: `auto`.
-- **drawingMode** – Mode for drawing highlights on the page. Options are `svg` (SVG shapes), `highlight-api` (Custom Highlight API), and `mark-elements` (inserted HTML mark elements). For faster performance, read-only highlights will always be drawn as mark elements, even if a different drawing mode is set. Default: `svg`.
-- **defaultColor** – Key of the default highlight color. Default: `yellow`.
-- **defaultStyle** – Key of the default highlight style. Default: `fill`.
-- **defaultWrapper** – Key of the default highlight wrapper. Default: `null`.
-- **highlightIdFunction** – Identifier of a function that provides unique IDs for new highlights. Default: `_getNewHighlightId`.
-- **showCustomHandlesForActiveHighlights** – Whether custom selection handles should show for active highlights. Default: `true`.
-- **showCustomHandlesForTextSelection** – Whether custom selection handles should show for text selection. Default: `false`.
-- **showCustomHandlesOnTouch** – Whether custom selection handles should show on touch devices. Default: `false`.
-
-
-### <a name="custom-events"></a>Custom events
-
-HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the annotatable container that can be responded to:
-
-- **hh:highlightsload** – Sent when an array of highlights loads. Includes the number of highlights added, removed, or updated, the total number of loaded highlights, and the time they took to load (in milliseconds).
-- **hh:highlightcreate** – Sent when a new highlight is created. Includes information about the highlight.
-- **hh:highlightupdate** – Sent when the highlight changes. Includes information about the highlight, and a list of the attributes that changed.
-- **hh:highlightremove** – Sent when a highlight is removed. Includes the ID of the removed highlight.
-- **hh:tap** – Sent when a user taps in the annotatable container (potentially trying to tap a highlight, wrapper, or link). This will only be sent if there isn’t currently an active highlight. Includes the location of the tap, and the highlight, wrapper, or hyperlink that was tapped, if any.
-- **hh:selectionstyleupdate** – Sent when the selection color or style changes. Can be used to update custom selection UI, such as the color of selection handles. Includes the key of the color and style.
-- **hh:highlightactivate** – Sent when a highlight is activated. Includes information about the activated highlight.
-- **hh:highlightdeactivate** – Sent when a highlight is deactivated. Includes the ID of the deactivated highlight.
-- **hh:ambiguousaction** – Sent when a user taps on overlapping highlights, wrappers, and/or links. Includes the location of the tap, and the highlight(s), wrapper(s), and hyperlink(s) that were tapped. This event will not be sent if `autoTapToActivate` is set to `false`.
-- **selectionchange** – This is a [standard JavaScript event](https://developer.mozilla.org/en-US/docs/Web/API/Document/selectionchange_event) (not specific to HighlightHelper.js), but it’s worth mentioning here because it can be useful for adding custom selection UI around the selected text (such as a floating annotation menu). When this sends, you can call `window.getSelection()` to get the current [Selection object](https://developer.mozilla.org/en-US/docs/Web/API/Selection).
+- **drawingMode** – String. Default method for drawing highlights. See [Choosing a drawing mode](#choosing-a-drawing-mode). Possible values: `svg`, `highlight-api`, or `mark-elements`. Highlight styles not supported in the current drawing mode will fall back to `mark-elements`. Default: `svg`.
+- **snapToWord** – Boolean. Indicates whether highlights should snap to the nearest word boundary, delimited by spaces and dashes (may not work correctly in all languages). Default: `false`.
+- **longPressTimeout** – Integer. Minimum duration in milliseconds to be considered a long-press (`isLongPress` property on `hh:tap` event). Some operating systems may provide an API to get the system long-press duration ([Android](https://developer.android.com/reference/kotlin/android/view/ViewConfiguration#getlongpresstimeout); [iOS](https://developer.apple.com/documentation/uikit/uilongpressgesturerecognizer/minimumpressduration)), which may vary based on accessibility settings. Default: `500`.
+- **enableHover** – Boolean. Indicates whether the `hh:hover` event is enabled. Disabled by default to reduce processing. Default: `false`.
+- **dragHandles** – Object with properties `left` and `right`. Template used for custom handles that a user can drag to resize a selection or highlight. Properties:
+    - **left** – HTML string for the left selection handle.
+    - **right** – HTML string for the right selection handle.
+    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color.
+- **showDragHandles** – Array. Indicates when custom drag handles should be shown. Default: `['highlights']`. Possible values:
+    - **highlights** – Show custom handles for active highlights. Default: `true`.
+    - **selection** – Show custom handles for text selection. Default: `false`.
+    - **touch** – Show custom handles on touch devices (may be unstable due to interaction with built-in selection handles). Default: `false`.
+- **colorDefs** – Object. Defines highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default keys: `red`, `orange`, `yellow`, `green`, `blue`.
+- **styleDefs** – Object. Defines highlight style templates. Keys are style names. Default keys: `fill`, `underline`. Each style has four available properties:
+    - **css** (required) – CSS string used in `highlight-api` and `mark-elements` drawing modes, for active text selection, and as a fallback in `svg` drawing mode.
+    - **cssActive** (optional) – alternate CSS string for active highlights. Falls back to `css`.
+    - **svg** (optional) – SVG string used in `svg` drawing mode. Falls back to `css`.
+    - **svgActive** (optional) – alternate SVG string for active highlights. Falls back to `svg`, `cssActive`, or `css`.
+    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. Additionally, for SVG, the following variables will be replaced with values from the highlight's DOMRect: `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}`.
+- **wrapperDefs** – Object. Defines highlight wrapper templates. Keys are wrapper names. Default keys: `screen-reader-label`. Each wrapper has two properties:
+    - **start** – HTML template for the start wrapper. Default: `null`.
+    - **end** – HTML template for the end wrapper. Default: `null`.
+    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. Additionally, variables surrounded by curly brackets will be replaced with values from the highlight object's `wrapperVariables` attribute.
 
 
-## <a name="highlight-attributes"></a>Highlight attributes
+### <a name="element-attributes"></a>Element attributes
 
-These are the attributes that HighlightHelper.js stores for each highlight. You can update a highlight by calling `createOrUpdateHighlight(attributes)`, where `attributes` is an object that includes the keys to be updated.
+Elements used or created by HighlightHelper.js have the following properties, which can be used for CSS styling:
 
-- **highlightId** (read-only after creation) – The ID of the highlight.
-- **color** – The color of the highlight (key from the `colors` object in the initialized options). Example: `red`.
-- **style** – The style of the highlight (key from the `styles` object in the initialized options). Example: `single-underline`.
-- **wrapper** – The wrapper of the highlight (key from the `wrappers` object in the initialized options). More information about wrappers can be found above. Example: `none`.
-- **wrapperVariables** – Variables used in wrappers. Example: `{ marker: 'a', }`.
-- **readOnly** – Whether the highlight should be read-only (prevents a user from changing its color, bounds, or other attributes). Boolean. Example: `true`.
-- **startParagraphId** – ID of the paragraph where the highlight starts. Example: `p1`.
-- **startParagraphOffset** – Character offset where the highlight starts, relative to the beginning of the paragraph.* Example: 12.
-- **endParagraphId** – ID of the paragraph where the highlight ends. Example: `p1`.
-- **endParagraphOffset** – Character offset where the highlight ends, relative to the beginning of the paragraph.* Example: 14.
-- **escapedHighlightId** (read-only) – Escaped highlight ID used as a CSS identifier (this is used internally by HighlightHelper.js).
-- **rangeText** (read-only) – Text content in the highlighted range.
-- **rangeHtml** (read-only) – HTML content in the highlighted range.
-- **rangeParagraphIds** (read-only) – IDs of paragraphs in the highlighted range.
-- **rangeObj** (read-only) – The [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
+Identifying attributes:
+- **@data-hh-container** – Annotatable container.
+- **@data-hh-additions** – Element that contains drag handles and the SVG background.
+- **@data-hh-handle** – Drag handle parent element.
+- **@data-hh-handle-content** – Drag handle child element.
+- **@data-hh-default-handle** – Default drag handle (can be overwritten in options).
+- **@data-hh-svg-background** – SVG background where SVG highlights are drawn.
+- **@data-hh-svg-active-overlay** – SVG group with shapes for the active highlight.
+- **@data-hh-wrapper** – Wrapper element.
 
-*If you have dynamic elements that need to be inserted into an annotatable paragraph temporarily, you can mark them with the `data-hh-ignore` attribute. HighlightHelper.js will skip over elements with this attribute when calculating character offsets and drawing highlights.
+Differentiating attributes:
+- **@data-hh-highlight-id** (on highlight and wrapper elements) – highlight ID.
+- **@data-hh-color** (on highlight and wrapper elements) – color name.
+- **@data-hh-style** (on highlight and wrapper elements) – style name.
+- **@data-hh-wrapper** (on highlight and wrapper elements) – wrapper name.
+- **@data-hh-position** (on mark highlight and wrapper elements) – indicates if the element is at the `start` or `end` of the highlight, or both (`start end`).
+- **@data-hh-index** (on hyperlink) – 0-based index of the hyperlink.
+- **@data-hh-side** (on drag handle) – indicates if the handle is `left` or `right`.
+- **@data-hh-wrapper-hash** (on wrapper elements) – used internally to check if a wrapper needs to be replaced with a different wrapper.
+
+Other:
+- **@class="sr-only"** – Elements with this attribute are only visible to screen readers.
+- **@data-hh-ignore** – Elements with this attribute are skipped when calculating character offsets and highlight rectangle positions.
+- **@highlighter** (on container) – Highlighter instance associated with the container.
+- **@style="--hh-color: [color string];"** (on container) – CSS custom property with the current highlight's color string.
+- **@data-pointer-down** (on container) – Indicates whether the pointer (mouse, finger, etc.) is down on the page.
+
+
+## <a name="appendix"></a>Appendix
+
+### <a name="known-issues"></a>Known issues
+
+- **Chrome on Android** doesn't show text selection handles when text is selected programmatically (such as from a disambiguation panel, or with snap-to-word). Text selection must be initiated by a user gesture.
+    - Workaround: None.
+- **Chrome on Android and macOS** can cause text selection to jump and select more than expected when selecting Japanese text with ruby characters or dragging the selection to the edge of the page.
+    - Workaround: None.
+- **Safari on iOS and macOS** doesn't allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the CSS Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
+    - Workaround: Use a different drawing mode.
+- **Safari on iOS** doesn't respect text selection colors set via CSS, so when a highlight is active for editing it has a blue overlay.
+    - Workaround: In a native app with a webview, you may be able to set colors natively. See [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
+- **Safari on iOS 26** doesn't create a text selection when using an Apple Pencil (or other compatible stylus), until the stylus is lifted.
+    - Workaround: Double-tap then drag the stylus.
+- **Safari on macOS** – SVG highlights are slightly shifted when zoomed to the maximum zoom size.
+    - Workaround: Reduce text size.
+- **Amazon Fire webview** doesn’t show selection handles, making it difficult to resize an existing highlight (and custom drag handles don't work reliably on touch devices).
+    - Workaround: None.
+- **All browsers** don’t redraw SVG highlights in the correct location when printing.
+    - Workaround: HighlightHelper.js switches to mark element highlights temporarily when printing.
+
+
+### <a name="choosing-a-drawing-mode"></a>Choosing a drawing mode
+
+| | SVG | Highlight API | Mark Elements |
+| :--- | :--- | :--- | :--- |
+| **Loading speed** | Very fast | Slow | Fast |
+| **Browser support** | Full support | Requires iOS 17.2+ | Full support |
+| **Background shapes** | Good | None | Limited |
+| **Background colors** | Good | Good | Good |
+| **Text styles** | None, but falls back to mark elements | Limited | Good |
+| **Printing** | Poor by default, but falls back to mark elements | Good | Good |
+| **Screen reader accessibility** | None by default; good with wrappers | None by default; good with wrappers | Good by default; poor with overlapping highlights |
+
+See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html).
+
+
+### <a name="code-snippets"></a>Code snippets
+
+UNDER CONSTRUCTION
+
+#### Floating menu
+
+<!--
+How to hide built-in menu
+How to position
+show/hide custom menu on scroll and on resize
+ -->
+
+#### Live highlighting with a stylus
+
+#### Remembering color and style
+
+#### Light and dark mode colors
+
+#### Responding to selection color change
+
+#### Text wrapping
+
+<!--
+prevent wrapping mid-wrapper or between wrapper and highlight (noBreak entity)
+box-decoration-break: clone
+ -->
+
+#### Insert dynamic elements
+
+<!-- .sr-only, data-hh-ignore -->
+
+#### Managing built-in selection handles
+
+#### Responding to tap events
+
+<!--
+activate, don't activate if already active
+disambiguation
+ -->
+
+#### Responding to hover events
+
+<!--
+change cursor
+show popup
+ -->
+
+#### Moving wrappers during highlight resize

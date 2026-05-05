@@ -7,7 +7,7 @@
 
 /********************** Highlighter Initialization **********************/
 
-function Highlighter(containerSelector, paragraphSelector) {
+function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]') {
   this._containerSelector = containerSelector;
   this._options = structuredClone(_defaultOptions);
 
@@ -71,7 +71,7 @@ function Highlighter(containerSelector, paragraphSelector) {
     isResizing: false,
     pointerType: null,
     selection: globalThis.getSelection(),
-    changes: { activeHighlightIdChanged: false, colorChanged: false, styleChanged: false, boundsChanged: false, isResizingChanged: false, pointerType: false },
+    changes: [],
   };
   this._isResizingSelection = false;
   this._previousBoundsHash = null;
@@ -337,7 +337,12 @@ Highlighter.prototype._loadEventListeners = function () {
     if (newHoverHash === this._hoverHash) return;
     this._hoverHash = newHoverHash;
     this._annotatableContainer.dispatchEvent(new CustomEvent('hh:hover', {
-      detail: { ...targets, nativeEvent: event },
+      detail: {
+        ...targets,
+        selectionType: globalThis.getSelection().type,
+        activeHighlightId: this._activeHighlightId,
+        nativeEvent: event,
+      },
     }));
   };
   this._annotatableContainer.addEventListener('mousemove', (event) => {
@@ -423,7 +428,7 @@ Highlighter.prototype.loadHighlights = function (highlights) {
     addedCount: addedCount, removedCount: knownHighlightIds.size, updatedCount: updatedCount,
     totalCount: Object.keys(this._highlightsById).length,
   };
-  
+
   // Fire event after browser paint (for accurate loadTimeMs)
   requestAnimationFrame(() => {
     setTimeout(() => {
@@ -435,9 +440,9 @@ Highlighter.prototype.loadHighlights = function (highlights) {
 }
 
 // Create a new highlight, or update an existing highlight when it changes
-Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = true, activate = true) {
+Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = true, activate = true) {
   const options = this._options;
-  const highlightId = attributes.highlightId ?? this._activeHighlightId ?? _getNewHighlightId();
+  const highlightId = properties.highlightId ?? this._activeHighlightId ?? _getNewHighlightId();
   const appearanceChanges = [];
   const boundsChanges = [];
 
@@ -446,30 +451,30 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = tru
 
   // If the highlight is currently activate, ignore programmatic bounds changes (selection range takes priority)
   if (highlightId === this._activeHighlightId) {
-    attributes.startParagraphId = null;
-    attributes.startParagraphOffset = null;
-    attributes.endParagraphId = null;
-    attributes.endParagraphOffset = null;
+    properties.startParagraphId = null;
+    properties.startParagraphOffset = null;
+    properties.endParagraphId = null;
+    properties.endParagraphOffset = null;
   }
 
-  // Warn if color, style, or wrapper attributes are invalid
-  if (attributes.color && !Object.hasOwn(options.colorDefs, attributes.color)) {
-    console.warn(`Highlight color "${attributes.color}" is not defined in options (highlightId: ${highlightId}).`);
+  // Warn if color, style, or wrapper properties are invalid
+  if (properties.color && !Object.hasOwn(options.colorDefs, properties.color)) {
+    console.warn(`Highlight color "${properties.color}" is not defined in options (highlightId: ${highlightId}).`);
   }
-  if (attributes.style && !Object.hasOwn(options.styleDefs, attributes.style)) {
-    console.warn(`Highlight style "${attributes.style}" is not defined in options (highlightId: ${highlightId}).`);
+  if (properties.style && !Object.hasOwn(options.styleDefs, properties.style)) {
+    console.warn(`Highlight style "${properties.style}" is not defined in options (highlightId: ${highlightId}).`);
   }
-  if (attributes.wrapper && !Object.hasOwn(options.wrapperDefs, attributes.wrapper)) {
-    console.warn(`Highlight wrapper "${attributes.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
+  if (properties.wrapper && !Object.hasOwn(options.wrapperDefs, properties.wrapper)) {
+    console.warn(`Highlight wrapper "${properties.wrapper}" is not defined in options (highlightId: ${highlightId}).`);
   }
 
   // Check which appearance properties changed
   for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
-    if (isNewHighlight || (attributes[key] != null && attributes[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
+    if (isNewHighlight || (properties[key] != null && properties[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
   }
 
   // If the highlight was and still is read-only, return
-  if (oldHighlightInfo?.readOnly && (attributes.readOnly == null || attributes.readOnly === true)) {
+  if (oldHighlightInfo?.readOnly && (properties.readOnly == null || properties.readOnly === true)) {
     this.deactivateHighlights();
     return;
   }
@@ -480,13 +485,13 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = tru
   let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
   const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
   if (selection.type === 'Range') adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0));
-  if ((attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
+  if ((properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
     let startNode, startOffset, endNode, endOffset;
-    if (attributes.startParagraphId ?? attributes.startParagraphOffset ?? attributes.endParagraphId ?? attributes.endParagraphOffset != null) {
-      startParagraphId = attributes.startParagraphId ?? oldHighlightInfo?.startParagraphId;
-      startParagraphOffset = Number.parseInt(attributes.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
-      endParagraphId = attributes.endParagraphId ?? oldHighlightInfo?.endParagraphId;
-      endParagraphOffset = Number.parseInt(attributes.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
+    if (properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) {
+      startParagraphId = properties.startParagraphId ?? oldHighlightInfo?.startParagraphId;
+      startParagraphOffset = Number.parseInt(properties.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
+      endParagraphId = properties.endParagraphId ?? oldHighlightInfo?.endParagraphId;
+      endParagraphOffset = Number.parseInt(properties.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
       ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
       ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
     } else if (adjustedSelectionRange) {
@@ -531,11 +536,11 @@ Highlighter.prototype.createOrUpdateHighlight = function (attributes, draw = tru
   // Update saved highlight info
   const newHighlightInfo = {
     highlightId: highlightId,
-    color: attributes.color ?? oldHighlightInfo?.color ?? options.defaultColor,
-    style: attributes.style ?? oldHighlightInfo?.style ?? options.defaultStyle,
-    wrapper: attributes.wrapper ?? oldHighlightInfo?.wrapper ?? options.defaultWrapper,
-    wrapperVariables: attributes.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
-    readOnly: attributes.readOnly ?? oldHighlightInfo?.readOnly ?? false,
+    color: properties.color ?? oldHighlightInfo?.color ?? _defaultColor,
+    style: properties.style ?? oldHighlightInfo?.style ?? _defaultStyle,
+    wrapper: properties.wrapper ?? oldHighlightInfo?.wrapper ?? null,
+    wrapperVariables: properties.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
+    readOnly: properties.readOnly ?? oldHighlightInfo?.readOnly ?? false,
     startParagraphId: startParagraphId ?? oldHighlightInfo?.startParagraphId,
     startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
     endParagraphId: endParagraphId ?? oldHighlightInfo?.endParagraphId,
@@ -877,8 +882,6 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
     highlights: this.getHighlightInfo(highlightIds),
     wrappers,
     hyperlinks,
-    selectionType: globalThis.getSelection().type,
-    activeHighlightId: this._activeHighlightId,
   };
 }
 
@@ -950,8 +953,10 @@ Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
   const targets = this.getTargetsAtPoint(pointerEvent.clientX, pointerEvent.clientY);
   return {
     ...targets,
+    isLongPress: null,
+    selectionType: globalThis.getSelection().type,
+    activeHighlightId: this._activeHighlightId,
     nativeEvent: pointerEvent,
-    tapRange: this._getCaretFromCoordinates(pointerEvent.clientX, pointerEvent.clientY),
   };
 }
 
@@ -1069,15 +1074,14 @@ Highlighter.prototype._updateSelectionState = function () {
 
   // Check which properties changed
   const prev = this._selectionState;
-  const changes = {
-    activeHighlightIdChanged: activeHighlightId !== prev.activeHighlightId,
-    colorChanged: color !== prev.color,
-    styleChanged: style !== prev.style,
-    boundsChanged: boundsHash !== this._previousBoundsHash,
-    isResizingChanged: isResizing !== prev.isResizing,
-    pointerTypeChanged: pointerType !== prev.pointerType,
-  };
-  if (!Object.values(changes).some(Boolean)) return;
+  const changes = [];
+  if (activeHighlightId !== prev.activeHighlightId) changes.push('activeHighlightId');
+  if (color !== prev.color) changes.push('color');
+  if (style !== prev.style) changes.push('style');
+  if (isResizing !== prev.isResizing) changes.push('isResizing');
+  if (pointerType !== prev.pointerType) changes.push('pointerType');
+  if (boundsHash !== this._previousBoundsHash) changes.push('selection');
+  if (changes.length === 0) return;
 
   // Update selection state
   this._selectionState = { activeHighlightId, color, style, isResizing, pointerType, selection, changes };
@@ -1106,7 +1110,7 @@ Highlighter.prototype._updateSelectionState = function () {
   }
 
   // Update selection stylesheet
-  if (changes.activeHighlightIdChanged || changes.colorChanged || changes.styleChanged) {
+  if (['activeHighlightId', 'color', 'style'].some(ch => changes.includes(ch))) {
     const colorString = options.colorDefs[color] ?? (supportsAccentColor ? 'AccentColor' : 'dodgerblue');
     this._annotatableContainer.style.setProperty('--hh-color', colorString);
 
@@ -1335,7 +1339,7 @@ Highlighter.prototype._getPreviousValidTextNode = function (currentNode) {
 // Determine if text node should be skipped when snapping to word or calculating character offsets
 Highlighter.prototype._shouldSkipTextNode = function (textNode) {
   const parentParagraph = textNode.parentNode.closest(this._paragraphSelector);
-  const ignoreParent = textNode.parentNode.closest('[data-hh-ignore], .sr-only');
+  const ignoreParent = textNode.parentNode.closest('[data-hh-ignore]');
   if (!parentParagraph || ignoreParent || textNode.textContent === '') return true;
   return false;
 }
@@ -1363,7 +1367,7 @@ Highlighter.prototype._updateAppearanceStylesheet = function () {
 // Get the resolved drawing mode for a highlight
 Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
   const options = this._options;
-  const resolvedStyle = Object.hasOwn(options.styleDefs, highlightInfo.style) ? highlightInfo.style : options.defaultStyle;
+  const resolvedStyle = Object.hasOwn(options.styleDefs, highlightInfo.style) ? highlightInfo.style : _defaultStyle;
   if ((options.drawingMode === 'svg' && !options.styleDefs[resolvedStyle]?.svg)
     || (options.drawingMode === 'highlight-api' && !supportsHighlightApi)) {
     return 'mark-elements';
@@ -1382,7 +1386,7 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo) {
 // Get style string for a given highlight style
 Highlighter.prototype._getStyleString = function (style, type, mergedRect = null, active = false) {
   const options = this._options;
-  style = Object.hasOwn(options.styleDefs, style) ? style : options.defaultStyle;
+  style = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
   let styleString = options.styleDefs[style]?.[type] ?? '';
   if (active) {
     styleString = options.styleDefs[style]?.[`${type}Active`] ?? styleString;
@@ -1660,7 +1664,35 @@ const supportsAccentColor = CSS.supports('color', 'AccentColor');
 const _reWhitespaceDash = /\s|\p{Pd}/u;
 const _reNonWhitespaceDash = /[^\s|\p{Pd}]/u;
 
+// Workaround to allow programmatic text selection on tap in iOS Safari
+// See https://stackoverflow.com/a/79261423/1349044
+if (isTouchDevice && isWebKit) {
+  const tempInput = document.createElement('input');
+  tempInput.style.position = 'fixed';
+  tempInput.style.top = 0;
+  tempInput.style.opacity = 0;
+  tempInput.style.height = 0;
+  tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
+  tempInput.inputMode = 'none'; // Don't show keyboard
+  tempInput.tabIndex = -1; // Prevent user from tabbing to input
+  tempInput.ariaHidden = 'true'; // Hide from screen readers
+  const initializeSelection = (event) => {
+    if (document.readyState !== 'complete') return setTimeout(initializeSelection, 20);
+    if (!tempInput.parentElement) document.body.append(tempInput);
+    tempInput.focus();
+    setTimeout(() => {
+      tempInput.blur();
+    }, 100);
+  }
+  initializeSelection();
+  document.addEventListener('visibilitychange', (event) => {
+    if (document.visibilityState === 'visible') initializeSelection();
+  });
+}
+
 // Default options
+const _defaultColor = 'yellow';
+const _defaultStyle = 'fill';
 const _defaultOptions = {
   drawingMode: 'svg',
   snapToWord: false,
@@ -1703,32 +1735,6 @@ const _defaultOptions = {
       end: '<span class="sr-only"> {endLabel}</span>',
     },
   },
-}
-
-// Workaround to allow programmatic text selection on tap in iOS Safari
-// See https://stackoverflow.com/a/79261423/1349044
-if (isTouchDevice && isWebKit) {
-  const tempInput = document.createElement('input');
-  tempInput.style.position = 'fixed';
-  tempInput.style.top = 0;
-  tempInput.style.opacity = 0;
-  tempInput.style.height = 0;
-  tempInput.style.fontSize = '16px'; // Prevent page zoom on input focus
-  tempInput.inputMode = 'none'; // Don't show keyboard
-  tempInput.tabIndex = -1; // Prevent user from tabbing to input
-  tempInput.ariaHidden = 'true'; // Hide from screen readers
-  const initializeSelection = (event) => {
-    if (document.readyState !== 'complete') return setTimeout(initializeSelection, 20);
-    if (!tempInput.parentElement) document.body.append(tempInput);
-    tempInput.focus();
-    setTimeout(() => {
-      tempInput.blur();
-    }, 100);
-  }
-  initializeSelection();
-  document.addEventListener('visibilitychange', (event) => {
-    if (document.visibilityState === 'visible') initializeSelection();
-  });
 }
 
 // Make Highlighter available to JavaScript module (highlight-helper.mjs)

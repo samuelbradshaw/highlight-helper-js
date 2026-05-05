@@ -162,6 +162,7 @@ Highlighter.prototype._loadStyles = function () {
       stroke: none;
     }
     mark[data-hh-highlight-id] {
+      print-color-adjust: exact;
       background-color: transparent;
       color: inherit;
     }
@@ -372,6 +373,19 @@ Highlighter.prototype._loadEventListeners = function () {
     }
   }, Math.floor(Object.keys(this._highlightsById).length / 20)));
   this._resizeObserver.observe(this._annotatableContainer);
+
+  // Set drawing mode to mark elements temporarily when printing (highlights get offset in SVG drawing mode)
+  let previousDrawingMode = null;
+  globalThis.addEventListener('beforeprint', () => {
+    previousDrawingMode = this._options.drawingMode;
+    this.setOptions({ drawingMode: 'mark-elements' });
+    this.drawHighlights();
+  });
+  globalThis.addEventListener('afterprint', () => {
+    this.setOptions({ drawingMode: previousDrawingMode });
+    this.drawHighlights();
+  });
+
 }
 
 

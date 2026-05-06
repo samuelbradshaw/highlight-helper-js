@@ -652,6 +652,9 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   // Undraw highlights that were previously drawn
   this._undrawHighlights(sortedHighlights.map(h => h.highlightId));
 
+  // Cache paragraph line rects (in case there are multiple highlights in the paragraph
+  const paragraphLineRectsCache = new Map();
+
   // Loop through highlights
   for (const highlightInfo of sortedHighlights) {
     const highlightId = highlightInfo.highlightId
@@ -671,6 +674,8 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         range.endContainer.after(endWrapper);
       }
       range = this._getCorrectedRangeObj(highlightId);
+      // Clear cached paragraph line rects if wrapper was inserted (in case the text needs to reflow)
+      for (const p of rangeParagraphs) paragraphLineRectsCache.delete(p.id);
 
       // If current highlight is active, update selection range to match highlight range
       const selection = globalThis.getSelection();
@@ -686,7 +691,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     // Compute merged rects for tap detection (null for highlights drawn as mark elements)
     highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
     const useMarkElements = highlightInfo.resolvedDrawingMode === 'mark-elements';
-    const mergedRects = useMarkElements ? null : this._getMergedRects(range, rangeParagraphs, additionsRect);
+    const mergedRects = useMarkElements ? null : this._getMergedRects(range, rangeParagraphs, additionsRect, paragraphLineRectsCache);
     highlightInfo.mergedRects = mergedRects;
 
     // Draw highlights with mark elements
@@ -740,6 +745,8 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       for (const overlappingHighlightId of overlappingHighlightIds) {
         this._getCorrectedRangeObj(overlappingHighlightId);
       }
+      // Clear cached paragraph line rects if mark element was inserted (in case the text needs to reflow)
+      for (const p of rangeParagraphs) paragraphLineRectsCache.delete(p.id);
 
     // Draw highlights with CSS Highlight API
     } else if (options.drawingMode === 'highlight-api') {
@@ -1498,93 +1505,114 @@ Highlighter.prototype._isPointInRect = function (x, y, rect, padding = 0) {
   )
 }
 
+// Get line rectangles for a given paragraph
+Highlighter.prototype._getParagraphLineRects = function (paragraph) {
+  const paragraphRect = paragraph.getBoundingClientRect();
+  const paragraphStyle = getComputedStyle(paragraph);
+  const paragraphFontSize = Number.parseFloat(paragraphStyle.fontSize);
+  const snapTolerance = Math.max(paragraphFontSize / 2, 4);
+
+  const linePositions = {};
+  const lineBottomKeys = [];
+  const textNodeRange = document.createRange();
+  const walker = this._getTextNodeWalker(paragraph);
+  let textNode;
+  while (textNode = walker.nextNode()) {
+    // Skip text nodes in elements that are higher or lower than surrounding text
+    if (textNode.parentElement.closest('sup, sub, rt')) continue;
+    const textNodeStyle = textNode.parentElement === paragraph ? paragraphStyle : getComputedStyle(textNode.parentElement);
+    const fontSize = Number.parseFloat(textNodeStyle.fontSize);
+    const lineHeight = Number.parseFloat(textNodeStyle.lineHeight) || (fontSize * 1.2);
+    textNodeRange.selectNode(textNode);
+    for (const rect of textNodeRange.getClientRects()) {
+      const lineBottom = lineBottomKeys.find(b => Math.abs(b - rect.bottom) < snapTolerance) ?? rect.bottom;
+      if (!linePositions[lineBottom]) lineBottomKeys.push(lineBottom);
+      const pos = linePositions[lineBottom] ??= { minLeft: rect.left, maxRight: rect.right, maxFontSize: fontSize, maxLineHeight: lineHeight };
+      pos.minLeft = Math.min(pos.minLeft, rect.left);
+      pos.maxRight = Math.max(pos.maxRight, rect.right);
+      pos.maxFontSize = Math.max(pos.maxFontSize, fontSize);
+      pos.maxLineHeight = Math.max(pos.maxLineHeight, lineHeight);
+    }
+  }
+
+  lineBottomKeys.sort((a, b) => a - b);
+  const paragraphTextTop = paragraphRect.top + Number.parseFloat(paragraphStyle.paddingTop);
+  const lines = lineBottomKeys.map((bottom, i) => {
+    const pos = linePositions[bottom];
+    return new DOMRect(pos.minLeft, bottom - pos.maxLineHeight, pos.maxRight - pos.minLeft, pos.maxLineHeight);
+  });
+
+  // Snap the rectangle to the leading edge if it's close. This prevents unstyled gaps around CSS-rendered pseudoelement content (such as superscript footnote markers).
+  const textIndent = Number.parseFloat(paragraphStyle.textIndent);
+  const snapToParagraphEdge = (left, right) => {
+    if (paragraphStyle.textAlign !== 'start') return [left, right];
+    if (paragraphStyle.direction === 'ltr') {
+      if (left - paragraphRect.left < snapTolerance) left = paragraphRect.left;
+      if (textIndent < 0) left += textIndent;
+    } else if (paragraphStyle.direction === 'rtl') {
+      if (paragraphRect.right - right < snapTolerance) right = paragraphRect.right;
+      if (textIndent < 0) right += textIndent;
+    }
+    return [left, right];
+  };
+
+  return { lines, snapToParagraphEdge };
+}
+
 // Get merged client rects from the highlight range
-Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRect) {
+Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRect, paragraphLineRectsCache = new Map()) {
   const mergedRects = [];
   const textNodeRange = document.createRange();
-
+  let prevParagraphBottom = Number.NEGATIVE_INFINITY;
   for (const paragraph of paragraphs) {
-    const paragraphRect = paragraph.getBoundingClientRect();
-    const paragraphStyle = getComputedStyle(paragraph);
-    const snapTolerance = Math.max(Number.parseInt(paragraphStyle.fontSize) / 2, 4);
-    const topPadding = Number.parseInt(paragraphStyle.paddingTop);
-    const textIndent = Number.parseInt(paragraphStyle.textIndent);
+    let paragraphLineRects = paragraphLineRectsCache.get(paragraph.id);
+    if (!paragraphLineRects) {
+      paragraphLineRects = this._getParagraphLineRects(paragraph);
+      paragraphLineRectsCache.set(paragraph.id, paragraphLineRects);
+    }
+    const { lines, snapToParagraphEdge } = paragraphLineRects;
+    const topYs = lines.map((_, i) => i === 0 ? prevParagraphBottom : lines[i - 1].bottom);
 
-    // Build line positions and collect highlight rects
-    const linePositions = {};
-    const lineBottomKeys = [];
-    const unmergedRects = [];
+    // Per-highlight accumulators (kept off the cached line records so they don't leak across highlights)
+    const accums = lines.map(() => ({ left: null, right: null }));
     const walker = this._getTextNodeWalker(paragraph);
     let textNode;
     while (textNode = walker.nextNode()) {
-      // Build line positions (skip text nodes in elements that are higher or lower than surrounding text)
-      if (!textNode.parentElement.closest('sup, sub, rt')) {
-        textNodeRange.selectNode(textNode);
-        for (const rect of textNodeRange.getClientRects()) {
-          const lineBottom = lineBottomKeys.find(b => Math.abs(b - rect.bottom) < snapTolerance) ?? rect.bottom;
-          if (!linePositions[lineBottom]) lineBottomKeys.push(lineBottom);
-          const pos = linePositions[lineBottom] ??= {
-            minLeft: rect.left, maxRight: rect.right,
-            highlightLeft: null, highlightRight: null,
-          };
-          pos.minLeft = Math.min(pos.minLeft, rect.left);
-          pos.maxRight = Math.max(pos.maxRight, rect.right);
-        }
-      }
-
-      // Collect highlight rects from text nodes that intersect the range
-      if (range.intersectsNode(textNode)) {
-        const start = textNode === range.startContainer ? range.startOffset : 0;
-        const end = textNode === range.endContainer ? range.endOffset : textNode.length;
-        if (start < end) {
-          textNodeRange.setStart(textNode, start);
-          textNodeRange.setEnd(textNode, end);
-          for (const rect of textNodeRange.getClientRects()) {
-            if (rect.width > 0) unmergedRects.push(rect);
+      if (!range.intersectsNode(textNode)) continue;
+      const start = textNode === range.startContainer ? range.startOffset : 0;
+      const end = textNode === range.endContainer ? range.endOffset : textNode.length;
+      if (start >= end) continue;
+      textNodeRange.setStart(textNode, start);
+      textNodeRange.setEnd(textNode, end);
+      for (const rect of textNodeRange.getClientRects()) {
+        if (rect.width <= 0) continue;
+        const centerY = rect.y + rect.height / 2;
+        for (let i = 0; i < lines.length; i++) {
+          const lineRect = lines[i];
+          // Skip rects that extend outside the line of text (such as absolutely-positioned elements)
+          if (rect.left >= lineRect.left && rect.right <= lineRect.right
+              && centerY > topYs[i] && centerY <= lineRect.bottom) {
+            const a = accums[i];
+            a.left = Math.min(a.left ?? rect.left, rect.left);
+            a.right = Math.max(a.right ?? rect.right, rect.right);
+            break;
           }
         }
       }
     }
 
-    // Assign highlight range rects to matching line positions
-    const lineBottoms = lineBottomKeys.sort((a, b) => a - b);
-    for (const rect of unmergedRects) {
-      const centerY = rect.y + rect.height / 2;
-      for (let i = 0; i < lineBottoms.length; i++) {
-        const pos = linePositions[lineBottoms[i]];
-        // Skip rects that extend outside the line of text (such as absolutely-positioned elements)
-        if (rect.left >= pos.minLeft && rect.right <= pos.maxRight
-            && centerY > (lineBottoms[i - 1] ?? (paragraphRect.top + topPadding)) && centerY <= lineBottoms[i]) {
-          pos.highlightLeft = Math.min(pos.highlightLeft ?? rect.left, rect.left);
-          pos.highlightRight = Math.max(pos.highlightRight ?? rect.right, rect.right);
-          break;
-        }
-      }
+    // Build a merged rect for each line
+    for (let i = 0; i < lines.length; i++) {
+      const a = accums[i];
+      if (a.left == null) continue;
+      const lineRect = lines[i];
+      let left = Math.max(lineRect.left, a.left);
+      let right = Math.min(lineRect.right, a.right);
+      [left, right] = snapToParagraphEdge(left, right);
+      mergedRects.push(new DOMRect(left - additionsRect.left, lineRect.top - additionsRect.top, right - left, lineRect.height));
     }
 
-    // Create a merged rect for each relevant line
-    for (let i = 0; i < lineBottoms.length; i++) {
-      const bottom = lineBottoms[i];
-      const pos = linePositions[bottom];
-      if (pos.highlightLeft == null) continue;
-      const nearbyBottom = lineBottoms[i - 1] ?? lineBottoms[i + 1] ?? (paragraphRect.top + topPadding);
-      const height = Math.abs(bottom - nearbyBottom);
-      const top = bottom - height;
-      let left = Math.max(pos.minLeft, pos.highlightLeft);
-      let right = Math.min(pos.maxRight, pos.highlightRight);
-
-      // Final adjustment to left and right bounds
-      if (paragraphStyle.direction === 'ltr' && paragraphStyle.textAlign === 'start') {
-        if (left - paragraphRect.left < snapTolerance) left = paragraphRect.left;
-        if (textIndent < 0) left += textIndent;
-      } else if (paragraphStyle.direction === 'rtl' && paragraphStyle.textAlign === 'start') {
-        if (paragraphRect.right - right < snapTolerance) right = paragraphRect.right;
-        if (textIndent < 0) right += textIndent;
-      }
-
-      const width = right - left;
-      mergedRects.push(new DOMRect(left - additionsRect.left, top - additionsRect.top, width, height));
-    }
+    if (lines.length > 0) prevParagraphBottom = lines[lines.length - 1].bottom;
   }
 
   return mergedRects;

@@ -98,7 +98,8 @@ Highlighter.prototype._loadStyles = function () {
     ${this._containerSelector} {
       -webkit-tap-highlight-color: transparent;
     }
-    [data-hh-wrapper], [data-hh-handle] {
+    [data-hh-wrapper], [data-hh-additions], rt {
+      /* Disable selection on elements in the container that might be absolutely-positioned (reduces jumpy selection) */
       -webkit-user-select: none;
       user-select: none;
     }
@@ -144,16 +145,14 @@ Highlighter.prototype._loadStyles = function () {
     }
     [data-hh-additions] {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
+      top: 0; left: 0;
       overflow: visible;
     }
     [data-hh-svg-background] {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
+      top: 0; left: 0;
+      /* In mobile Chrome and Safari, if a user drags a text selection handle up to the very top of the page, it gets caught by the SVG background, causing text selection to jump to the bottom of the page. Setting pointer-events to none prevents this. */
+      pointer-events: none;
       overflow: visible;
       z-index: -1;
     }
@@ -188,18 +187,33 @@ Highlighter.prototype._loadEventListeners = function () {
     const selectionContainer = this._getSelectionContainer();
     const selectionInThisContainer = selectionContainer === this._annotatableContainer;
     const selectionInOtherContainer = selectionContainer !== null && !selectionInThisContainer;
+    if (selectionInOtherContainer) return;
 
     // In "Mac (Designed for iPad)" apps (iPad app running on macOS – most recently tested with macOS Sequoia 15.3.1), in-app webviews have several quirks related to text selection. One of these is text selection collapsing to a caret more often than expected. This code attempts to restore the previous selection range if it unexpectedly collapses to a caret in these scenarios:
     // 1. While dragging custom handles (happens randomly). TODO: Dragging custom handles in this environment is still sometimes a little jumpy.
     // 2. Just after clicking to activate a highlight (happens if it's the first click after the page loads).
-    if (!selectionInOtherContainer && isWKWebView && !isTouchDevice && selection.type !== 'Range' && this._previousSelectionRange && (this._activeHandle || (this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_START, selectionRange) <= 0 && this._previousSelectionRange.compareBoundaryPoints(Range.END_TO_END, selectionRange) >= 0))) {
-      selection.setBaseAndExtent(this._previousSelectionRange.startContainer, this._previousSelectionRange.startOffset, this._previousSelectionRange.endContainer, this._previousSelectionRange.endOffset);
+    if (isWKWebView && !isTouchDevice && this._previousSelectionRange && selection.type === 'Caret') {
+      const caret = selectionRange;
+      const isCaretInPreviousRange = this._previousSelectionRange.comparePoint(caret.startContainer, caret.startOffset) === 0;
+      if (this._activeHandle || isCaretInPreviousRange) {
+        return this._restorePreviousSelectionRange();
+      }
     }
 
-    // Clear selection or active highlight when tapping or creating a selection outside of the previous selection range
-    this._detectSelectionResize(selectionInOtherContainer ? null : this._previousSelectionRange, selectionRange);
-    if (!this._activeHandle && !this._isResizingSelection && this._previousSelectionRange && (selection.type !== 'Range' || this._previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 || this._previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1)) {
-      this.deactivateHighlights(false);
+    // Mitigate a bug in Chrome (desktop and Android) where dragging a selection past the viewport edge jumps to everything before or after the selection anchor
+    if (this._previousSelectionRange && selection.focusNode.nodeType !== Node.TEXT_NODE) {
+      return this._restorePreviousSelectionRange();
+    }
+
+    // If the user taps away or creates a new selection range outside of the previous selection range, deactivate any active highlights (but don't clear the selection range that was just created)
+    this._detectSelectionResize(this._previousSelectionRange, selectionRange);
+    if (!this._activeHandle && !this._isResizingSelection && this._previousSelectionRange) {
+      const isSelectionOutsidePreviousRange =
+        this._previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 ||
+        this._previousSelectionRange.comparePoint(selectionRange.endContainer, selectionRange.endOffset) === -1;
+      if (selection.type !== 'Range' || isSelectionOutsidePreviousRange) {
+        this.deactivateHighlights(false);
+      }
     }
 
     if (selection.type === 'Range') {
@@ -210,6 +224,11 @@ Highlighter.prototype._loadEventListeners = function () {
         if (this._activeHighlightId) {
           this.createOrUpdateHighlight({ highlightId: this._activeHighlightId });
         }
+      
+        const anchorCaret = new Range();
+        anchorCaret.setStart(selection.anchorNode, selection.anchorOffset);
+        anchorCaret.collapse(true);
+        this._previousSelectionDirection = anchorCaret.comparePoint(selection.focusNode, selection.focusOffset) === 1 ? 'forward' : 'backward';
         this._previousSelectionRange = selectionRange.cloneRange();
       }
     }
@@ -1452,6 +1471,14 @@ Highlighter.prototype._getRestoredSelectionOrCaret = function (selection, pointe
     }
   }
   return selection;
+}
+
+Highlighter.prototype._restorePreviousSelectionRange = function () {
+  if (this._previousSelectionDirection === 'forward') {
+    selection.setBaseAndExtent(this._previousSelectionRange.startContainer, this._previousSelectionRange.startOffset, this._previousSelectionRange.endContainer, this._previousSelectionRange.endOffset);
+  } else {
+    selection.setBaseAndExtent(this._previousSelectionRange.endContainer, this._previousSelectionRange.endOffset, this._previousSelectionRange.startContainer, this._previousSelectionRange.startOffset);
+  }
 }
 
 // Fix highlight range if the DOM changed and made the previous highlight range invalid

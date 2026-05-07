@@ -372,6 +372,7 @@
       const infoDiv = document.getElementById('highlight-info');
 
       // Respond to highlight update and highlight activate event
+      const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
       container.addEventListener('hh:highlightupdate', updateHighlightInfo);
       container.addEventListener('hh:highlightactivate', updateHighlightInfo);
       function updateHighlightInfo(event) {
@@ -400,7 +401,6 @@
             endParagraphId: `${event.detail.highlight.endParagraphId}_snippet`, endParagraphOffset: event.detail.highlight.endParagraphOffset,
           },
         ];
-        const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
         snippetHighlighter.setOptions({
           ...options,
           drawingMode: 'mark-elements',

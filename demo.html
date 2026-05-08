@@ -372,7 +372,6 @@
       const infoDiv = document.getElementById('highlight-info');
 
       // Respond to highlight update and highlight activate event
-      const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
       container.addEventListener('hh:highlightupdate', updateHighlightInfo);
       container.addEventListener('hh:highlightactivate', updateHighlightInfo);
       function updateHighlightInfo(event) {
@@ -392,6 +391,7 @@
           snippetParagraph.id = `${snippetParagraph.id}_snippet`;
           snippetDiv.append(snippetParagraph);
         }
+        const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
         const snippetHighlights = [
           {
             highlightId: event.detail.highlight.highlightId + '_snippet',

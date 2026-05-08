@@ -227,7 +227,7 @@ Highlighter.prototype._loadEventListeners = function () {
         if (this._activeHighlightId) {
           this.createOrUpdateHighlight({ highlightId: this._activeHighlightId });
         }
-      
+
         const anchorCaret = new Range();
         anchorCaret.setStart(selection.anchorNode, selection.anchorOffset);
         anchorCaret.collapse(true);
@@ -897,13 +897,14 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
   }
   const additionsRect = this._additionsDiv.getBoundingClientRect();
   const x = clientX - additionsRect.left;
-  const y = clientY - additionsRect.top - 5; // Shift hit area down 5 pixels
+  const y = clientY - additionsRect.top;
   for (const highlightId of Object.keys(this._highlightsById)) {
     if (highlightIds.has(highlightId)) continue;
     const mergedRects = this._highlightsById[highlightId].mergedRects;
     if (!mergedRects) continue;
     for (const rect of mergedRects) {
-      if (this._isPointInRect(x, y, rect)) { highlightIds.add(highlightId); break; }
+      const padding = rect.height / 8;
+      if (this._isPointInRect(x, y, rect, padding)) { highlightIds.add(highlightId); break; }
     }
   }
   return {
@@ -1565,28 +1566,38 @@ Highlighter.prototype._getParagraphLineRects = function (paragraph) {
     }
   }
 
+  // Handle pseudoelements with CSS-rendered content, such as footnote markers (these have width, but aren't handled in the text nodes loop above)
+  for (const el of paragraph.getElementsByTagName('*')) {
+    if (el.firstChild) continue;
+    const elRect = el.getBoundingClientRect();
+    if (elRect.width === 0 || elRect.height === 0) continue;
+    let hasPseudoContent = false;
+    for (const pseudo of ['::before', '::after']) {
+      const pseudoContent = getComputedStyle(el, pseudo).content;
+      if (pseudoContent && pseudoContent !== 'none' && pseudoContent !== 'normal') { hasPseudoContent = true; break; }
+    }
+    if (!hasPseudoContent) continue;
+    // Snap the rectangle to the paragraph's leading edge if it's close
+    const elLeft = (paragraphStyle.direction === 'ltr' && Math.abs(paragraphRect.left - elRect.left) < snapTolerance) ? paragraphRect.left : elRect.left;
+    const elRight = (paragraphStyle.direction === 'rtl' && Math.abs(paragraphRect.right - elRect.right) < snapTolerance) ? paragraphRect.right : elRect.right;
+    const elCenterY = elRect.top + elRect.height / 2;
+    for (const lineBottom of lineBottomKeys) {
+      const pos = linePositions[lineBottom];
+      if (elCenterY >= lineBottom - pos.maxLineHeight && elCenterY < lineBottom) {
+        pos.minLeft = Math.min(pos.minLeft, elLeft);
+        pos.maxRight = Math.max(pos.maxRight, elRight);
+        break;
+      }
+    }
+  }
+
   lineBottomKeys.sort((a, b) => a - b);
-  const paragraphTextTop = paragraphRect.top + Number.parseFloat(paragraphStyle.paddingTop);
   const lines = lineBottomKeys.map((bottom, i) => {
     const pos = linePositions[bottom];
     return new DOMRect(pos.minLeft, bottom - pos.maxLineHeight, pos.maxRight - pos.minLeft, pos.maxLineHeight);
   });
 
-  // Snap the rectangle to the leading edge if it's close. This prevents unstyled gaps around CSS-rendered pseudoelement content (such as superscript footnote markers).
-  const textIndent = Number.parseFloat(paragraphStyle.textIndent);
-  const snapToParagraphEdge = (left, right) => {
-    if (paragraphStyle.textAlign !== 'start') return [left, right];
-    if (paragraphStyle.direction === 'ltr') {
-      if (left - paragraphRect.left < snapTolerance) left = paragraphRect.left;
-      if (textIndent < 0) left += textIndent;
-    } else if (paragraphStyle.direction === 'rtl') {
-      if (paragraphRect.right - right < snapTolerance) right = paragraphRect.right;
-      if (textIndent < 0) right += textIndent;
-    }
-    return [left, right];
-  };
-
-  return { lines, snapToParagraphEdge };
+  return { lines, snapTolerance };
 }
 
 // Get merged client rects from the highlight range
@@ -1600,10 +1611,12 @@ Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRe
       paragraphLineRects = this._getParagraphLineRects(paragraph);
       paragraphLineRectsCache.set(paragraph.id, paragraphLineRects);
     }
-    const { lines, snapToParagraphEdge } = paragraphLineRects;
+    const { lines, snapTolerance } = paragraphLineRects;
+    // If the previous paragraph is below the current paragraph (such as in multi-column layouts), reset prevParagraphBottom
+    if (prevParagraphBottom > lines[0].bottom) prevParagraphBottom = Number.NEGATIVE_INFINITY;
     const topYs = lines.map((_, i) => i === 0 ? prevParagraphBottom : lines[i - 1].bottom);
 
-    // Per-highlight accumulators (kept off the cached line records so they don't leak across highlights)
+    // Per-highlight accumulators
     const accums = lines.map(() => ({ left: null, right: null }));
     const walker = this._getTextNodeWalker(paragraph);
     let textNode;
@@ -1636,9 +1649,8 @@ Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRe
       const a = accums[i];
       if (a.left == null) continue;
       const lineRect = lines[i];
-      let left = Math.max(lineRect.left, a.left);
-      let right = Math.min(lineRect.right, a.right);
-      [left, right] = snapToParagraphEdge(left, right);
+      const left = a.left - lineRect.left < snapTolerance ? lineRect.left : a.left;
+      const right = lineRect.right - a.right < snapTolerance ? lineRect.right : a.right;
       mergedRects.push(new DOMRect(left - additionsRect.left, lineRect.top - additionsRect.top, right - left, lineRect.height));
     }
 

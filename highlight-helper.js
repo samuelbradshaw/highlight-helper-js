@@ -10,15 +10,18 @@
 function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]') {
   this._containerSelector = containerSelector;
   this._options = structuredClone(_defaultOptions);
-
-  // Qualify paragraph selector with the container selector if needed
-  if (!paragraphSelector.includes(containerSelector)) {
-    paragraphSelector = paragraphSelector.split(',').map(selector => `${containerSelector} ${selector}`).join(',');
-  }
   this._paragraphSelector = paragraphSelector;
   this._annotatableContainer = document.querySelector(containerSelector);
   this._annotatableParagraphs = this._annotatableContainer.querySelectorAll(paragraphSelector);
-  this._annotatableParagraphIds = Array.from(this._annotatableParagraphs, paragraph => paragraph.id);
+  this._annotatableParagraphIds = [];
+  for (const paragraph of this._annotatableParagraphs) {
+    if (!paragraph.id) {
+      console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph must have a valid ID).`);
+    } else if (this._annotatableParagraphIds.includes(paragraph.id)) {
+      console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph's ID must be unique).`);
+    }
+    this._annotatableParagraphIds.push(paragraph.id);
+  }
 
   // Handle cases where a highlighter already exists for the container, or one of its children or ancestors
   if (this._annotatableContainer.highlighter) {

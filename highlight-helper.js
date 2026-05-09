@@ -76,6 +76,12 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
     pointerType: null,
     selection: globalThis.getSelection(),
     changes: [],
+    rangeText: null,
+    rangeHtml: null,
+    rangeRect: null,
+    rangeLineRects: [],
+    rangeParagraphIds: null,
+    rangeObj: null,
   };
   this._isResizingSelection = false;
   this._previousBoundsHash = null;
@@ -492,7 +498,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
   }
 
   // Check which appearance properties changed
-  for (const key of ['color', 'style', 'wrapper', 'wrapperVariables', 'readOnly']) {
+  for (const key of ['color', 'style', 'wrapper', 'variables', 'readOnly']) {
     if (isNewHighlight || (properties[key] != null && properties[key] !== oldHighlightInfo[key])) appearanceChanges.push(key);
   }
 
@@ -538,12 +544,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
     }
 
     // Set variables that depend on the range
-    const temporaryHtmlElement = document.createElement('div');
-    temporaryHtmlElement.appendChild(highlightRange.cloneContents());
-    for (const element of temporaryHtmlElement.querySelectorAll(`a, [data-hh-highlight-id]:not([data-hh-highlight-id="${highlightId}"])`)) element.outerHTML = element.innerHTML;
-    for (const element of temporaryHtmlElement.querySelectorAll(`[data-hh-ignore]`)) element.remove();
-    rangeText = temporaryHtmlElement.textContent;
-    rangeHtml = temporaryHtmlElement.innerHTML;
+    ({ rangeHtml, rangeText } = this._getRangeContent(highlightRange, true, true));
     let startParagraphIndex = this._annotatableParagraphIds.indexOf(startParagraphId);
     let endParagraphIndex = this._annotatableParagraphIds.indexOf(endParagraphId);
     if (startParagraphIndex === -1) startParagraphIndex = 0;
@@ -562,7 +563,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
     color: properties.color ?? oldHighlightInfo?.color ?? _defaultColor,
     style: properties.style ?? oldHighlightInfo?.style ?? _defaultStyle,
     wrapper: properties.wrapper ?? oldHighlightInfo?.wrapper ?? null,
-    wrapperVariables: properties.wrapperVariables ?? oldHighlightInfo?.wrapperVariables ?? {},
+    variables: properties.variables ?? oldHighlightInfo?.variables ?? {},
     readOnly: properties.readOnly ?? oldHighlightInfo?.readOnly ?? false,
     startParagraphId: startParagraphId ?? oldHighlightInfo?.startParagraphId,
     startParagraphOffset: startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset,
@@ -571,10 +572,10 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
     // Generated properties
     rangeText: rangeText ?? oldHighlightInfo?.rangeText,
     rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
-    rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
-    rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
     rangeRect: oldHighlightInfo?.rangeRect ?? null,
     rangeLineRects: oldHighlightInfo?.rangeLineRects ?? null,
+    rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
+    rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
     resolvedDrawingMode: null,
     escapedHighlightId: CSS.escape(highlightId),
   };
@@ -662,8 +663,8 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       const wrapperHash = this._getWrapperHash(highlightInfo);
       if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
         let innerHtml = options.wrapperDefs[highlightInfo.wrapper][position];
-        for (const key of Object.keys(highlightInfo.wrapperVariables)) {
-          innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.wrapperVariables[key]);
+        for (const key of Object.keys(highlightInfo.variables)) {
+          innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.variables[key]);
         }
         wrapper.dataset.hhWrapperHash = wrapperHash;
         wrapper.innerHTML = innerHtml;
@@ -1122,10 +1123,10 @@ Highlighter.prototype._updateSelectionState = function () {
   if (boundsHash != this._previousBoundsHash) changes.push('selection');
   if (changes.length === 0) return;
 
-  // Get range rects
-  let rangeRect, startRect, endRect;
-  let rangeParagraphs = [], rangeLineRects = [];
-  if (selection.type !== 'None') {
+  // Get range metadata
+  let rangeText = null, rangeHtml = null, rangeParagraphIds = null, rangeObj = null;
+  let rangeRect = null, rangeParagraphs = [], rangeLineRects = [];
+  if (selectionRange) {
     const startParagraph = selectionRange.startContainer.parentElement?.closest(this._paragraphSelector);
     const endParagraph = selectionRange.endContainer.parentElement?.closest(this._paragraphSelector) ?? startParagraph;
     if (startParagraph && endParagraph) {
@@ -1138,13 +1139,15 @@ Highlighter.prototype._updateSelectionState = function () {
       }
       const additionsRect = this._additionsDiv.getBoundingClientRect();
       ([rangeRect, rangeLineRects] = this._getRangeRects(selectionRange, rangeParagraphs, additionsRect));
-      startRect = rangeLineRects[0];
-      endRect = rangeLineRects.at(-1);
     }
+    rangeParagraphIds = rangeParagraphs.map(p => p.id);
+    rangeObj = selectionRange;
+    ({ rangeHtml, rangeText } = this._getRangeContent(selectionRange, true, false));
   }
 
   // Update selection state
-  this._selectionState = { activeHighlightId, color, style, isResizing, pointerType, selection, changes };
+  this._selectionState = { activeHighlightId, color, style, isResizing, pointerType, selection, changes,
+    rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
   this._previousBoundsHash = boundsHash;
 
   // Draw SVG selection rects (SVG drawing mode only)
@@ -1209,6 +1212,8 @@ Highlighter.prototype._updateSelectionState = function () {
     const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
     for (const handle of this._dragHandles) {
       let side;
+      const startRect = rangeLineRects[0];
+      const endRect = rangeLineRects.at(-1);
       if (handle.dataset.hhPosition === 'start') {
         side = startNodeIsRtl ? 'right' : 'left';
         handle.style.left = startRect[side] + 'px';
@@ -1431,8 +1436,8 @@ Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
 
 Highlighter.prototype._getWrapperHash = function (highlightInfo) {
   let hash = highlightInfo.wrapper ?? '';
-  for (const key of Object.keys(highlightInfo.wrapperVariables).sort()) {
-    hash += '\x00' + key + '\x01' + highlightInfo.wrapperVariables[key];
+  for (const key of Object.keys(highlightInfo.variables).sort()) {
+    hash += '\x00' + key + '\x01' + highlightInfo.variables[key];
   }
   return hash;
 }
@@ -1623,6 +1628,24 @@ Highlighter.prototype._getParagraphLineRects = function (paragraph) {
 
   return { lines, snapTolerance };
 }
+
+// Get the HTML and text content of a range
+Highlighter.prototype._getRangeContent = function (range, unwrapHighlights = false, unwrapHyperlinks = false) {
+  const tempDiv = document.createElement('div');
+  tempDiv.appendChild(range.cloneContents());
+  const unwrapSelectors = [];
+  if (unwrapHighlights) unwrapSelectors.push('[data-hh-highlight-id]');
+  if (unwrapHyperlinks) unwrapSelectors.push('a');
+  for (const element of tempDiv.querySelectorAll(unwrapSelectors.join(', '))) {
+    while (element.firstChild) element.before(element.firstChild);
+    element.remove();
+  }
+  const removeSelectors = ['[data-hh-ignore]', '.sr-only'];
+  for (const element of tempDiv.querySelectorAll(removeSelectors.join(','))) {
+    element.remove();
+  }
+  return { rangeHtml: tempDiv.innerHTML, rangeText: tempDiv.textContent };
+};
 
 // Get merged client rects from the highlight range
 Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRect, paragraphLineRectsCache = new Map()) {

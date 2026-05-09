@@ -199,7 +199,8 @@ These additional properties are updated on the fly:
 - **rangeHtml** – String. HTML content of the highlighted range.
 - **rangeParagraphIds** – Array of paragraph IDs. Paragraphs in the highlighted range.
 - **rangeObj** – [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
-- **mergedRects** – Array of DOMRects. Location of rendered highlights, relative to the top of the page (one rectangle for each line of text).
+- **rangeRect** – DOMRect. Location of rendered highlight, relative to the top of the page (bounding rectangle).
+- **rangeLineRects** – Array of DOMRects. Location of rendered highlight lines, relative to the top of the page (one rectangle for each line of text).
 - **resolvedDrawingMode** – String. Drawing mode used to render the highlight. Should be either the current drawing mode, or `mark-elements` (fallback when a highlight can't be rendered in the current drawing mode).
 - **escapedHighlightId** – Strong. Escaped highlight ID used internally in case the provided ID isn't a valid CSS identifier.
 

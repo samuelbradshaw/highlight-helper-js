@@ -12,25 +12,26 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
   this._options = structuredClone(_defaultOptions);
   this._paragraphSelector = paragraphSelector;
   this._annotatableContainer = document.querySelector(containerSelector);
-  this._annotatableParagraphs = this._annotatableContainer.querySelectorAll(paragraphSelector);
-  this._annotatableParagraphIds = [];
-  for (const paragraph of this._annotatableParagraphs) {
-    if (!paragraph.id) {
-      console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph must have a valid ID).`);
-    } else if (this._annotatableParagraphIds.includes(paragraph.id)) {
-      console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph's ID must be unique).`);
-    }
-    this._annotatableParagraphIds.push(paragraph.id);
-  }
 
   // Handle cases where a highlighter already exists for the container, or one of its children or ancestors
   if (this._annotatableContainer.highlighter) {
     this._annotatableContainer.highlighter.removeHighlighter();
   } else if (this._annotatableContainer.closest('[data-hh-container]') || this._annotatableContainer.querySelector('[data-hh-container]')) {
-    console.error(`Unable to create Highlighter with container selector "${containerSelector}" (annotatable container can't be a child or ancestor of another annotatable container).`);
-    return;
+    return console.error(`Unable to create Highlighter with container selector "${containerSelector}" (annotatable container can't be a child or ancestor of another annotatable container).`);
   }
 
+  // Load annotatable paragraphs
+  this._annotatableParagraphIds = [];
+  this._annotatableParagraphs = Array.from(this._annotatableContainer.querySelectorAll(paragraphSelector));
+  for (const paragraph of this._annotatableParagraphs) {
+    if (!paragraph.id) {
+      return console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph must have a valid ID).`);
+    } else if (this._annotatableParagraphIds.includes(paragraph.id)) {
+      return console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph's ID must be unique).`);
+    }
+    this._annotatableParagraphIds.push(paragraph.id);
+  }
+  
   // Abort controller can be used to cancel event listeners if the highlighter is removed
   this._controller = new AbortController;
 
@@ -572,7 +573,8 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
     rangeHtml: rangeHtml ?? oldHighlightInfo?.rangeHtml,
     rangeParagraphIds: rangeParagraphIds ?? oldHighlightInfo?.rangeParagraphIds,
     rangeObj: highlightRange ?? oldHighlightInfo?.rangeObj,
-    mergedRects: oldHighlightInfo?.mergedRects ?? null,
+    rangeRect: oldHighlightInfo?.rangeRect ?? null,
+    rangeLineRects: oldHighlightInfo?.rangeLineRects ?? null,
     resolvedDrawingMode: null,
     escapedHighlightId: CSS.escape(highlightId),
   };
@@ -609,7 +611,6 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
 Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
   if (highlightIds.length === 0) return;
   const options = this._options;
-  const additionsRect = this._additionsDiv.getBoundingClientRect();
 
   const wrapperElements = new Map();
   for (const wrapper of this._annotatableContainer.querySelectorAll('[data-hh-wrapper]')) {
@@ -676,6 +677,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
   // Cache paragraph line rects (in case there are multiple highlights in the paragraph
   const paragraphLineRectsCache = new Map();
+  const additionsRect = this._additionsDiv.getBoundingClientRect();
 
   // Loop through highlights
   for (const highlightInfo of sortedHighlights) {
@@ -710,13 +712,16 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
     }
 
-    // Compute merged rects for tap detection (null for highlights drawn as mark elements)
+    // Compute range rects for tap detection
     highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
-    const useMarkElements = highlightInfo.resolvedDrawingMode === 'mark-elements';
-    const mergedRects = useMarkElements ? null : this._getMergedRects(range, rangeParagraphs, additionsRect, paragraphLineRectsCache);
-    highlightInfo.mergedRects = mergedRects;
+    if (highlightInfo.resolvedDrawingMode !== 'mark-elements') {
+      const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, additionsRect, paragraphLineRectsCache);
+      highlightInfo.rangeRect = rangeRect;
+      highlightInfo.rangeLineRects = rangeLineRects;
+    }
 
     // Draw highlights with mark elements
+    const useMarkElements = highlightInfo.resolvedDrawingMode === 'mark-elements';
     if (useMarkElements) {
       // Inject HTML <mark> elements
       if (range.startOffset < range.startContainer.length) range.startContainer.splitText(range.startOffset);
@@ -789,8 +794,8 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       group.dataset.hhColor = highlightInfo.color;
       group.dataset.hhStyle = highlightInfo.style;
       let svgContent = '';
-      for (const mergedRect of mergedRects) {
-        svgContent += this._getStyleString(highlightInfo.style, 'svg', mergedRect);
+      for (const rect of highlightInfo.rangeLineRects) {
+        svgContent += this._getStyleString(highlightInfo.style, 'svg', rect);
       }
       group.innerHTML = svgContent;
       this._svgBackground.appendChild(group);
@@ -900,9 +905,9 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
   const y = clientY - additionsRect.top;
   for (const highlightId of Object.keys(this._highlightsById)) {
     if (highlightIds.has(highlightId)) continue;
-    const mergedRects = this._highlightsById[highlightId].mergedRects;
-    if (!mergedRects) continue;
-    for (const rect of mergedRects) {
+    const rangeLineRects = this._highlightsById[highlightId].rangeLineRects;
+    if (!rangeLineRects) continue;
+    for (const rect of rangeLineRects) {
       const padding = rect.height / 8;
       if (this._isPointInRect(x, y, rect, padding)) { highlightIds.add(highlightId); break; }
     }
@@ -1085,13 +1090,31 @@ Highlighter.prototype._updateSelectionState = function () {
   const selectionContainer = this._getSelectionContainer();
   if (selectionContainer && selectionContainer !== this._annotatableContainer) return;
 
+
   // Get selection properties
-  const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
-  const selectionRangeRects = selectionRange?.getClientRects();
-  const startRect = selectionRangeRects?.[0];
-  const endRect = selectionRangeRects?.[selectionRangeRects.length - 1];
-  const boundsHash = startRect && endRect ? `${selection.type}-${Math.round(startRect.top)},${Math.round(startRect.left)},${Math.round(startRect.right)}-${Math.round(endRect.bottom)},${Math.round(endRect.left)},${Math.round(endRect.right)}`
-    : null;
+  let selectionRange, rangeRect, startRect, endRect, boundsHash;
+  let rangeParagraphs = [], rangeLineRects = [];
+  if (selection.type !== 'None') {
+    selectionRange = selection.getRangeAt(0);
+    const startParagraph = selectionRange.startContainer.parentElement?.closest(this._paragraphSelector);
+    const endParagraph = selectionRange.endContainer.parentElement?.closest(this._paragraphSelector) ?? startParagraph;
+    if (startParagraph && endParagraph) {
+      if (startParagraph === endParagraph) {
+        rangeParagraphs = [startParagraph];
+      } else {
+        const startIdx = this._annotatableParagraphs.indexOf(startParagraph);
+        const endIdx = this._annotatableParagraphs.indexOf(endParagraph);
+        rangeParagraphs = this._annotatableParagraphs.slice(startIdx, endIdx + 1);
+      }
+    }
+    if (rangeParagraphs.length > 0) {
+      const additionsRect = this._additionsDiv.getBoundingClientRect();
+      ([rangeRect, rangeLineRects] = this._getRangeRects(selectionRange, rangeParagraphs, additionsRect));
+      startRect = rangeLineRects[0];
+      endRect = rangeLineRects.at(-1);
+      boundsHash = `${selection.type}-${Math.round(startRect.top)},${Math.round(startRect.left)},${Math.round(startRect.right)}-${Math.round(endRect.bottom)},${Math.round(endRect.left)},${Math.round(endRect.right)}`;
+    }
+  }
   const isResizing = this._isResizingSelection;
   const pointerType = this._pointerType;
 
@@ -1110,7 +1133,7 @@ Highlighter.prototype._updateSelectionState = function () {
   if (style !== prev.style) changes.push('style');
   if (isResizing !== prev.isResizing) changes.push('isResizing');
   if (pointerType !== prev.pointerType) changes.push('pointerType');
-  if (boundsHash !== this._previousBoundsHash) changes.push('selection');
+  if (boundsHash != this._previousBoundsHash) changes.push('selection');
   if (changes.length === 0) return;
 
   // Update selection state
@@ -1120,16 +1143,11 @@ Highlighter.prototype._updateSelectionState = function () {
   // Draw SVG selection rects (SVG drawing mode only)
   this._svgActiveOverlay.innerHTML = '';
   if (isSvgActive) {
-    let range = this._getCorrectedRangeObj(activeHighlightId);
-    range = this._snapRangeToBoundaries(range);
-    const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
-    const additionsRect = this._additionsDiv.getBoundingClientRect();
-    const mergedRects = this._getMergedRects(range, rangeParagraphs, additionsRect);
     this._svgActiveOverlay.dataset.hhColor = color;
     this._svgActiveOverlay.dataset.hhStyle = style;
     let svgContent = '';
-    for (const mergedRect of mergedRects) {
-      svgContent += this._getStyleString(highlightInfo.style, 'svg', mergedRect, true);
+    for (const rect of rangeLineRects) {
+      svgContent += this._getStyleString(highlightInfo.style, 'svg', rect, true);
     }
     this._svgActiveOverlay.innerHTML = svgContent;
 
@@ -1180,21 +1198,20 @@ Highlighter.prototype._updateSelectionState = function () {
     && (options.showDragHandles.includes('highlights') && activeHighlightId
       || options.showDragHandles.includes('selection') && !activeHighlightId);
   if (selection.type === 'Range' && showDragHandles) {
-    const additionsRect = this._additionsDiv.getBoundingClientRect();
     const startNodeIsRtl = globalThis.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
     const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
     for (const handle of this._dragHandles) {
       let side;
       if (handle.dataset.hhPosition === 'start') {
         side = startNodeIsRtl ? 'right' : 'left';
-        handle.style.left = startRect[side] - additionsRect.left + 'px';
+        handle.style.left = startRect[side] + 'px';
         handle.style.height = startRect.height + 'px';
-        handle.style.top = startRect.top - additionsRect.top + 'px';
+        handle.style.top = startRect.top + 'px';
       } else {
         side = endNodeIsRtl ? 'left' : 'right';
-        handle.style.left = endRect[side] - additionsRect.left + 'px';
+        handle.style.left = endRect[side] + 'px';
         handle.style.height = endRect.height + 'px';
-        handle.style.top = endRect.top - additionsRect.top + 'px';
+        handle.style.top = endRect.top + 'px';
       }
       if (handle.dataset.hhSide !== side) {
         handle.dataset.hhSide = side;
@@ -1414,15 +1431,15 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo) {
 }
 
 // Get style string for a given highlight style
-Highlighter.prototype._getStyleString = function (style, type, mergedRect = null, active = false) {
+Highlighter.prototype._getStyleString = function (style, type, lineRect = null, active = false) {
   const options = this._options;
   style = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
   let styleString = options.styleDefs[style]?.[type] ?? '';
   if (active) {
     styleString = options.styleDefs[style]?.[`${type}Active`] ?? styleString;
   }
-  if (styleString && type === 'svg' && mergedRect) {
-    styleString = styleString.replace(/\{(x|y|width|height|top|right|bottom|left)\}/g, (_, key) => mergedRect[key]);
+  if (styleString && type === 'svg' && lineRect) {
+    styleString = styleString.replace(/\{(x|y|width|height|top|right|bottom|left)\}/g, (_, key) => lineRect[key]);
   }
   return styleString;
 }
@@ -1601,8 +1618,9 @@ Highlighter.prototype._getParagraphLineRects = function (paragraph) {
 }
 
 // Get merged client rects from the highlight range
-Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRect, paragraphLineRectsCache = new Map()) {
-  const mergedRects = [];
+Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRect, paragraphLineRectsCache = new Map()) {
+  let rangeRectCoordinates = { top: Number.POSITIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY, left: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
+  const rangeLineRects = [];
   const textNodeRange = document.createRange();
   let prevParagraphBottom = Number.NEGATIVE_INFINITY;
   for (const paragraph of paragraphs) {
@@ -1624,11 +1642,11 @@ Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRe
       if (!range.intersectsNode(textNode)) continue;
       const start = textNode === range.startContainer ? range.startOffset : 0;
       const end = textNode === range.endContainer ? range.endOffset : textNode.length;
-      if (start >= end) continue;
+      if (start > end) continue;
       textNodeRange.setStart(textNode, start);
       textNodeRange.setEnd(textNode, end);
-      for (const rect of textNodeRange.getClientRects()) {
-        if (rect.width <= 0) continue;
+      const clientRects = textNodeRange.getClientRects();
+      for (const rect of clientRects) {
         const centerY = rect.y + rect.height / 2;
         for (let i = 0; i < lines.length; i++) {
           const lineRect = lines[i];
@@ -1649,15 +1667,22 @@ Highlighter.prototype._getMergedRects = function (range, paragraphs, additionsRe
       const a = accums[i];
       if (a.left == null) continue;
       const lineRect = lines[i];
-      const left = a.left - lineRect.left < snapTolerance ? lineRect.left : a.left;
-      const right = lineRect.right - a.right < snapTolerance ? lineRect.right : a.right;
-      mergedRects.push(new DOMRect(left - additionsRect.left, lineRect.top - additionsRect.top, right - left, lineRect.height));
+      const top = lineRect.top - additionsRect.top;
+      const bottom = lineRect.bottom - additionsRect.top;
+      const left = (a.left - lineRect.left < snapTolerance ? lineRect.left : a.left) - additionsRect.left;
+      const right = (lineRect.right - a.right < snapTolerance ? lineRect.right : a.right) - additionsRect.left;
+      rangeRectCoordinates.left = Math.min(left, rangeRectCoordinates.left);
+      rangeRectCoordinates.right = Math.max(right, rangeRectCoordinates.right);
+      rangeRectCoordinates.top = Math.min(top, rangeRectCoordinates.top);
+      rangeRectCoordinates.bottom = Math.max(bottom, rangeRectCoordinates.bottom);
+      rangeLineRects.push(new DOMRect(left, top, right - left, lineRect.height));
     }
 
     if (lines.length > 0) prevParagraphBottom = lines[lines.length - 1].bottom;
   }
-
-  return mergedRects;
+  
+  const rangeRect = new DOMRect(rangeRectCoordinates.left, rangeRectCoordinates.top, rangeRectCoordinates.right - rangeRectCoordinates.left, rangeRectCoordinates.bottom - rangeRectCoordinates.top);
+  return [rangeRect, rangeLineRects];
 }
 
 

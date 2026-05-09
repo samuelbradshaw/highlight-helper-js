@@ -31,7 +31,7 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
     }
     this._annotatableParagraphIds.push(paragraph.id);
   }
-  
+
   // Abort controller can be used to cancel event listeners if the highlighter is removed
   this._controller = new AbortController;
 
@@ -628,7 +628,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         sortedHighlights.push(highlightInfo);
         if (!previousWrapperChanged) {
           const wrapper = wrapperElements.get(`${highlightInfo.highlightId}:start`) ?? wrapperElements.get(`${highlightInfo.highlightId}:end`) ?? null;
-          if (this._getWrapperHash(highlightInfo) !== wrapper?.dataset?.hhWrapperHash) {
+          if (this._getWrapperHash(highlightInfo) !== (wrapper?.dataset?.hhWrapperHash ?? '')) {
             previousWrapperChanged = true;
           }
         }
@@ -844,8 +844,8 @@ Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = t
   const deactivatedHighlight = this._highlightsById[this._activeHighlightId];
   this._activeHighlightId = null;
   this._previousSelectionRange = null;
-  const selection = globalThis.getSelection();
   if (removeSelectionRanges && this._getSelectionContainer() === this._annotatableContainer) {
+    const selection = globalThis.getSelection();
     selection.collapseToStart();
   }
   this._updateSelectionState();
@@ -1090,12 +1090,42 @@ Highlighter.prototype._updateSelectionState = function () {
   const selectionContainer = this._getSelectionContainer();
   if (selectionContainer && selectionContainer !== this._annotatableContainer) return;
 
-
-  // Get selection properties
-  let selectionRange, rangeRect, startRect, endRect, boundsHash;
-  let rangeParagraphs = [], rangeLineRects = [];
+  // Get bounds hash
+  let selectionRange, boundsHash;
   if (selection.type !== 'None') {
     selectionRange = selection.getRangeAt(0);
+    const clientRects = selectionRange.getClientRects();
+    const firstRect = clientRects[0];
+    const lastRect = clientRects[clientRects.length - 1];
+    if (firstRect && lastRect) {
+      boundsHash = `${selection.type}-${Math.round(firstRect.top)},${Math.round(firstRect.left)},${Math.round(firstRect.right)}-${Math.round(lastRect.bottom)},${Math.round(lastRect.left)},${Math.round(lastRect.right)}`;
+    }
+  }
+
+  // Get active highlight properties
+  const activeHighlightId = this._activeHighlightId;
+  const highlightInfo = this._highlightsById[activeHighlightId] ?? null;
+  const isSvgActive = activeHighlightId && highlightInfo?.resolvedDrawingMode === 'svg';
+  const color = highlightInfo?.color ?? null;
+  const style = highlightInfo?.style ?? null;
+
+  // Check which properties changed
+  const isResizing = this._isResizingSelection;
+  const pointerType = this._pointerType;
+  const prev = this._selectionState;
+  const changes = [];
+  if (activeHighlightId !== prev.activeHighlightId) changes.push('activeHighlightId');
+  if (color !== prev.color) changes.push('color');
+  if (style !== prev.style) changes.push('style');
+  if (isResizing !== prev.isResizing) changes.push('isResizing');
+  if (pointerType !== prev.pointerType) changes.push('pointerType');
+  if (boundsHash != this._previousBoundsHash) changes.push('selection');
+  if (changes.length === 0) return;
+
+  // Get range rects
+  let rangeRect, startRect, endRect;
+  let rangeParagraphs = [], rangeLineRects = [];
+  if (selection.type !== 'None') {
     const startParagraph = selectionRange.startContainer.parentElement?.closest(this._paragraphSelector);
     const endParagraph = selectionRange.endContainer.parentElement?.closest(this._paragraphSelector) ?? startParagraph;
     if (startParagraph && endParagraph) {
@@ -1106,35 +1136,12 @@ Highlighter.prototype._updateSelectionState = function () {
         const endIdx = this._annotatableParagraphs.indexOf(endParagraph);
         rangeParagraphs = this._annotatableParagraphs.slice(startIdx, endIdx + 1);
       }
-    }
-    if (rangeParagraphs.length > 0) {
       const additionsRect = this._additionsDiv.getBoundingClientRect();
       ([rangeRect, rangeLineRects] = this._getRangeRects(selectionRange, rangeParagraphs, additionsRect));
       startRect = rangeLineRects[0];
       endRect = rangeLineRects.at(-1);
-      boundsHash = `${selection.type}-${Math.round(startRect.top)},${Math.round(startRect.left)},${Math.round(startRect.right)}-${Math.round(endRect.bottom)},${Math.round(endRect.left)},${Math.round(endRect.right)}`;
     }
   }
-  const isResizing = this._isResizingSelection;
-  const pointerType = this._pointerType;
-
-  // Get active highlight properties
-  const activeHighlightId = this._activeHighlightId;
-  const highlightInfo = this._highlightsById[activeHighlightId] ?? null;
-  const isSvgActive = activeHighlightId && highlightInfo?.resolvedDrawingMode === 'svg';
-  const color = highlightInfo?.color ?? null;
-  const style = highlightInfo?.style ?? null;
-
-  // Check which properties changed
-  const prev = this._selectionState;
-  const changes = [];
-  if (activeHighlightId !== prev.activeHighlightId) changes.push('activeHighlightId');
-  if (color !== prev.color) changes.push('color');
-  if (style !== prev.style) changes.push('style');
-  if (isResizing !== prev.isResizing) changes.push('isResizing');
-  if (pointerType !== prev.pointerType) changes.push('pointerType');
-  if (boundsHash != this._previousBoundsHash) changes.push('selection');
-  if (changes.length === 0) return;
 
   // Update selection state
   this._selectionState = { activeHighlightId, color, style, isResizing, pointerType, selection, changes };
@@ -1194,7 +1201,7 @@ Highlighter.prototype._updateSelectionState = function () {
 
   // Update selection handle location and visibility
   const showDragHandles =
-    (options.showDragHandles.includes('touch') || this._pointerType === 'mouse')
+    (options.showDragHandles.includes('touch') || pointerType === 'mouse')
     && (options.showDragHandles.includes('highlights') && activeHighlightId
       || options.showDragHandles.includes('selection') && !activeHighlightId);
   if (selection.type === 'Range' && showDragHandles) {
@@ -1639,16 +1646,20 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRec
     const walker = this._getTextNodeWalker(paragraph);
     let textNode;
     while (textNode = walker.nextNode()) {
-      if (!range.intersectsNode(textNode)) continue;
+      if (!range.intersectsNode(textNode)) {
+        if (range.comparePoint(textNode, 0) > 0) break;
+        continue;
+      }
       const start = textNode === range.startContainer ? range.startOffset : 0;
       const end = textNode === range.endContainer ? range.endOffset : textNode.length;
       if (start > end) continue;
       textNodeRange.setStart(textNode, start);
       textNodeRange.setEnd(textNode, end);
       const clientRects = textNodeRange.getClientRects();
+      let previousTextNodeLine = 0;
       for (const rect of clientRects) {
         const centerY = rect.y + rect.height / 2;
-        for (let i = 0; i < lines.length; i++) {
+        for (let i = previousTextNodeLine; i < lines.length; i++) {
           const lineRect = lines[i];
           // Skip rects that extend outside the line of text (such as absolutely-positioned elements)
           if (rect.left >= lineRect.left && rect.right <= lineRect.right
@@ -1656,6 +1667,7 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRec
             const a = accums[i];
             a.left = Math.min(a.left ?? rect.left, rect.left);
             a.right = Math.max(a.right ?? rect.right, rect.right);
+            previousTextNodeLine = i;
             break;
           }
         }
@@ -1680,7 +1692,7 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRec
 
     if (lines.length > 0) prevParagraphBottom = lines[lines.length - 1].bottom;
   }
-  
+
   const rangeRect = new DOMRect(rangeRectCoordinates.left, rangeRectCoordinates.top, rangeRectCoordinates.right - rangeRectCoordinates.left, rangeRectCoordinates.bottom - rangeRectCoordinates.top);
   return [rangeRect, rangeLineRects];
 }

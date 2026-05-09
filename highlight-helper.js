@@ -85,10 +85,12 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
   };
   this._isResizingSelection = false;
   this._previousBoundsHash = null;
+  this._containerRect = null;
+  this._additionsRect = null;
 
   this._loadStyles();
   this._loadEventListeners();
-  this._updateAppearanceStylesheet();
+  this._updateColorStylesheet();
   this._updateSelectionState();
   for (const handle of this._dragHandles) {
     handle.children[1].innerHTML = this._options.dragHandles[handle.dataset.hhSide] ?? '';
@@ -101,8 +103,8 @@ Highlighter.prototype._loadStyles = function () {
   // Set up stylesheets
   this._stylesheets = {}
   this._generalStylesheet = _addStylesheet(this._stylesheets, 'general');
-  this._appearanceStylesheet = _addStylesheet(this._stylesheets, 'appearance');
-  this._highlightApiStylesheet = _addStylesheet(this._stylesheets, 'highlight-api');
+  this._colorStylesheet = _addStylesheet(this._stylesheets, 'color');
+  this._highlightStylesheet = _addStylesheet(this._stylesheets, 'highlight');
   this._selectionStylesheet = _addStylesheet(this._stylesheets, 'selection');
   this._generalStylesheet.replaceSync(`
     ${this._containerSelector} {
@@ -584,7 +586,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
 
   // Draw highlight if needed
   if (draw) {
-    if (highlightId !== this._activeHighlightId || appearanceChanges.some(k => k.startsWith('wrapper'))) {
+    if (highlightId !== this._activeHighlightId || appearanceChanges.some(k => k === 'wrapper' || k === 'variables')) {
       this.drawHighlights([highlightId]);
     } else {
       // If the highlight is active, just update the selection style (the highlight will be redrawn on deactivate)
@@ -612,6 +614,8 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
 Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
   if (highlightIds.length === 0) return;
   const options = this._options;
+  this._containerRect = this._annotatableContainer.getBoundingClientRect();
+  this._additionsRect = this._additionsDiv.getBoundingClientRect();
 
   const wrapperElements = new Map();
   for (const wrapper of this._annotatableContainer.querySelectorAll('[data-hh-wrapper]')) {
@@ -662,10 +666,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       wrapper.dataset.hhWrapper = highlightInfo.wrapper;
       const wrapperHash = this._getWrapperHash(highlightInfo);
       if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
-        let innerHtml = options.wrapperDefs[highlightInfo.wrapper][position];
-        for (const key of Object.keys(highlightInfo.variables)) {
-          innerHtml = innerHtml.replaceAll(`{${key}}`, highlightInfo.variables[key]);
-        }
+        let innerHtml = this._applySubstitutions(options.wrapperDefs[highlightInfo.wrapper][position], highlightInfo.variables, highlightInfo.rangeRect);
         wrapper.dataset.hhWrapperHash = wrapperHash;
         wrapper.innerHTML = innerHtml;
       }
@@ -678,7 +679,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
   // Cache paragraph line rects (in case there are multiple highlights in the paragraph
   const paragraphLineRectsCache = new Map();
-  const additionsRect = this._additionsDiv.getBoundingClientRect();
 
   // Loop through highlights
   for (const highlightInfo of sortedHighlights) {
@@ -713,12 +713,15 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
     }
 
-    // Compute range rects for tap detection
+    // Compute range rects for tap detection and style/wrapper variables
     highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
     if (highlightInfo.resolvedDrawingMode !== 'mark-elements') {
-      const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, additionsRect, paragraphLineRectsCache);
+      const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, paragraphLineRectsCache);
       highlightInfo.rangeRect = rangeRect;
       highlightInfo.rangeLineRects = rangeLineRects;
+    } else {
+      const rangeRect = range.getBoundingClientRect();
+      highlightInfo.rangeRect = new DOMRect(rangeRect.left - this._additionsRect.left, rangeRect.top - this._additionsRect.top, rangeRect.width, rangeRect.height);
     }
 
     // Draw highlights with mark elements
@@ -795,14 +798,14 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       group.dataset.hhColor = highlightInfo.color;
       group.dataset.hhStyle = highlightInfo.style;
       let svgContent = '';
-      for (const rect of highlightInfo.rangeLineRects) {
-        svgContent += this._getStyleString(highlightInfo.style, 'svg', rect);
+      for (const lineRect of highlightInfo.rangeLineRects) {
+        svgContent += this._getStyleString(highlightInfo.style, 'svg', false, highlightInfo.variables, highlightInfo.rangeRect, lineRect);
       }
       group.innerHTML = svgContent;
       this._svgBackground.appendChild(group);
     }
   }
-  this._rebuildHighlightApiStylesheet();
+  this._rebuildHighlightStylesheet();
 }
 
 // Activate a highlight by ID
@@ -901,9 +904,9 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
       hyperlinks.push(this._hyperlinksByIndex[element.dataset.hhIndex]);
     }
   }
-  const additionsRect = this._additionsDiv.getBoundingClientRect();
-  const x = clientX - additionsRect.left;
-  const y = clientY - additionsRect.top;
+  this._additionsRect = this._additionsDiv.getBoundingClientRect();
+  const x = clientX - this._additionsRect.left;
+  const y = clientY - this._additionsRect.top;
   for (const highlightId of Object.keys(this._highlightsById)) {
     if (highlightIds.has(highlightId)) continue;
     const rangeLineRects = this._highlightsById[highlightId].rangeLineRects;
@@ -931,8 +934,8 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
       options[key] = optionsToUpdate[key] ?? options[key] ?? _defaultOptions[key];
     }
   }
-  if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate || 'colorDefs' in optionsToUpdate) {
-    this._updateAppearanceStylesheet();
+  if ('drawingMode' in optionsToUpdate || 'colorDefs' in optionsToUpdate) {
+    this._updateColorStylesheet();
   }
   if ('drawingMode' in optionsToUpdate || 'styleDefs' in optionsToUpdate) {
     this.drawHighlights();
@@ -965,7 +968,7 @@ Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(th
       highlightId: highlightId,
     }}));
   }
-  this._rebuildHighlightApiStylesheet();
+  this._rebuildHighlightStylesheet();
 }
 
 // Remove this Highlighter instance and its highlights
@@ -1002,8 +1005,10 @@ Highlighter.prototype._diffHighlight = function (newHighlightInfo, oldHighlightI
   const changedHighlightInfo = { highlightId: newHighlightInfo.highlightId };
   let hasChanges = false;
   for (const key of Object.keys(newHighlightInfo)) {
-    if (key !== 'highlightId' && Object.hasOwn(oldHighlightInfo, key) && oldHighlightInfo[key] !== newHighlightInfo[key]) {
-      changedHighlightInfo[key] = newHighlightInfo[key];
+    const newVal = newHighlightInfo[key], oldVal = oldHighlightInfo[key];
+    const changed = (newVal !== null && typeof newVal === 'object') ? !_shallowEqual(newVal, oldVal ?? {}) : newVal != oldVal;
+    if (key !== 'highlightId' && Object.hasOwn(oldHighlightInfo, key) && changed) {
+      changedHighlightInfo[key] = newVal;
       hasChanges = true;
     }
   }
@@ -1068,18 +1073,23 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
   }
 }
 
-// Rebuild the highlight-api stylesheet from scratch using all active highlights
-Highlighter.prototype._rebuildHighlightApiStylesheet = function () {
-  if (!supportsHighlightApi || this._options.drawingMode !== 'highlight-api') return;
+// Rebuild the per-highlight stylesheet from scratch using all active highlights
+Highlighter.prototype._rebuildHighlightStylesheet = function () {
   let cssText = '';
   for (const highlightInfo of Object.values(this._highlightsById)) {
-    if (highlightInfo.resolvedDrawingMode !== 'highlight-api') continue;
-    const styleString = this._getStyleString(highlightInfo.style, 'css', null);
-    const colorString = this._options.colorDefs[highlightInfo.color];
-    cssText += `${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }\n`;
-    cssText += `${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }\n`;
+    const resolvedMode = highlightInfo.resolvedDrawingMode;
+    if (resolvedMode === 'highlight-api' || resolvedMode === 'mark-elements') {
+      const styleString = this._getStyleString(highlightInfo.style, 'css', false, highlightInfo.variables, highlightInfo.rangeRect);
+      if (resolvedMode === 'highlight-api') {
+        const colorString = this._options.colorDefs[highlightInfo.color];
+        cssText += `${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }\n`;
+        cssText += `${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }\n`;
+      } else {
+        cssText += `mark[data-hh-highlight-id=${highlightInfo.escapedHighlightId}][data-hh-style] { ${styleString} }\n`;
+      }
+    }
   }
-  this._highlightApiStylesheet.replaceSync(cssText);
+  this._highlightStylesheet.replaceSync(cssText);
 }
 
 // Update selection background, handles, and state object
@@ -1090,6 +1100,8 @@ Highlighter.prototype._updateSelectionState = function () {
   // If the selection starts in another annotatable container, let the other container handle it
   const selectionContainer = this._getSelectionContainer();
   if (selectionContainer && selectionContainer !== this._annotatableContainer) return;
+  this._containerRect = this._annotatableContainer.getBoundingClientRect();
+  this._additionsRect = this._additionsDiv.getBoundingClientRect();
 
   // Get bounds hash
   let selectionRange, boundsHash;
@@ -1109,6 +1121,7 @@ Highlighter.prototype._updateSelectionState = function () {
   const isSvgActive = activeHighlightId && highlightInfo?.resolvedDrawingMode === 'svg';
   const color = highlightInfo?.color ?? null;
   const style = highlightInfo?.style ?? null;
+  const variables = highlightInfo?.variables ?? {};
 
   // Check which properties changed
   const isResizing = this._isResizingSelection;
@@ -1118,6 +1131,7 @@ Highlighter.prototype._updateSelectionState = function () {
   if (activeHighlightId !== prev.activeHighlightId) changes.push('activeHighlightId');
   if (color !== prev.color) changes.push('color');
   if (style !== prev.style) changes.push('style');
+  if (!_shallowEqual(variables, prev.variables ?? {})) changes.push('variables');
   if (isResizing !== prev.isResizing) changes.push('isResizing');
   if (pointerType !== prev.pointerType) changes.push('pointerType');
   if (boundsHash != this._previousBoundsHash) changes.push('selection');
@@ -1137,8 +1151,7 @@ Highlighter.prototype._updateSelectionState = function () {
         const endIdx = this._annotatableParagraphs.indexOf(endParagraph);
         rangeParagraphs = this._annotatableParagraphs.slice(startIdx, endIdx + 1);
       }
-      const additionsRect = this._additionsDiv.getBoundingClientRect();
-      ([rangeRect, rangeLineRects] = this._getRangeRects(selectionRange, rangeParagraphs, additionsRect));
+      ([rangeRect, rangeLineRects] = this._getRangeRects(selectionRange, rangeParagraphs));
     }
     rangeParagraphIds = rangeParagraphs.map(p => p.id);
     rangeObj = selectionRange;
@@ -1146,8 +1159,7 @@ Highlighter.prototype._updateSelectionState = function () {
   }
 
   // Update selection state
-  this._selectionState = { activeHighlightId, color, style, isResizing, pointerType, selection, changes,
-    rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
+  this._selectionState = { activeHighlightId, color, style, variables, isResizing, pointerType, selection, changes, rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
   this._previousBoundsHash = boundsHash;
 
   // Draw SVG selection rects (SVG drawing mode only)
@@ -1156,8 +1168,8 @@ Highlighter.prototype._updateSelectionState = function () {
     this._svgActiveOverlay.dataset.hhColor = color;
     this._svgActiveOverlay.dataset.hhStyle = style;
     let svgContent = '';
-    for (const rect of rangeLineRects) {
-      svgContent += this._getStyleString(highlightInfo.style, 'svg', rect, true);
+    for (const lineRect of rangeLineRects) {
+      svgContent += this._getStyleString(highlightInfo.style, 'svg', true, highlightInfo.variables, highlightInfo.rangeRect, lineRect);
     }
     this._svgActiveOverlay.innerHTML = svgContent;
 
@@ -1168,7 +1180,7 @@ Highlighter.prototype._updateSelectionState = function () {
   }
 
   // Update selection stylesheet
-  if (['activeHighlightId', 'color', 'style'].some(ch => changes.includes(ch))) {
+  if (['activeHighlightId', 'color', 'style', 'variables'].some(ch => changes.includes(ch))) {
     const colorString = options.colorDefs[color] ?? (supportsAccentColor ? 'AccentColor' : 'dodgerblue');
     this._annotatableContainer.style.setProperty('--hh-color', colorString);
 
@@ -1184,7 +1196,7 @@ Highlighter.prototype._updateSelectionState = function () {
       for (const svgHighlight of this._svgBackground.querySelectorAll(`g[data-hh-highlight-id="${activeHighlightId}"]`)) {
         svgHighlight.remove();
       }
-      const styleString = this._getStyleString(style, 'css', null, true);
+      const styleString = this._getStyleString(style, 'css', true, highlightInfo.variables, highlightInfo.rangeRect);
       this._selectionStylesheet.replaceSync(`
         ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
         ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
@@ -1409,18 +1421,14 @@ Highlighter.prototype._getTextNodeWalker = function (root = this._annotatableCon
   return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, (node) => this._shouldSkipTextNode(node) ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT);
 }
 
-// Update appearance stylesheet (user-defined colors and styles)
-Highlighter.prototype._updateAppearanceStylesheet = function () {
+// Update color stylesheet
+Highlighter.prototype._updateColorStylesheet = function () {
   const options = this._options;
   let css = '';
   for (const color of Object.keys(options.colorDefs)) {
     css += `[data-hh-color="${color}"] { --hh-color: ${options.colorDefs[color]}; }\n`;
   }
-  for (const style of Object.keys(options.styleDefs)) {
-    const styleString = this._getStyleString(style, 'css', null);
-    css += `mark[data-hh-highlight-id][data-hh-style="${style}"] { ${styleString} }\n`;
-  }
-  this._appearanceStylesheet.replaceSync(css);
+  this._colorStylesheet.replaceSync(css);
 }
 
 // Get the resolved drawing mode for a highlight
@@ -1439,19 +1447,41 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo) {
   for (const key of Object.keys(highlightInfo.variables).sort()) {
     hash += '\x00' + key + '\x01' + highlightInfo.variables[key];
   }
+  const wrapperDef = this._options.wrapperDefs[highlightInfo.wrapper];
+  const wrapperTemplate = (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
+  if (highlightInfo.rangeRect && /\{range\./.test(wrapperTemplate)) {
+    const r = highlightInfo.rangeRect;
+    hash += '\x02' + Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.width) + ',' + Math.round(r.height);
+  }
+  if (this._containerRect && /\{container\./.test(wrapperTemplate)) {
+    const c = this._containerRect;
+    hash += '\x03' + Math.round(c.x) + ',' + Math.round(c.y) + ',' + Math.round(c.width) + ',' + Math.round(c.height);
+  }
   return hash;
 }
 
+// Apply variable substitutions
+Highlighter.prototype._applySubstitutions = function (str, variables = {}, rangeRect = null, lineRect = null) {
+  if (!str) return str;
+  const map = {};
+  const rectKeys = ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'];
+  for (const key of Object.keys(variables)) map[`{${key}}`] = variables[key];
+  if (rangeRect)           for (const k of rectKeys) map[`{range.${k}}`]     = rangeRect[k];
+  if (this._containerRect) for (const k of rectKeys) map[`{container.${k}}`] = this._containerRect[k];
+  if (lineRect)            for (const k of rectKeys) map[`{${k}}`]           = lineRect[k];
+  return str.replace(/\{[^}]+\}/g, match => map[match] ?? match);
+}
+
 // Get style string for a given highlight style
-Highlighter.prototype._getStyleString = function (style, type, lineRect = null, active = false) {
+Highlighter.prototype._getStyleString = function (style, type, active = false, variables = {}, rangeRect = null, lineRect = null) {
   const options = this._options;
   style = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
   let styleString = options.styleDefs[style]?.[type] ?? '';
   if (active) {
     styleString = options.styleDefs[style]?.[`${type}Active`] ?? styleString;
   }
-  if (styleString && type === 'svg' && lineRect) {
-    styleString = styleString.replace(/\{(x|y|width|height|top|right|bottom|left)\}/g, (_, key) => lineRect[key]);
+  if (styleString) {
+    styleString = this._applySubstitutions(styleString, variables, rangeRect, type === 'svg' ? lineRect : null);
   }
   return styleString;
 }
@@ -1648,7 +1678,7 @@ Highlighter.prototype._getRangeContent = function (range, unwrapHighlights = fal
 };
 
 // Get merged client rects from the highlight range
-Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRect, paragraphLineRectsCache = new Map()) {
+Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLineRectsCache = new Map()) {
   let rangeRectCoordinates = { top: Number.POSITIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY, left: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
   const rangeLineRects = [];
   const textNodeRange = document.createRange();
@@ -1702,10 +1732,10 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, additionsRec
       const a = accums[i];
       if (a.left == null) continue;
       const lineRect = lines[i];
-      const top = lineRect.top - additionsRect.top;
-      const bottom = lineRect.bottom - additionsRect.top;
-      const left = (a.left - lineRect.left < snapTolerance ? lineRect.left : a.left) - additionsRect.left;
-      const right = (lineRect.right - a.right < snapTolerance ? lineRect.right : a.right) - additionsRect.left;
+      const top = lineRect.top - this._additionsRect.top;
+      const bottom = lineRect.bottom - this._additionsRect.top;
+      const left = (a.left - lineRect.left < snapTolerance ? lineRect.left : a.left) - this._additionsRect.left;
+      const right = (lineRect.right - a.right < snapTolerance ? lineRect.right : a.right) - this._additionsRect.left;
       rangeRectCoordinates.left = Math.min(left, rangeRectCoordinates.left);
       rangeRectCoordinates.right = Math.max(right, rangeRectCoordinates.right);
       rangeRectCoordinates.top = Math.min(top, rangeRectCoordinates.top);
@@ -1775,6 +1805,12 @@ function _debounce(func, wait) {
 // Default function for generating a highlight ID
 function _getNewHighlightId() {
   return 'hh-' + Date.now().toString();
+}
+
+// Check if two objects are roughly the same
+function _shallowEqual(a, b) {
+  const keysA = Object.keys(a);
+  return keysA.length === Object.keys(b).length && keysA.every(k => a[k] == b[k]);
 }
 
 

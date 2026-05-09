@@ -186,7 +186,7 @@ Highlight objects have the following editable properties:
 - **color** – String. Highlight color (key from the `colorDefs` option). Default: `yellow`.
 - **style** – String. Highlight style (key from the `styleDefs` option). Default: `fill`.
 - **wrapper** – String. Highlight wrapper (key from the `wrapperDefs` option). Example: `{ startLabel: 'Start', }`. Default: `null`.
-- **wrapperVariables** – Object. Wrapper variables. Default: `null`.
+- **variables** – Object. Style and wrapper variables. Values are substituted into `{key}` placeholders in style and wrapper templates. Default: `null`.
 - **readOnly** – Boolean. Indicates whether the highlight should be read-only. Default: `false`.
 - **startParagraphId** – String. Paragraph ID where the highlight starts. Example: `p1`. Default based on selected text.
 - **startParagraphOffset** – Integer. Character offset* where the highlight starts, relative to the beginning of the paragraph. Example: `0`. Default based on selected text.
@@ -197,10 +197,10 @@ These additional properties are updated on the fly:
 
 - **rangeText** – String. Plain text of the highlighted range.
 - **rangeHtml** – String. HTML content of the highlighted range.
-- **rangeParagraphIds** – Array of paragraph IDs. Paragraphs in the highlighted range.
-- **rangeObj** – [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
 - **rangeRect** – DOMRect. Location of rendered highlight, relative to the top of the page (bounding rectangle).
 - **rangeLineRects** – Array of DOMRects. Location of rendered highlight lines, relative to the top of the page (one rectangle for each line of text).
+- **rangeParagraphIds** – Array of paragraph IDs. Paragraphs in the highlighted range.
+- **rangeObj** – [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
 - **resolvedDrawingMode** – String. Drawing mode used to render the highlight. Should be either the current drawing mode, or `mark-elements` (fallback when a highlight can't be rendered in the current drawing mode).
 - **escapedHighlightId** – Strong. Escaped highlight ID used internally in case the provided ID isn't a valid CSS identifier.
 
@@ -229,11 +229,15 @@ The following options can be set using the `setOptions()` method. Options that a
     - **cssActive** (optional) – alternate CSS string for active highlights. Falls back to `css`.
     - **svg** (optional) – SVG string used in `svg` drawing mode. Falls back to `css`.
     - **svgActive** (optional) – alternate SVG string for active highlights. Falls back to `svg`, `cssActive`, or `css`.
-    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. Additionally, for SVG, the following variables will be replaced with values from the highlight's DOMRect: `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}`.
+    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. The following variable substitutions are also supported (applied in this precedence order):
+        - `{key}` – replaced with provided values from the highlight's `variables` property.
+        - `{range.x}`, `{range.y}`, `{range.width}`, `{range.height}`, `{range.top}`, `{range.bottom}`, `{range.left}`, `{range.right}` – replaced with values from the highlight range's bounding rectangle.
+        - `{container.x}`, `{container.y}`, `{container.width}`, `{container.height}`, `{container.top}`, `{container.bottom}`, `{container.left}`, `{container.right}` – replaced with values from the annotatable container's bounding rectangle.
+        - `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}` – SVG only. Replaced with values from the individual highlight line's DOMRect.
 - **wrapperDefs** – Object. Defines highlight wrapper templates. Keys are wrapper names. Default keys: `screen-reader-label`. Each wrapper has two properties:
     - **start** – HTML template for the start wrapper. Default: `null`.
     - **end** – HTML template for the end wrapper. Default: `null`.
-    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. Additionally, variables surrounded by curly brackets will be replaced with values from the highlight object's `wrapperVariables` attribute.
+    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. The same `{key}`, `{range.*}`, and `{container.*}` substitutions described under `styleDefs` are also supported.
 
 
 ### <a name="element-attributes"></a>Element attributes
@@ -273,8 +277,6 @@ Other:
 ### <a name="known-issues"></a>Known issues
 
 - **Chrome on Android** doesn't show text selection handles when text is selected programmatically (such as from a disambiguation panel, or with snap-to-word). Text selection must be initiated by a user gesture.
-    - Workaround: None.
-- **Chrome on Android and macOS** can cause text selection to jump and select more than expected when selecting Japanese text with ruby characters or dragging the selection to the edge of the page.
     - Workaround: None.
 - **Safari on iOS and macOS** doesn't allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the CSS Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
     - Workaround: Use a different drawing mode.
@@ -329,6 +331,7 @@ show/hide custom menu on scroll and on resize
 
 <!--
 prevent wrapping mid-wrapper or between wrapper and highlight (noBreak entity)
+/* Prevent line breaks mid-wrapper. You can also prevent line breaks between the wrapper and the highlight by adding &NoBreak; at the start or end of the wrapper content. */
 box-decoration-break: clone
  -->
 
@@ -353,3 +356,11 @@ show popup
  -->
 
 #### Moving wrappers during highlight resize
+
+#### Keyboard shortcuts for deleting or modifying a highlight
+
+#### Changing color vibrance
+
+#### Callout bar
+
+#### Copy selected text

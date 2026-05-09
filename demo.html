@@ -207,28 +207,28 @@
         {
           highlightId: 'hh-1735379721523',
           color: 'red', style: 'fill', wrapper: 'screen-reader-label',
-          wrapperVariables: { startLabel: '(start red highlight)', endLabel: '(end red highlight)', },
+          variables: { startLabel: '(start red highlight)', endLabel: '(end red highlight)', },
           startParagraphId: 'p1', startParagraphOffset: 239,
           endParagraphId: 'p1', endParagraphOffset: 252,
         },
         {
           highlightId: 'hh-1735379727958',
           color: 'yellow', style: 'fill', wrapper: 'screen-reader-label',
-          wrapperVariables: { startLabel: '(start yellow highlight)', endLabel: '(end yellow highlight)', },
+          variables: { startLabel: '(start yellow highlight)', endLabel: '(end yellow highlight)', },
           startParagraphId: 'p1', startParagraphOffset: 248,
           endParagraphId: 'p1', endParagraphOffset: 261,
         },
         {
           highlightId: 'hh-1729991847300',
           color: 'blue', style: 'fill', wrapper: 'margin-indicator',
-          wrapperVariables: { content: '🙂', ariaLabel: 'Smile emoji', },
+          variables: { content: '🙂', ariaLabel: 'Smile emoji', },
           startParagraphId: 'p2', startParagraphOffset: 27,
           endParagraphId: 'p2', endParagraphOffset: 42,
         },
         {
           highlightId: 'hh-1729991847468',
           color: 'red', style: 'underline', wrapper: 'footnote',
-          wrapperVariables: { content: 'a', ariaLabel: 'Footnote [a]', },
+          variables: { content: 'a', ariaLabel: 'Footnote [a]', },
           readOnly: true,
           startParagraphId: 'p2', startParagraphOffset: 119,
           endParagraphId: 'p2', endParagraphOffset: 127,
@@ -328,7 +328,7 @@
         wrapperButton.addEventListener('click', () => {
           highlighter.createOrUpdateHighlight({
             wrapper: wrapperButton.value === 'none' ? null : wrapperButton.value,
-            wrapperVariables: { content: contentSpan?.dataset?.content ?? '', ariaLabel: contentSpan?.dataset?.ariaLabel ?? '' },
+            variables: { content: contentSpan?.dataset?.content ?? '', ariaLabel: contentSpan?.dataset?.ariaLabel ?? '' },
           });
         });
       }
@@ -379,7 +379,7 @@
         infoDiv.innerHTML = `
           <b>Highlight:</b> ${event.detail.highlight.highlightId}<br>
           <b>Color and style:</b> ${event.detail.highlight.color}, ${event.detail.highlight.style}<br>
-          <b>Wrapper:</b> ${event.detail.highlight.wrapper}, ${JSON.stringify(event.detail.highlight.wrapperVariables)}<br>
+          <b>Wrapper:</b> ${event.detail.highlight.wrapper}, ${JSON.stringify(event.detail.highlight.variables)}<br>
           <b>Read-only:</b> ${event.detail.highlight.readOnly}<br>
           <b>Start:</b> #${event.detail.highlight.startParagraphId}, offset ${event.detail.highlight.startParagraphOffset}<br>
           <b>End:</b> #${event.detail.highlight.endParagraphId}, offset ${event.detail.highlight.endParagraphOffset}
@@ -501,16 +501,6 @@
       container.addEventListener('hh:highlightactivate', moveMarginIndicator);
       container.addEventListener('hh:selectionchange', moveMarginIndicator);
 
-      // Log events for debugging
-      container.addEventListener('hh:highlightcreate', console.info)
-      container.addEventListener('hh:highlightupdate', console.info)
-      container.addEventListener('hh:highlightremove', console.info)
-      container.addEventListener('hh:highlightsload', console.info)
-      container.addEventListener('hh:highlightactivate', console.info)
-      container.addEventListener('hh:highlightdeactivate', console.info)
-      container.addEventListener('hh:selectionstyleupdate', console.info)
-      container.addEventListener('hh:ambiguousaction', console.info)
-      container.addEventListener('hh:tap', console.info)
     </script>
   </body>
 </html>

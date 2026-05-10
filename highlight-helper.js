@@ -664,11 +664,18 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       wrapper.dataset.hhColor = highlightInfo.color;
       wrapper.dataset.hhStyle = highlightInfo.style;
       wrapper.dataset.hhWrapper = highlightInfo.wrapper;
-      const wrapperHash = this._getWrapperHash(highlightInfo);
+      const wrapperTemplateHash = this._getWrapperTemplateHash(highlightInfo);
+      const wrapperHash = this._getWrapperHash(highlightInfo, wrapperTemplateHash);
       if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
-        let innerHtml = this._applySubstitutions(options.wrapperDefs[highlightInfo.wrapper][position], highlightInfo.variables, highlightInfo.rangeRect);
+        const rawTemplate = options.wrapperDefs[highlightInfo.wrapper][position];
+        const innerHtml = this._applySubstitutions(rawTemplate, highlightInfo.variables, highlightInfo.rangeRect);
+        if (String(wrapperTemplateHash) === wrapper.dataset.hhWrapperTemplateHash && wrapper.children.length > 0) {
+          this._updateWrapperInPlace(wrapper, innerHtml);
+        } else {
+          wrapper.innerHTML = innerHtml;
+          wrapper.dataset.hhWrapperTemplateHash = String(wrapperTemplateHash);
+        }
         wrapper.dataset.hhWrapperHash = wrapperHash;
-        wrapper.innerHTML = innerHtml;
       }
       wrapperElements.set(`${highlightId}:${position}`, wrapper);
     }
@@ -1442,13 +1449,21 @@ Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
   return options.drawingMode;
 }
 
-Highlighter.prototype._getWrapperHash = function (highlightInfo) {
-  let hash = highlightInfo.wrapper ?? '';
+Highlighter.prototype._getWrapperTemplateHash = function (highlightInfo) {
+  const wrapperDef = this._options.wrapperDefs[highlightInfo.wrapper];
+  const str = (highlightInfo.wrapper ?? '') + (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return h;
+}
+
+Highlighter.prototype._getWrapperHash = function (highlightInfo, templateHash = null) {
+  const wrapperDef = this._options.wrapperDefs[highlightInfo.wrapper];
+  const wrapperTemplate = (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
+  let hash = String(templateHash ?? this._getWrapperTemplateHash(highlightInfo));
   for (const key of Object.keys(highlightInfo.variables).sort()) {
     hash += '\x00' + key + '\x01' + highlightInfo.variables[key];
   }
-  const wrapperDef = this._options.wrapperDefs[highlightInfo.wrapper];
-  const wrapperTemplate = (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
   if (highlightInfo.rangeRect && /\{range\./.test(wrapperTemplate)) {
     const r = highlightInfo.rangeRect;
     hash += '\x02' + Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.width) + ',' + Math.round(r.height);
@@ -1458,6 +1473,22 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo) {
     hash += '\x03' + Math.round(c.x) + ',' + Math.round(c.y) + ',' + Math.round(c.width) + ',' + Math.round(c.height);
   }
   return hash;
+}
+
+// Update wrapper children in-place (attributes and leaf text), preserving element identity for CSS transitions
+Highlighter.prototype._updateWrapperInPlace = function (wrapper, newHtmlString) {
+  const temp = document.createElement('div');
+  temp.innerHTML = newHtmlString;
+  for (let i = 0; i < wrapper.children.length; i++) {
+    const existing = wrapper.children[i];
+    const updated = temp.children[i];
+    for (const attr of updated.attributes) {
+      if (existing.getAttribute(attr.name) !== attr.value) existing.setAttribute(attr.name, attr.value);
+    }
+    if (!updated.children.length && existing.textContent !== updated.textContent) {
+      existing.textContent = updated.textContent;
+    }
+  }
 }
 
 // Apply variable substitutions

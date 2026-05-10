@@ -9,7 +9,7 @@
 
 function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]') {
   this._options = structuredClone(_defaultOptions);
- 
+
   // Load container
   this._containerSelector = containerSelector;
   this._annotatableContainer = document.querySelector(containerSelector);
@@ -654,8 +654,9 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   for (const highlightInfo of sortedHighlights) {
     if (!highlightInfo.wrapper) continue;
     const highlightId = highlightInfo.highlightId;
+    const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
     for (const position of ['start', 'end']) {
-      if (!options.wrapperDefs[highlightInfo.wrapper]?.[position]) continue;
+      if (!wrapperDef?.[position]) continue;
       // Reuse previous wrapper element if it exists (to preserve its state if it was interacted with)
       let wrapper = wrapperElements.get(`${highlightId}:${position}`) ?? null;
       if (wrapper) {
@@ -672,7 +673,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       const wrapperTemplateHash = this._getWrapperTemplateHash(highlightInfo);
       const wrapperHash = this._getWrapperHash(highlightInfo, wrapperTemplateHash);
       if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
-        const rawTemplate = options.wrapperDefs[highlightInfo.wrapper][position];
+        const rawTemplate = wrapperDef[position];
         const innerHtml = this._applySubstitutions(rawTemplate, highlightInfo.variables, highlightInfo.rangeRect);
         if (String(wrapperTemplateHash) === wrapper.dataset.hhWrapperTemplateHash && wrapper.children.length > 0) {
           this._updateWrapperInPlace(wrapper, innerHtml);
@@ -700,13 +701,14 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
     // Insert wrappers before drawing highlight, so any layout shift from wrapper content is accounted for
     if (highlightInfo.wrapper) {
+      const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
       const startWrapper = wrapperElements.get(`${highlightId}:start`);
-      const endWrapper   = wrapperElements.get(`${highlightId}:end`);
-      if (options.wrapperDefs[highlightInfo.wrapper]?.start) {
+      const endWrapper = wrapperElements.get(`${highlightId}:end`);
+      if (wrapperDef?.start) {
         range.insertNode(startWrapper);
       }
       range = this._getCorrectedRangeObj(highlightId);
-      if (options.wrapperDefs[highlightInfo.wrapper]?.end) {
+      if (wrapperDef?.end) {
         range.endContainer.splitText(range.endOffset);
         range.endContainer.after(endWrapper);
       }
@@ -721,7 +723,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
             && selectionRange.compareBoundaryPoints(Range.START_TO_START, range) === 0
             && selectionRange.compareBoundaryPoints(Range.END_TO_END, range) === 0;
       if (highlightId === this._activeHighlightId && selectionRange && !rangesMatch) {
-        globalThis.getSelection().setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+        selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
       }
     }
 
@@ -731,9 +733,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, paragraphLineRectsCache);
       highlightInfo.rangeRect = rangeRect;
       highlightInfo.rangeLineRects = rangeLineRects;
-    } else {
-      const rangeRect = range.getBoundingClientRect();
-      highlightInfo.rangeRect = new DOMRect(rangeRect.left - this._additionsRect.left, rangeRect.top - this._additionsRect.top, rangeRect.width, rangeRect.height);
     }
 
     // Draw highlights with mark elements
@@ -788,8 +787,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       for (const overlappingHighlightId of overlappingHighlightIds) {
         this._getCorrectedRangeObj(overlappingHighlightId);
       }
-      // Clear cached paragraph line rects if mark element was inserted (in case the text needs to reflow)
+
+      // Clear cached paragraph line rects and recompute range rect (in case inserted mark element has styles that cause reflow)
       for (const p of rangeParagraphs) paragraphLineRectsCache.delete(p.id);
+      const markRangeRect = range.getBoundingClientRect();
+      highlightInfo.rangeRect = new DOMRect(markRangeRect.left - this._additionsRect.left, markRangeRect.top - this._additionsRect.top, markRangeRect.width, markRangeRect.height);
 
     // Draw highlights with CSS Highlight API
     } else if (options.drawingMode === 'highlight-api') {
@@ -815,6 +817,19 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
       group.innerHTML = svgContent;
       this._svgBackground.appendChild(group);
+    }
+
+    // Update wrapper range rect references if needed (range rect isn't final until after the highlight has been drawn)
+    if (highlightInfo.wrapper && highlightInfo.rangeRect) {
+      const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
+      for (const position of ['start', 'end']) {
+        if (!wrapperDef?.[position] || !/\{range\./.test(wrapperDef[position])) continue;
+        const wrapper = wrapperElements.get(`${highlightId}:${position}`);
+        if (!wrapper) continue;
+        const innerHtml = this._applySubstitutions(wrapperDef[position], highlightInfo.variables, highlightInfo.rangeRect);
+        if (wrapper.children.length > 0) this._updateWrapperInPlace(wrapper, innerHtml);
+        else wrapper.innerHTML = innerHtml;
+      }
     }
   }
   this._rebuildHighlightStylesheet();
@@ -1661,57 +1676,22 @@ Highlighter.prototype._getParagraphLineRects = function (paragraph) {
     }
   }
 
-  // Handle pseudoelements with CSS-rendered content, such as footnote markers (these have width, but aren't handled in the text nodes loop above)
-  for (const el of paragraph.getElementsByTagName('*')) {
-    if (el.firstChild) continue;
-    const elRect = el.getBoundingClientRect();
-    if (elRect.width === 0 || elRect.height === 0) continue;
-    let hasPseudoContent = false;
-    for (const pseudo of ['::before', '::after']) {
-      const pseudoContent = getComputedStyle(el, pseudo).content;
-      if (pseudoContent && pseudoContent !== 'none' && pseudoContent !== 'normal') { hasPseudoContent = true; break; }
-    }
-    if (!hasPseudoContent) continue;
-    // Snap the rectangle to the paragraph's leading edge if it's close
-    const elLeft = (paragraphStyle.direction === 'ltr' && Math.abs(paragraphRect.left - elRect.left) < snapTolerance) ? paragraphRect.left : elRect.left;
-    const elRight = (paragraphStyle.direction === 'rtl' && Math.abs(paragraphRect.right - elRect.right) < snapTolerance) ? paragraphRect.right : elRect.right;
-    const elCenterY = elRect.top + elRect.height / 2;
-    for (const lineBottom of lineBottomKeys) {
-      const pos = linePositions[lineBottom];
-      if (elCenterY >= lineBottom - pos.maxLineHeight && elCenterY < lineBottom) {
-        pos.minLeft = Math.min(pos.minLeft, elLeft);
-        pos.maxRight = Math.max(pos.maxRight, elRight);
-        break;
-      }
-    }
-  }
-
+  // Expand line rects to include pseudoelements, and snap to the paragraph's leading edge
+  const pseudoElemRects = _gatherPseudoElemRects(paragraph);
   lineBottomKeys.sort((a, b) => a - b);
-  const lines = lineBottomKeys.map((bottom, i) => {
-    const pos = linePositions[bottom];
-    return new DOMRect(pos.minLeft, bottom - pos.maxLineHeight, pos.maxRight - pos.minLeft, pos.maxLineHeight);
+  const lines = lineBottomKeys.map((lineBottom) => {
+    const pos = linePositions[lineBottom];
+    const centerY = lineBottom - pos.maxLineHeight / 2;
+    if (paragraphStyle.direction === 'ltr') {
+      pos.minLeft = this._snapToEdge(pseudoElemRects, pos.minLeft, 'left', centerY, paragraphRect.left, snapTolerance);
+    } else {
+      pos.maxRight = this._snapToEdge(pseudoElemRects, pos.maxRight, 'right', centerY, paragraphRect.right, snapTolerance);
+    }
+    return new DOMRect(pos.minLeft, lineBottom - pos.maxLineHeight, pos.maxRight - pos.minLeft, pos.maxLineHeight);
   });
 
-  return { lines, snapTolerance };
+  return { lines, snapTolerance, pseudoElemRects };
 }
-
-// Get the HTML and text content of a range
-Highlighter.prototype._getRangeContent = function (range, unwrapHighlights = false, unwrapHyperlinks = false) {
-  const tempDiv = document.createElement('div');
-  tempDiv.appendChild(range.cloneContents());
-  const unwrapSelectors = [];
-  if (unwrapHighlights) unwrapSelectors.push('[data-hh-highlight-id]');
-  if (unwrapHyperlinks) unwrapSelectors.push('a');
-  for (const element of tempDiv.querySelectorAll(unwrapSelectors.join(', '))) {
-    while (element.firstChild) element.before(element.firstChild);
-    element.remove();
-  }
-  const removeSelectors = ['[data-hh-ignore]', '.sr-only'];
-  for (const element of tempDiv.querySelectorAll(removeSelectors.join(','))) {
-    element.remove();
-  }
-  return { rangeHtml: tempDiv.innerHTML, rangeText: tempDiv.textContent };
-};
 
 // Get merged client rects from the highlight range
 Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLineRectsCache = new Map()) {
@@ -1725,13 +1705,15 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLin
       paragraphLineRects = this._getParagraphLineRects(paragraph);
       paragraphLineRectsCache.set(paragraph.id, paragraphLineRects);
     }
-    const { lines, snapTolerance } = paragraphLineRects;
+    const { lines, snapTolerance, pseudoElemRects } = paragraphLineRects;
     // If the previous paragraph is below the current paragraph (such as in multi-column layouts), reset prevParagraphBottom
     if (prevParagraphBottom > lines[0].bottom) prevParagraphBottom = Number.NEGATIVE_INFINITY;
-    const topYs = lines.map((_, i) => i === 0 ? prevParagraphBottom : lines[i - 1].bottom);
+    const lineStates = lines.map((lineRect, i) => ({
+      topY: i === 0 ? prevParagraphBottom : lines[i - 1].bottom,
+      left: Infinity, right: -Infinity,
+    }));
 
     // Per-highlight accumulators
-    const accums = lines.map(() => ({ left: null, right: null }));
     const walker = this._getTextNodeWalker(paragraph);
     let textNode;
     while (textNode = walker.nextNode()) {
@@ -1752,10 +1734,10 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLin
           const lineRect = lines[i];
           // Skip rects that extend outside the line of text (such as absolutely-positioned elements)
           if (rect.left >= lineRect.left && rect.right <= lineRect.right
-              && centerY > topYs[i] && centerY <= lineRect.bottom) {
-            const a = accums[i];
-            a.left = Math.min(a.left ?? rect.left, rect.left);
-            a.right = Math.max(a.right ?? rect.right, rect.right);
+              && centerY > lineStates[i].topY && centerY <= lineRect.bottom) {
+            const s = lineStates[i];
+            s.left = Math.min(s.left, rect.left);
+            s.right = Math.max(s.right, rect.right);
             previousTextNodeLine = i;
             break;
           }
@@ -1765,13 +1747,16 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLin
 
     // Build a merged rect for each line
     for (let i = 0; i < lines.length; i++) {
-      const a = accums[i];
-      if (a.left == null) continue;
+      const s = lineStates[i];
+      if (s.left === Infinity) continue;
       const lineRect = lines[i];
+      const centerY = lineRect.top + lineRect.height / 2;
+      s.left  = this._snapToEdge(pseudoElemRects, s.left,  'left',  centerY, lineRect.left,  snapTolerance);
+      s.right = this._snapToEdge(pseudoElemRects, s.right, 'right', centerY, lineRect.right, snapTolerance);
       const top = lineRect.top - this._additionsRect.top;
       const bottom = lineRect.bottom - this._additionsRect.top;
-      const left = (a.left - lineRect.left < snapTolerance ? lineRect.left : a.left) - this._additionsRect.left;
-      const right = (lineRect.right - a.right < snapTolerance ? lineRect.right : a.right) - this._additionsRect.left;
+      const left = s.left - this._additionsRect.left;
+      const right = s.right - this._additionsRect.left;
       rangeRectCoordinates.left = Math.min(left, rangeRectCoordinates.left);
       rangeRectCoordinates.right = Math.max(right, rangeRectCoordinates.right);
       rangeRectCoordinates.top = Math.min(top, rangeRectCoordinates.top);
@@ -1785,6 +1770,46 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLin
   const rangeRect = new DOMRect(rangeRectCoordinates.left, rangeRectCoordinates.top, rangeRectCoordinates.right - rangeRectCoordinates.left, rangeRectCoordinates.bottom - rangeRectCoordinates.top);
   return [rangeRect, rangeLineRects];
 }
+
+function _gatherPseudoElemRects(paragraph) {
+  const hasPseudoContent = (elem, pseudo) => { const c = getComputedStyle(elem, pseudo).content; return c !== 'none' && c !== 'normal'; };
+  const rects = [];
+  for (const el of paragraph.querySelectorAll(':empty:not([data-hh-ignore]):not([data-hh-ignore] *)')) {
+    if (!hasPseudoContent(el, '::before') && !hasPseudoContent(el, '::after')) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) rects.push(rect);
+  }
+  return rects;
+}
+
+Highlighter.prototype._snapToEdge = function (pseudoElemRects, initialValue, side, centerY, snapValue, snapTolerance = null) {
+  const snap = (v) => snapTolerance !== null && Math.abs(snapValue - v) < snapTolerance ? snapValue : v;
+  let edge = initialValue;
+  const probeX = side === 'left' ? edge - 1 : edge + 1;
+  const pseudoRect = pseudoElemRects.find(r => probeX >= r.left && probeX <= r.right && centerY >= r.top && centerY <= r.bottom);
+  if (pseudoRect) {
+    edge = snap(side === 'left' ? Math.min(edge, pseudoRect.left) : Math.max(edge, pseudoRect.right));
+  }
+  return edge;
+};
+
+// Get the HTML and text content of a range
+Highlighter.prototype._getRangeContent = function (range, unwrapHighlights = false, unwrapHyperlinks = false) {
+  const tempDiv = document.createElement('div');
+  tempDiv.appendChild(range.cloneContents());
+  const unwrapSelectors = [];
+  if (unwrapHighlights) unwrapSelectors.push('[data-hh-highlight-id]');
+  if (unwrapHyperlinks) unwrapSelectors.push('a');
+  for (const element of tempDiv.querySelectorAll(unwrapSelectors.join(', '))) {
+    while (element.firstChild) element.before(element.firstChild);
+    element.remove();
+  }
+  const removeSelectors = ['[data-hh-ignore]', '.sr-only'];
+  for (const element of tempDiv.querySelectorAll(removeSelectors.join(','))) {
+    element.remove();
+  }
+  return { rangeHtml: tempDiv.innerHTML, rangeText: tempDiv.textContent };
+};
 
 
 /********************** Utilities **********************/
@@ -1916,18 +1941,18 @@ const _defaultOptions = {
     'fill': {
       css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-      svg: '<rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.14));" />',
+      svg: '<rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.15));" />',
       svgActive: `
-        <rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.14));" />
+        <rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.15));" />
       `,
     },
     'underline': {
       css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />',
+      svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.95));" />',
       svgActive: `
-        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
-        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.9));" />
+        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.15));" />
+        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.95));" />
       `,
     },
   },

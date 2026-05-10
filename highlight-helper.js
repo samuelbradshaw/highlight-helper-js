@@ -8,10 +8,14 @@
 /********************** Highlighter Initialization **********************/
 
 function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]') {
-  this._containerSelector = containerSelector;
   this._options = structuredClone(_defaultOptions);
-  this._paragraphSelector = paragraphSelector;
+ 
+  // Load container
+  this._containerSelector = containerSelector;
   this._annotatableContainer = document.querySelector(containerSelector);
+  if (!this._annotatableContainer) {
+    return console.error(`Unable to create Highlighter with container selector "${containerSelector}" (element not found).`);
+  }
 
   // Handle cases where a highlighter already exists for the container, or one of its children or ancestors
   if (this._annotatableContainer.highlighter) {
@@ -21,6 +25,7 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
   }
 
   // Load annotatable paragraphs
+  this._paragraphSelector = paragraphSelector;
   this._annotatableParagraphIds = [];
   this._annotatableParagraphs = Array.from(this._annotatableContainer.querySelectorAll(paragraphSelector));
   for (const paragraph of this._annotatableParagraphs) {

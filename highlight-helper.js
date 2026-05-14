@@ -1522,9 +1522,11 @@ Highlighter.prototype._updateWrapperInPlace = function (wrapper, newHtmlString) 
   if (wrapper.innerHTML === newHtmlString) return;
   const temp = document.createElement('div');
   temp.innerHTML = newHtmlString;
-  for (let i = 0; i < wrapper.children.length; i++) {
-    const existing = wrapper.children[i];
-    const updated = temp.children[i];
+  const existingAll = wrapper.querySelectorAll('*');
+  const updatedAll = temp.querySelectorAll('*');
+  for (let i = 0; i < existingAll.length && i < updatedAll.length; i++) {
+    const existing = existingAll[i];
+    const updated = updatedAll[i];
     for (const attr of updated.attributes) {
       if (existing.getAttribute(attr.name) !== attr.value) existing.setAttribute(attr.name, attr.value);
     }

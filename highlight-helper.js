@@ -71,6 +71,7 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
   }
 
   this._highlightsById = {};
+  this._wrapperElements = new Map();
   this._annotatableContainer.dataset.hhContainer = '';
   this._annotatableContainer.highlighter = this;
   this._selectionState = {
@@ -622,10 +623,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   this._containerRect = this._annotatableContainer.getBoundingClientRect();
   this._additionsRect = this._additionsDiv.getBoundingClientRect();
 
-  const wrapperElements = new Map();
-  for (const wrapper of this._annotatableContainer.querySelectorAll('[data-hh-wrapper]')) {
-    wrapperElements.set(`${wrapper.dataset.hhHighlightId}:${wrapper.dataset.hhPosition}`, wrapper);
-  }
+  const wrapperElements = this._wrapperElements;
 
   let sortedHighlights = [];
   if (options.drawingMode === 'svg') {
@@ -675,11 +673,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
         const rawTemplate = wrapperDef[position];
         const innerHtml = this._applySubstitutions(rawTemplate, highlightInfo.variables, highlightInfo.rangeRect);
-        if (String(wrapperTemplateHash) === wrapper.dataset.hhWrapperTemplateHash && wrapper.children.length > 0) {
+        if (wrapperTemplateHash === wrapper.dataset.hhWrapperTemplateHash) {
           this._updateWrapperInPlace(wrapper, innerHtml);
         } else {
           wrapper.innerHTML = innerHtml;
-          wrapper.dataset.hhWrapperTemplateHash = String(wrapperTemplateHash);
+          wrapper.dataset.hhWrapperTemplateHash = wrapperTemplateHash;
         }
         wrapper.dataset.hhWrapperHash = wrapperHash;
       }
@@ -698,7 +696,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   for (const highlightInfo of sortedHighlights) {
     const highlightId = highlightInfo.highlightId
     let range = this._getCorrectedRangeObj(highlightId);
-    const rangeParagraphs = this._annotatableContainer.querySelectorAll(`#${highlightInfo.rangeParagraphIds.join(', #')}`);
+    const rangeParagraphs = highlightInfo.rangeParagraphIds.map(id => document.getElementById(id)).filter(Boolean);
 
     // Insert wrappers before drawing highlight, so any layout shift from wrapper content is accounted for
     if (highlightInfo.wrapper) {
@@ -715,8 +713,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
       range = this._getCorrectedRangeObj(highlightId);
       // Clear cached paragraph line rects if wrapper was inserted (in case the text needs to reflow)
-      for (const p of rangeParagraphs) paragraphLineRectsCache.delete(p.id);
-      columnGeometryCache.clear();
+      for (const p of rangeParagraphs) {
+        paragraphLineRectsCache.delete(p.id);
+        let el = p.parentElement;
+        while (el) { columnGeometryCache.delete(el); if (el.hasAttribute('data-hh-container')) break; el = el.parentElement; }
+      }
 
       // If current highlight is active, update selection range to match highlight range
       const selection = globalThis.getSelection();
@@ -791,8 +792,11 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
 
       // Clear cached paragraph line rects and recompute range rect (in case inserted mark element has styles that cause reflow)
-      for (const p of rangeParagraphs) paragraphLineRectsCache.delete(p.id);
-      columnGeometryCache.clear();
+      for (const p of rangeParagraphs) {
+        paragraphLineRectsCache.delete(p.id);
+        let el = p.parentElement;
+        while (el) { columnGeometryCache.delete(el); if (el.hasAttribute('data-hh-container')) break; el = el.parentElement; }
+      }
       const markRangeRect = range.getBoundingClientRect();
       let rangeTop = markRangeRect.top, rangeBottom = markRangeRect.bottom;
       let columnRect = null;
@@ -845,13 +849,14 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     // Update wrapper range rect references if needed (range rect isn't final until after the highlight has been drawn)
     if (highlightInfo.wrapper && highlightInfo.rangeRect) {
       const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
+      if (!wrapperDef) return;
       for (const position of ['start', 'end']) {
-        if (!wrapperDef?.[position] || (!/\{range\./.test(wrapperDef[position]) && !/\{column\./.test(wrapperDef[position]))) continue;
+        const template = wrapperDef[position];
+        if (!template || !_reWrapperRangeOrColumn.test(template)) continue;
         const wrapper = wrapperElements.get(`${highlightId}:${position}`);
         if (!wrapper) continue;
-        const innerHtml = this._applySubstitutions(wrapperDef[position], highlightInfo.variables, highlightInfo.rangeRect);
-        if (wrapper.children.length > 0) this._updateWrapperInPlace(wrapper, innerHtml);
-        else wrapper.innerHTML = innerHtml;
+        const innerHtml = this._applySubstitutions(template, highlightInfo.variables, highlightInfo.rangeRect);
+        this._updateWrapperInPlace(wrapper, innerHtml);
       }
     }
   }
@@ -1095,6 +1100,9 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
       if (element.matches('mark')) {
         element.replaceWith(...element.childNodes);
       } else {
+        if (element.matches('[data-hh-wrapper]')) {
+          this._wrapperElements.delete(`${element.dataset.hhHighlightId}:${element.dataset.hhPosition}`);
+        }
         element.remove();
       }
     }
@@ -1106,14 +1114,13 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
 
   // Normalize paragraphs, then recalculate ranges for all highlights
   if (paragraphsToNormalize.size > 0) {
-    const selector = [...paragraphsToNormalize].map(id => `#${id}`).join(', ');
-    const rangeParagraphs = this._annotatableContainer.querySelectorAll(selector);
-    if (rangeParagraphs.length > 0) {
-      for (const p of rangeParagraphs) p.normalize();
-      // After normalizing, the highlight range is valid, but not correct. Passing true forces the range to be recalculated.
-      for (const highlightId of highlightIdsToNormalize) {
-        this._getCorrectedRangeObj(highlightId, true);
-      }
+    for (const paragraphId of paragraphsToNormalize) {
+      const paragraph = document.getElementById(paragraphId);
+      paragraph.normalize();
+    }
+    // After normalizing, the highlight range is valid, but not correct. Passing true forces the range to be recalculated.
+    for (const highlightId of highlightIdsToNormalize) {
+      this._getCorrectedRangeObj(highlightId, true);
     }
   }
 
@@ -1500,13 +1507,13 @@ Highlighter.prototype._getWrapperTemplateHash = function (highlightInfo) {
   const str = (highlightInfo.wrapper ?? '') + (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
-  return h;
+  return String(h);
 }
 
 Highlighter.prototype._getWrapperHash = function (highlightInfo, templateHash = null) {
   const wrapperDef = this._options.wrapperDefs[highlightInfo.wrapper];
   const wrapperTemplate = (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
-  let hash = String(templateHash ?? this._getWrapperTemplateHash(highlightInfo));
+  let hash = templateHash ?? this._getWrapperTemplateHash(highlightInfo);
   for (const key of Object.keys(highlightInfo.variables).sort()) {
     hash += '\x00' + key + '\x01' + highlightInfo.variables[key];
   }
@@ -1527,6 +1534,11 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo, templateHash = 
 
 // Update wrapper children in-place (attributes and leaf text), preserving element identity for CSS transitions
 Highlighter.prototype._updateWrapperInPlace = function (wrapper, newHtmlString) {
+  if (wrapper.children.length === 0) {
+    wrapper.innerHTML = newHtmlString;
+    return;
+  }
+  if (wrapper.innerHTML === newHtmlString) return;
   const temp = document.createElement('div');
   temp.innerHTML = newHtmlString;
   for (let i = 0; i < wrapper.children.length; i++) {
@@ -1995,6 +2007,7 @@ const supportsAccentColor = CSS.supports('color', 'AccentColor');
 // Regex patterns for word boundary detection
 const _reWhitespaceDash = /\s|\p{Pd}/u;
 const _reNonWhitespaceDash = /[^\s|\p{Pd}]/u;
+const _reWrapperRangeOrColumn = /\{(range|column)\./;
 
 // Workaround to allow programmatic text selection on tap in iOS Safari
 // See https://stackoverflow.com/a/79261423/1349044

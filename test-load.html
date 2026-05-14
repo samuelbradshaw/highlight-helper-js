@@ -18,8 +18,12 @@
 
     <p>
       Highlight overlap:<br>
-      <label><input type="radio" name="overlap" value="true" checked> Yes</label><br>
-      <label><input type="radio" name="overlap" value="false"> No</label><br>
+      <label><input type="radio" name="overlap" value="true" checked> Yes</label> <label><input type="radio" name="overlap" value="false"> No</label><br>
+    </p>
+
+    <p>
+      Wrappers:<br>
+      <label><input type="radio" name="wrappers" value="true"> Yes</label> <label><input type="radio" name="wrappers" value="false" checked> No</label><br>
     </p>
 
     <p>
@@ -148,6 +152,7 @@
       const loadParameters = {
         drawingMode: url.searchParams.get('drawingMode') || 'svg',
         overlap: (url.searchParams.get('overlap') || 'true') === 'true',
+        wrappers: (url.searchParams.get('wrappers') || 'true') === 'true',
         limit: Number.parseInt(url.searchParams.get('limit') || '5000'),
         version: url.searchParams.get('version') || '',
       }
@@ -171,6 +176,8 @@
             const endOffset = startOffset + randomNumber;
             if (!randomNumber || endOffset >= characterCount) continue;
             highlights.push({
+              wrapper: loadParameters.wrappers ? 'screen-reader-label' : null,
+              variables: loadParameters.wrappers ? { 'startLabel': 'start', 'endLabel': 'end' } : null,
               highlightId: `${paragraph.id}_${startOffset}`,
               color: randomColor, style: 'fill',
               startParagraphId: paragraph.id, startParagraphOffset: startOffset,
@@ -192,8 +199,8 @@
       const containerSelector = 'main';
       const paragraphSelector = 'main [id]';
       const currentOptions = {
-        containerSelector: containerSelector,
-        paragraphSelector: paragraphSelector,
+        containerSelector: containerSelector, // For pre-1.0 versions
+        paragraphSelector: paragraphSelector, // For pre-1.0 versions
         drawingMode: loadParameters.drawingMode,
       };
 

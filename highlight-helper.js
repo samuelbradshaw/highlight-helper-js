@@ -561,7 +561,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
   }
 
   // If there are no valid changes, return
-  if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) {
+  if (!highlightRange || appearanceChanges.length + boundsChanges.length === 0) {
     return;
   }
 
@@ -618,11 +618,10 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
 
 // Draw (or redraw) specified highlights, or all highlights on the page
 Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
-  if (highlightIds.length === 0) return;
+  if (highlightIds.length === 0 || highlightIds.size === 0) return;
   const options = this._options;
   this._containerRect = this._annotatableContainer.getBoundingClientRect();
   this._additionsRect = this._additionsDiv.getBoundingClientRect();
-
   const wrapperElements = this._wrapperElements;
 
   // Collect highlights to draw (mark-elements first, since they cause DOM mutation)
@@ -633,26 +632,28 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     const highlightIdSet = new Set(highlightIds);
     const allHighlights = this.getHighlightInfo();
     for (const highlightInfo of allHighlights) {
-      if (highlightIdSet.has(highlightInfo.highlightId)) {
-        (this._getResolvedDrawingMode(highlightInfo) === 'mark-elements' ? markHighlights : otherHighlights).push(highlightInfo);
+      highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
+      if (previousWrapperChanged && highlightInfo.resolvedDrawingMode === 'svg') {
+        otherHighlights.push(highlightInfo);
+      } else if (highlightIdSet.has(highlightInfo.highlightId)) {
         if (!previousWrapperChanged) {
           const wrapper = wrapperElements.get(`${highlightInfo.highlightId}:start`) ?? wrapperElements.get(`${highlightInfo.highlightId}:end`) ?? null;
           if (this._getWrapperHash(highlightInfo) !== (wrapper?.dataset?.hhWrapperHash ?? '')) {
             previousWrapperChanged = true;
           }
         }
-      } else if (previousWrapperChanged && highlightInfo.resolvedDrawingMode === 'svg') {
-        otherHighlights.push(highlightInfo);
+        (highlightInfo.resolvedDrawingMode === 'mark-elements' ? markHighlights : otherHighlights).push(highlightInfo);
       }
     }
   } else {
     for (const highlightInfo of this.getHighlightInfo(highlightIds)) {
-      (this._getResolvedDrawingMode(highlightInfo) === 'mark-elements' ? markHighlights : otherHighlights).push(highlightInfo);
+      highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
+      (highlightInfo.resolvedDrawingMode === 'mark-elements' ? markHighlights : otherHighlights).push(highlightInfo);
     }
   }
   const sortedHighlights = markHighlights.concat(otherHighlights);
 
-  // Build wrappers
+  // Prepare wrappers
   for (const highlightInfo of sortedHighlights) {
     if (!highlightInfo.wrapper) continue;
     const highlightId = highlightInfo.highlightId;
@@ -672,19 +673,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       wrapper.dataset.hhColor = highlightInfo.color;
       wrapper.dataset.hhStyle = highlightInfo.style;
       wrapper.dataset.hhWrapper = highlightInfo.wrapper;
-      const wrapperTemplateHash = this._getWrapperTemplateHash(highlightInfo);
-      const wrapperHash = this._getWrapperHash(highlightInfo, wrapperTemplateHash);
-      if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
-        const rawTemplate = wrapperDef[position];
-        const innerHtml = this._applySubstitutions(rawTemplate, highlightInfo.variables, highlightInfo.rangeRect);
-        if (wrapperTemplateHash === wrapper.dataset.hhWrapperTemplateHash) {
-          this._updateWrapperInPlace(wrapper, innerHtml);
-        } else {
-          wrapper.innerHTML = innerHtml;
-          wrapper.dataset.hhWrapperTemplateHash = wrapperTemplateHash;
-        }
-        wrapper.dataset.hhWrapperHash = wrapperHash;
-      }
       wrapperElements.set(`${highlightId}:${position}`, wrapper);
     }
   }
@@ -692,49 +680,92 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
   // Undraw highlights that were previously drawn
   this._undrawHighlights(sortedHighlights.map(h => h.highlightId));
 
-  // Add wrappers
-  for (const highlightInfo of sortedHighlights) {
-    if (!highlightInfo.wrapper) continue;
-    const highlightId = highlightInfo.highlightId;
-    const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
-    const startWrapper = wrapperElements.get(`${highlightId}:start`);
-    const endWrapper = wrapperElements.get(`${highlightId}:end`);
-    // Insert end wrapper first (avoids invalidating start node if start and end node are the same)
-    let range = this._getCorrectedRangeObj(highlightId);
-    if (wrapperDef?.end) {
-      range.endContainer.splitText(range.endOffset);
-      range.endContainer.after(endWrapper);
-    }
-    if (wrapperDef?.start) range.insertNode(startWrapper);
-    range = this._getCorrectedRangeObj(highlightId);
-    // If current highlight is active, update selection range to match highlight range
-    const selectionForWrapper = globalThis.getSelection();
-    const selectionRangeForWrapper = selectionForWrapper.type !== 'None' ? selectionForWrapper.getRangeAt(0) : null;
-    const rangesMatchForWrapper = selectionRangeForWrapper
-          && selectionRangeForWrapper.compareBoundaryPoints(Range.START_TO_START, range) === 0
-          && selectionRangeForWrapper.compareBoundaryPoints(Range.END_TO_END, range) === 0;
-    if (highlightId === this._activeHighlightId && selectionRangeForWrapper && !rangesMatchForWrapper) {
-      selectionForWrapper.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
-    }
-  }
-
   // Cache paragraph and column geometry
   const paragraphLineRectsCache = new Map();
   const columnGeometryCache = new Map();
+
+  // Insert wrappers and update rects
+  for (const highlightInfo of sortedHighlights) {
+    const highlightId = highlightInfo.highlightId;
+    let range = this._getCorrectedRangeObj(highlightId);
+
+    // Insert wrappers
+    const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
+    if (wrapperDef) {
+      const startWrapper = wrapperElements.get(`${highlightId}:start`);
+      const endWrapper = wrapperElements.get(`${highlightId}:end`);
+      // Insert end wrapper first (avoids invalidating start node if start and end node are the same)
+      if (wrapperDef?.end) {
+        range.endContainer.splitText(range.endOffset);
+        range.endContainer.after(endWrapper);
+      }
+      if (wrapperDef?.start) range.insertNode(startWrapper);
+      range = this._getCorrectedRangeObj(highlightId);
+      // If current highlight is active, update selection range to match highlight range
+      const selectionForWrapper = globalThis.getSelection();
+      const selectionRangeForWrapper = selectionForWrapper.type !== 'None' ? selectionForWrapper.getRangeAt(0) : null;
+      const rangesMatchForWrapper = selectionRangeForWrapper
+            && selectionRangeForWrapper.compareBoundaryPoints(Range.START_TO_START, range) === 0
+            && selectionRangeForWrapper.compareBoundaryPoints(Range.END_TO_END, range) === 0;
+      if (highlightId === this._activeHighlightId && selectionRangeForWrapper && !rangesMatchForWrapper) {
+        selectionForWrapper.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+      }
+    }
+
+    // Update range rects (after adding wrappers)
+    const rangeParagraphs = highlightInfo.rangeParagraphIds.map(id => document.getElementById(id));
+    const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, paragraphLineRectsCache, columnGeometryCache);
+    highlightInfo.rangeRect = rangeRect;
+    highlightInfo.rangeLineRects = rangeLineRects;
+
+    // Update wrappers
+    let wrapperRectChanged = false;
+    if (wrapperDef) {
+      for (const position of ['start', 'end']) {
+        const template = wrapperDef[position];
+        const wrapper = wrapperElements.get(`${highlightId}:${position}`);
+        if (!wrapper) continue;
+        const beforeRect = wrapper.getBoundingClientRect();
+        const wrapperTemplateHash = this._getWrapperTemplateHash(highlightInfo);
+        const wrapperHash = this._getWrapperHash(highlightInfo, wrapperTemplateHash);
+        if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
+          const rawTemplate = wrapperDef[position];
+          const lineRect = position === 'start' ? highlightInfo.rangeLineRects[0] : highlightInfo.rangeLineRects.at(-1);
+          const innerHtml = this._applySubstitutions(rawTemplate, highlightInfo.variables, highlightInfo.rangeRect, lineRect);
+          if (wrapperTemplateHash === wrapper.dataset.hhWrapperTemplateHash) {
+            this._updateWrapperInPlace(wrapper, innerHtml);
+          } else {
+            wrapper.innerHTML = innerHtml;
+            wrapper.dataset.hhWrapperTemplateHash = wrapperTemplateHash;
+          }
+          wrapper.dataset.hhWrapperHash = wrapperHash;
+        }
+        const afterRect = wrapper.getBoundingClientRect();
+        if (!_rectsEqual(beforeRect, afterRect)) wrapperRectChanged = true;
+      }
+    }
+
+    // Update rects one more time if the wrapper width changed
+    if (wrapperRectChanged) {
+      for (const p of rangeParagraphs) {
+        paragraphLineRectsCache.delete(p.id);
+        let el = p.parentElement;
+        while (el) {
+          columnGeometryCache.delete(el);
+          if (el.hasAttribute('data-hh-container')) break;
+          el = el.parentElement;
+        }
+      }
+      const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, paragraphLineRectsCache, columnGeometryCache);
+      highlightInfo.rangeRect = rangeRect;
+      highlightInfo.rangeLineRects = rangeLineRects;
+    }
+  }
 
   // Draw highlights
   for (const highlightInfo of sortedHighlights) {
     const highlightId = highlightInfo.highlightId
     const range = this._getCorrectedRangeObj(highlightId);
-    const rangeParagraphs = highlightInfo.rangeParagraphIds.map(id => document.getElementById(id)).filter(Boolean);
-
-    // Compute range rects for tap detection and style/wrapper variables
-    highlightInfo.resolvedDrawingMode = this._getResolvedDrawingMode(highlightInfo);
-    if (highlightInfo.resolvedDrawingMode !== 'mark-elements') {
-      const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, paragraphLineRectsCache, columnGeometryCache);
-      highlightInfo.rangeRect = rangeRect;
-      highlightInfo.rangeLineRects = rangeLineRects;
-    }
 
     // Draw highlights with mark elements
     const useMarkElements = highlightInfo.resolvedDrawingMode === 'mark-elements';
@@ -789,19 +820,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         this._getCorrectedRangeObj(overlappingHighlightId);
       }
 
-      // Clear cached paragraph line rects and recompute range rect (in case inserted mark element has styles that cause reflow)
-      for (const p of rangeParagraphs) {
-        let el = p.parentElement;
-        while (el) {
-          columnGeometryCache.delete(el);
-          if (el.hasAttribute('data-hh-container')) break;
-          el = el.parentElement;
-        }
-      }
-      const [rangeRect, rangeLineRects] = this._getRangeRects(range, rangeParagraphs, paragraphLineRectsCache, columnGeometryCache, 'mark-elements');
-      highlightInfo.rangeRect = rangeRect;
-      highlightInfo.rangeLineRects = rangeLineRects;
-
     // Draw highlights with CSS Highlight API
     } else if (options.drawingMode === 'highlight-api') {
       let cssHighlight;
@@ -826,19 +844,6 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
       group.innerHTML = svgContent;
       this._svgBackground.appendChild(group);
-    }
-
-    // Update wrapper range rect references if needed (range rect isn't final until after the highlight has been drawn)
-    if (highlightInfo.wrapper && highlightInfo.rangeRect) {
-      const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
-      if (!wrapperDef) return;
-      for (const position of ['start', 'end']) {
-        const template = wrapperDef[position];
-        if (!template || !_reWrapperRangeOrColumn.test(template)) continue;
-        const wrapper = wrapperElements.get(`${highlightId}:${position}`);
-        const innerHtml = this._applySubstitutions(template, highlightInfo.variables, highlightInfo.rangeRect);
-        this._updateWrapperInPlace(wrapper, innerHtml);
-      }
     }
   }
 
@@ -1097,7 +1102,7 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
   if (paragraphsToNormalize.size > 0) {
     for (const paragraphId of paragraphsToNormalize) {
       const paragraph = document.getElementById(paragraphId);
-      paragraph.normalize();
+      if (paragraph) paragraph.normalize();
     }
     // After normalizing, the highlight range is valid, but not correct. Passing true forces the range to be recalculated.
     for (const highlightId of highlightIdsToNormalize) {
@@ -1542,10 +1547,10 @@ Highlighter.prototype._applySubstitutions = function (str, variables = {}, range
   const map = {};
   const rectKeys = ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'];
   for (const key of Object.keys(variables)) map[`{${key}}`] = variables[key];
+  if (lineRect) for (const k of rectKeys) map[`{${k}}`] = lineRect[k];
   if (rangeRect) for (const k of rectKeys) map[`{range.${k}}`] = rangeRect[k];
   if (rangeRect?.columnRect) for (const k of rectKeys) map[`{column.${k}}`] = rangeRect.columnRect[k];
   if (this._containerRect) for (const k of rectKeys) map[`{container.${k}}`] = this._containerRect[k];
-  if (lineRect) for (const k of rectKeys) map[`{${k}}`] = lineRect[k];
   return str.replace(/\{[^}]+\}/g, match => map[match] ?? match);
 }
 
@@ -1558,7 +1563,7 @@ Highlighter.prototype._getStyleString = function (style, type, active = false, v
     styleString = options.styleDefs[style]?.[`${type}Active`] ?? styleString;
   }
   if (styleString) {
-    styleString = this._applySubstitutions(styleString, variables, rangeRect, type === 'svg' ? lineRect : null);
+    styleString = this._applySubstitutions(styleString, variables, rangeRect, lineRect);
   }
   return styleString;
 }
@@ -1996,6 +2001,14 @@ function _shallowEqual(a, b) {
   return keysA.length === Object.keys(b).length && keysA.every(k => a[k] == b[k]);
 }
 
+// Check if two rects are roughly the same
+function _rectsEqual(rect1, rect2, epsilon = 0.001) {
+  return Math.abs(rect1.x - rect2.x) < epsilon &&
+         Math.abs(rect1.y - rect2.y) < epsilon &&
+         Math.abs(rect1.width - rect2.width) < epsilon &&
+         Math.abs(rect1.height - rect2.height) < epsilon;
+}
+
 
 /********************** Constants **********************/
 
@@ -2012,7 +2025,6 @@ const supportsAccentColor = CSS.supports('color', 'AccentColor');
 // Regex patterns for word boundary detection
 const _reWhitespaceDash = /\s|\p{Pd}/u;
 const _reNonWhitespaceDash = /[^\s|\p{Pd}]/u;
-const _reWrapperRangeOrColumn = /\{(range|column)\./;
 
 // Workaround to allow programmatic text selection on tap in iOS Safari
 // See https://stackoverflow.com/a/79261423/1349044

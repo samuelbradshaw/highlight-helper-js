@@ -561,7 +561,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
   }
 
   // If there are no valid changes, return
-  if (!highlightRange || appearanceChanges.length + boundsChanges.length === 0) {
+  if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) {
     return;
   }
 
@@ -692,23 +692,24 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     // Insert wrappers
     const wrapperDef = options.wrapperDefs[highlightInfo.wrapper];
     if (wrapperDef) {
-      const startWrapper = wrapperElements.get(`${highlightId}:start`);
-      const endWrapper = wrapperElements.get(`${highlightId}:end`);
-      // Insert end wrapper first (avoids invalidating start node if start and end node are the same)
-      if (wrapperDef?.end) {
+      // Insert end wrapper first (avoids invalidating start node if start and end are in the same text node)
+      if (wrapperDef.end) {
         range.endContainer.splitText(range.endOffset);
-        range.endContainer.after(endWrapper);
+        range.endContainer.after(wrapperElements.get(`${highlightId}:end`));
       }
-      if (wrapperDef?.start) range.insertNode(startWrapper);
-      range = this._getCorrectedRangeObj(highlightId);
+      if (wrapperDef.start) range.insertNode(wrapperElements.get(`${highlightId}:start`));
+      range = this._getCorrectedRangeObj(highlightId, true);
+      
       // If current highlight is active, update selection range to match highlight range
-      const selectionForWrapper = globalThis.getSelection();
-      const selectionRangeForWrapper = selectionForWrapper.type !== 'None' ? selectionForWrapper.getRangeAt(0) : null;
-      const rangesMatchForWrapper = selectionRangeForWrapper
-            && selectionRangeForWrapper.compareBoundaryPoints(Range.START_TO_START, range) === 0
-            && selectionRangeForWrapper.compareBoundaryPoints(Range.END_TO_END, range) === 0;
-      if (highlightId === this._activeHighlightId && selectionRangeForWrapper && !rangesMatchForWrapper) {
-        selectionForWrapper.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+      if (highlightId === this._activeHighlightId) {
+        const selectionForWrapper = globalThis.getSelection();
+        const selectionRangeForWrapper = selectionForWrapper.type !== 'None' ? selectionForWrapper.getRangeAt(0) : null;
+        const rangesMatchForWrapper = selectionRangeForWrapper
+              && selectionRangeForWrapper.compareBoundaryPoints(Range.START_TO_START, range) === 0
+              && selectionRangeForWrapper.compareBoundaryPoints(Range.END_TO_END, range) === 0;
+        if (selectionRangeForWrapper && !rangesMatchForWrapper) {
+          selectionForWrapper.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
+        }
       }
     }
 
@@ -764,7 +765,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 
   // Draw highlights
   for (const highlightInfo of sortedHighlights) {
-    const highlightId = highlightInfo.highlightId
+    const highlightId = highlightInfo.highlightId;
     const range = this._getCorrectedRangeObj(highlightId);
 
     // Draw highlights with mark elements
@@ -914,7 +915,8 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
     .filter(info => info && (!paragraphId || paragraphId === info.startParagraphId));
 
   // Sort highlights based on their order on the page
-  const paragraphIdsMap = new Map(this._annotatableParagraphIds.map((id, i) => [id, i]));
+  this._paragraphIdsMap ??= new Map(this._annotatableParagraphIds.map((id, i) => [id, i]));
+  const paragraphIdsMap = this._paragraphIdsMap;
   highlights.sort((a, b) =>
     (paragraphIdsMap.get(a.startParagraphId) - paragraphIdsMap.get(b.startParagraphId)) ||
     (a.startParagraphOffset - b.startParagraphOffset)
@@ -1730,29 +1732,7 @@ Highlighter.prototype._getParagraphLineRects = function (paragraph) {
 }
 
 // Get merged client rects from the highlight range
-Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLineRectsCache = new Map(), columnGeometryCache = new Map(), drawingMode = null) {
-  // In mark-elements mode, do lighter range calculations for faster performance
-  if (drawingMode === 'mark-elements') {
-    let rangeRect = range.getBoundingClientRect();
-    let rangeTop = rangeRect.top, rangeBottom = rangeRect.bottom;
-    let columnRect = null;
-    // In a multi-column layout, clip rangeRect to the start column bounds
-    let colTop = Infinity, colBottom = -Infinity;
-    for (const r of range.getClientRects()) {
-      if (r.width < 1) continue;
-      if (!columnRect) columnRect = _getColumnRect(paragraphs[0], r.left + r.width / 2, columnGeometryCache, this._additionsRect);
-      const centerX = r.left + r.width / 2 - this._additionsRect.left;
-      if (centerX >= columnRect.left && centerX <= columnRect.right) {
-        colTop = Math.min(colTop, r.top);
-        colBottom = Math.max(colBottom, r.bottom);
-      }
-    }
-    if (colTop !== Infinity) { rangeTop = colTop; rangeBottom = colBottom; }
-    rangeRect = new DOMRect(rangeRect.left - this._additionsRect.left, rangeTop - this._additionsRect.top, rangeRect.width, rangeBottom - rangeTop);
-    rangeRect.columnRect = columnRect;
-    return [rangeRect, []];
-  }
-
+Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLineRectsCache = new Map(), columnGeometryCache = new Map()) {
   let rangeRectCoordinates = { top: Number.POSITIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY, left: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
   const rangeLineRects = [];
   let columnRect = null;

@@ -152,7 +152,7 @@
       const loadParameters = {
         drawingMode: url.searchParams.get('drawingMode') || 'svg',
         overlap: (url.searchParams.get('overlap') || 'true') === 'true',
-        wrappers: (url.searchParams.get('wrappers') || 'true') === 'true',
+        wrappers: (url.searchParams.get('wrappers') || 'false') === 'true',
         limit: Number.parseInt(url.searchParams.get('limit') || '5000'),
         version: url.searchParams.get('version') || '',
       }

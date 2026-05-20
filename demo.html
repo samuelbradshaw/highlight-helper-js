@@ -6,501 +6,941 @@
     <meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1.0">
     <meta name="google" content="notranslate">
     <style>
+      /* GLOBAL STYLES for all demos */
       :root {
-        -webkit-text-size-adjust: 100%;
-        --page-bg: hsl(0, 0%, 100%);
-        --text-color: hsl(0, 0%, 0%);
-        --gray-90: hsl(0, 0%, 90%);
-        --gray-50: hsl(0, 0%, 50%);
+        --page-bg: light-dark(white, #222);
+        --text-color: light-dark(black, white);
+        --light-gray: light-dark(#eee, #444);
+        --dark-gray: light-dark(#777, #ccc);
       }
-      @media (prefers-color-scheme: dark) { :root {
-        --page-bg: hsl(0, 0%, 17%);
-        --text-color: hsl(0, 0%, 95%);
-        --gray-90: hsl(0, 0%, 30%);
-        --gray-50: hsl(0, 0%, 70%);
-      }}
-      body {
+      html {
+        color-scheme: light dark;
+        margin: 1em;
         background-color: var(--page-bg);
         color: var(--text-color);
+        font-family: serif;
         line-height: 1.4;
+        overflow-x: hidden;
       }
-      main { margin-inline-end: 2em; }
-      main a {
-        color: var(--gray-50);
-        cursor: unset;
+      html:has([name="theme"][value="light"]:checked) { color-scheme: light; }
+      html:has([name="theme"][value="dark"]:checked) { color-scheme: dark; }
+      section {
+        margin: 3em 0;
+        border-top: 1px solid var(--text-color);
       }
-      button {
-        cursor: pointer;
-        user-select: none;
+      a { color: var(--dark-gray); }
+      #jump-links {
+        margin: 0;
+        padding-left: 1.5em;
       }
+      label {
+        display: flex;
+        gap: 0.4em;
+        align-items: center;
+      }
+      details { margin: 1em 0; }
+      .code-block {
+        display: block;
+        background-color: var(--light-gray);
+        margin: 1em 0; padding: 0.5em;
+        border: 1px solid var(--dark-gray);
+      }
+      .code-block figcaption {
+        color: var(--page-bg);
+        background-color: var(--dark-gray);
+        font-weight: bold;
+        margin: -0.5em -0.5em 0.5em -0.5em; padding: 0.3em 0.5em;
+      }
+      .code-block code {
+        display: block;
+        text-indent: -2em;
+        margin-left: calc(var(--indent) + 2em);
+        overflow-wrap: break-word;
+      }
+      /* Add an invisible space after each code line, to prevent empty code lines from collapsing */
+      code::after { content: '\200B'; }
+    </style>
+    <script src="highlight-helper.js"></script>
+  </head>
+  <body>
+    <p>← <a href="https://github.com/samuelbradshaw/highlight-helper-js">Back to GitHub</a></p>
+    <h1>HighlightHelper.js Demo</h1>
 
-      #annotation-menu {
-        font-family: "Helvetica", sans-serif;
-        font-size: 0.8em;
-        .buttons-area {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
-          gap: 0.6em;
-          overflow: scroll;
-          & > * {
-            background-color: var(--page-bg);
-            border: 0; border-radius: 0.4em;
-            padding: 0.6em 0.4em;
-            font-size: inherit;
-            white-space: nowrap;
-          }
-          input[type="text"] { width: 2em; padding: 0.1em 0.3em; border: 1px solid var(--gray-50); }
-          button[name="hh-color"] { color: var(--page-bg); }
-          button[name="hh-color"][value="red"] { background-color: hsl(352, 99%, 65%); }
-          button[name="hh-color"][value="orange"] { background-color: hsl(31, 99%, 58%); }
-          button[name="hh-color"][value="yellow"] { background-color: hsl(50, 98%, 61%); }
-          button[name="hh-color"][value="green"] { background-color: hsl(75, 70%, 49%); }
-          button[name="hh-color"][value="blue"] { background-color: hsl(182, 86%, 47%); }
-          button[name="hh-style"], button[name="hh-wrapper"] {
-            position: relative;
-            color: inherit; border: 2px solid var(--gray-50);
-          }
-          button[name="hh-remove"] { background-color: var(--gray-50); color: var(--page-bg); }
-          .highlight-placeholder {
-            background-color: var(--gray-90);
-            padding: 0 0.3em;
-          }
-        }
-      }
+    <p>
+      Theme:
+      <label><input type="radio" name="theme" value="system-default" checked> System Default</label>
+      <label><input type="radio" name="theme" value="light"> Light</label>
+      <label><input type="radio" name="theme" value="dark"> Dark</label>
+    </p>
 
-      [data-hh-wrapper] {
-        /* Prevent line breaks mid-wrapper. You can also prevent line breaks between the wrapper and the highlight by adding &NoBreak; at the start or end of the wrapper content. */
-        white-space: nowrap;
-      }
-      .footnote-marker {
-        display: inline-block;
-        vertical-align: super;
-        font-size: smaller;
-        line-height: 0.5em;
-        &::before {
-          content: attr(data-content);
-        }
-      }
-      .margin-container {
-        display: inline-block;
-        visibility: visible;
-        font-style: normal;
-        height: 1em;
-      }
-      .margin-container .note {
-        position: absolute;
-        inset-inline-end: 0.5rem;
-        font-size: 1.2rem;
-        margin-top: -0.2rem;
-        &::before {
-          content: attr(data-content);
-        }
-      }
+    Jump to:
+    <ul id="jump-links"></ul>
 
-      #disambiguation-panel {
-        color: inherit;
-        background-color: inherit;
-        width: 400px; max-width: 100%;
-        flex-direction: column;
-        gap: 0.5em;
-        box-sizing: border-box;
-        &[open] { display: flex; }
-        #disambiguation-buttons {
-          display: flex;
-          flex-direction: column;
-          & button {
-            display: inline-block;
-            border: none;
-            background-color: inherit;
-            color: inherit;
-            font-family: inherit;
-            font-size: inherit;
-            text-align: inherit;
-            margin-bottom: 1em;
-            & * {
-              display: inline;
+    <section id="basic-highlighter">
+      <h2>Demo 1: Basic highlighter</h2>
+
+      <div class="container">
+        <p id="p1"><b>HighlightHelper.js</b> is a JavaScript library for drawing highlights in HTML content. Select text, or tap an existing highlight. Then choose a color or style. Highlights can be drawn across element boundaries, and they can overlap!</p>
+        <p id="p2">You can use default fill and underline styles, or <a target="_blank" href="https://github.com/samuelbradshaw/highlight-helper-js#options">define your own</a>. The library can adapt to a variety of <a target="_blank" href="https://github.com/samuelbradshaw/highlight-helper-js#features">use cases</a> and languages.</p>
+        <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
+        <p id="p4" style="direction: rtl;">فِي الْبَدْءِ خَلَقَ اللهُ السَّمَاوَاتِ وَالأَرْضَ. وَكَانَتِ الأَرْضُ خَرِبَةً وَخَالِيَةً، وَعَلَى وَجْهِ الْغَمْرِ ظُلْمَةٌ، وَرُوحُ اللهِ يَرِفُّ عَلَى وَجْهِ الْمِيَاهِ. وَقَالَ اللهُ: «لِيَكُنْ نُورٌ»، فَكَانَ نُورٌ.</p>
+        <p id="p5">១ព្រះ​បន្ទូល​ទាំង​ឡាយ​នៃ​ព្រះ ដែល​ទ្រង់​﻿មាន​ព្រះ​បន្ទូល​ទៅ​﻿ម៉ូសេ ក្នុង​កាល​ម៉ូសេ​ត្រូវ​បាន​នាំ​ឡើង​ទៅ​លើ​ភ្នំ​ដ៏​ខ្ពស់​បំផុត</p>
+      </div>
+
+      <div class="controls">
+        <div class="toggle-buttons">
+          <label class="toggle-proxy" style="--hh-color: hsl(360, 100%, 70%)">
+            <input type="radio" name="color" value="red"> R</label>
+          <label class="toggle-proxy" style="--hh-color: hsl(30, 100%, 60%)">
+            <input type="radio" name="color" value="orange"> O</label>
+          <label class="toggle-proxy" style="--hh-color: hsl(50, 100%, 60%)">
+            <input type="radio" name="color" value="yellow"> Y</label>
+          <label class="toggle-proxy" style="--hh-color: hsl(80, 100%, 45%)">
+            <input type="radio" name="color" value="green"> G</label>
+          <label class="toggle-proxy" style="--hh-color: hsl(180, 100%, 45%)">
+            <input type="radio" name="color" value="blue"> B</label>
+        </div>
+        <div class="toggle-buttons">
+          <button id="remove">Remove</button>
+        </div>
+
+        <div class="other-controls">
+          <label>
+            Drawing mode:
+            <select name="drawingMode">
+              <option value="svg" selected>SVG</option>
+              <option value="highlight-api">Highlight API</option>
+              <option value="mark-elements">Mark elements</option>
+            </select>
+          </label>
+          <label>
+            Style:
+            <select name="style">
+              <option value="fill" selected>Fill</option>
+              <option value="underline">Underline</option>
+            </select>
+          </label>
+          <label>
+            Wrapper:
+            <select name="wrapper">
+              <option value="" selected>None</option>
+              <option value="🙂">🙂 Smile</option>
+              <option value="✅">✅ Checkmark</option>
+            </select>
+          </label>
+          <label><input type="checkbox" name="highContrast"> High contrast</label>
+          <label><input type="checkbox" name="liveHighlighting"> Live highlighting</label>
+          <label><input type="checkbox" name="showHandlesSelect"> Show handles for text selection</label>
+          <label><input type="checkbox" name="snapToWord"> Snap to word</label>
+        </div>
+      </div>
+
+      <dialog id="disambiguation-panel">
+        <h2>Select One</h2>
+        <div id="disambiguation-buttons"></div>
+        <button id="disambiguation-cancel">Cancel</button>
+      </dialog>
+
+      <script type="module">
+        // Prepare highlights
+        const highlights = [
+          {
+            highlightId: 'hh-01',
+            color: 'green', style: 'fill',
+            wrapper: 'margin-indicator', variables: { content: '🙂' },
+            startParagraphId: 'p1', startParagraphOffset: 24,
+            endParagraphId: 'p1', endParagraphOffset: 42,
+          },
+          {
+            highlightId: 'hh-02',
+            color: 'yellow', style: 'fill',
+            startParagraphId: 'p1', startParagraphOffset: 211,
+            endParagraphId: 'p1', endParagraphOffset: 219,
+          },
+          {
+            highlightId: 'hh-03',
+            color: 'blue', style: 'fill',
+            startParagraphId: 'p1', startParagraphOffset: 216,
+            endParagraphId: 'p1', endParagraphOffset: 228,
+          },
+          {
+            highlightId: 'hh-04',
+            color: 'red', style: 'fill',
+            startParagraphId: 'p2', startParagraphOffset: 12,
+            endParagraphId: 'p2', endParagraphOffset: 24,
+          },
+          {
+            highlightId: 'hh-05',
+            color: 'red', style: 'underline',
+            startParagraphId: 'p2', startParagraphOffset: 29,
+            endParagraphId: 'p2', endParagraphOffset: 38,
+          },
+          {
+            highlightId: 'hh-06',
+            color: 'orange', style: 'fill',
+            startParagraphId: 'p3', startParagraphOffset: 56,
+            endParagraphId: 'p3', endParagraphOffset: 65,
+          },
+        ];
+
+        // Variables
+        const container = document.querySelector('#basic-highlighter .container');
+        let activeHighlightId = null;
+        let previousColor = 'yellow';
+        let previousStyle = 'fill';
+        let previousWrapper = '';
+        let liveHighlighting = false;
+
+        // Create a Highlighter instance
+        const highlighter = new Highlighter('#basic-highlighter .container', '[id]');
+
+        // Set options and load highlights
+        const options = {
+          drawingMode: 'svg',
+          enableHover: true,
+          wrapperDefs: {
+            'margin-indicator': {
+              start: '<span class="margin-container"><span class="note" data-content="{content}" aria-label="{ariaLabel}"></span></span>&NoBreak;',
+            },
+          },
+        };
+        highlighter.setOptions(options);
+        highlighter.loadHighlights(highlights);
+
+        // Add event listener for hover
+        container.addEventListener('hh:hover', (event) => {
+          container.style.cursor = (event.detail.targetCount > 0 && !highlighter.getActiveHighlightId()) ? 'pointer' : '';
+        });
+
+        // Add event listener for tap
+        container.addEventListener('hh:tap', respondToTap);
+        function respondToTap(event) {
+          if (event.detail.targetCount === 0 || event.detail.isLongPress || event.detail.selectionType === 'Range') return;
+          if (event.detail.targetCount > 1) {
+            handleAmbiguousTap(event);
+          } else if (event.detail.targetCount === 1) {
+            if (event.detail.highlights.length === 1) {
+              highlighter.activateHighlight(event.detail.highlights[0].highlightId);
+            } else if (event.detail.wrappers.length === 1) {
+              highlighter.activateHighlight(event.detail.wrappers[0].highlight.highlightId);
+            } else if (event.detail.hyperlinks.length === 1) {
+              highlighter.activateHyperlink(event.detail.hyperlinks[0].index);
             }
           }
         }
-        &::backdrop {
-          background-color: hsla(0, 0%, 0%, 0.5);
+
+        // Load disambiguation panel for ambiguous taps
+        const disambiguationPanel = document.getElementById('disambiguation-panel');
+        const disambiguationButtons = document.getElementById('disambiguation-buttons');
+        const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
+        disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
+        const handleAmbiguousTap = (event) => {
+          let buttonsHtml = '';
+
+          const highlightIds = new Set();
+          for (const highlight of event.detail.highlights) highlightIds.add(highlight.highlightId);
+          for (const wrapper of event.detail.wrappers) highlightIds.add(wrapper.highlight.highlightId);
+          for (const highlight of highlighter.getHighlightInfo(highlightIds)) {
+            let colorString = highlighter.getOptions().colorDefs[highlight.color];
+            let styleString = highlighter.getOptions().styleDefs[highlight.style]['css'];
+            buttonsHtml += `
+              <button data-highlight-id="${highlight.highlightId}" style="--hh-color: ${colorString};">
+                <span style="${styleString}">${highlight.rangeText}</span>
+              </button>
+            `;
+          }
+          for (const hyperlink of event.detail.hyperlinks) {
+            buttonsHtml += `
+              <button data-hyperlink-index="${hyperlink.index}">
+                <span style="color: var(--dark-gray); text-decoration: underline;">${hyperlink.text}</span>
+              </button>
+            `;
+          }
+
+          disambiguationButtons.innerHTML = buttonsHtml;
+          for (const button of disambiguationButtons.children) {
+            button.addEventListener('click', () => {
+              disambiguationPanel.close();
+              if (button.dataset.highlightId) {
+                highlighter.activateHighlight(button.dataset.highlightId);
+              } else if (button.dataset.hyperlinkIndex) {
+                highlighter.activateHyperlink(button.dataset.hyperlinkIndex);
+              }
+            });
+          }
+
+          // TODO: Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:ambiguousaction. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
+          setTimeout(function() { disambiguationPanel.showModal(); }, 10);
         }
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1 id="title1">HighlightHelper.js Demo</h1>
-      <p id="p1"><b>HighlightHelper.js</b> enables highlighting or underlining text in an HTML page. Highlights are drawn via <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/SVG">SVG shapes</a>, the <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API">Custom Highlight API</a>, or <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/mark">HTML mark elements</a>. Highlights can be drawn across multiple paragraphs or <b>inline <i>style</i></b> elements—they can even overlap!</p>
-      <p id="p2">Select text, then choose a color and style. Tap away when you’re done. Tap to activate it again for editing. Secondary elements like images and Japanese ruby/furigana are highlighted around.</p>
-      <p id="p3">わたしニーファイは<ruby><rb>善</rb><rt>よ</rt></ruby>い<ruby><rb>両</rb><rt>りょう</rt></ruby><ruby><rb>親</rb><rt>しん</rt></ruby>から<ruby><rb>生</rb><rt>う</rt></ruby>まれたので，<ruby><rb>父</rb><rt>ちち</rt></ruby>が<ruby><rb>学</rb><rt>まな</rt></ruby>んだすべてのことの<ruby><rb>中</rb><rt>なか</rt></ruby>から<ruby><rb>幾</rb><rt>いく</rt></ruby>らかの<ruby><rb>教</rb><rt>おし</rt></ruby>えを<ruby><rb>受</rb><rt>う</rt></ruby>けた。</p>
-      <p id="p4" style="direction: rtl;">فِي الْبَدْءِ خَلَقَ اللهُ السَّمَاوَاتِ وَالأَرْضَ. وَكَانَتِ الأَرْضُ خَرِبَةً وَخَالِيَةً، وَعَلَى وَجْهِ الْغَمْرِ ظُلْمَةٌ، وَرُوحُ اللهِ يَرِفُّ عَلَى وَجْهِ الْمِيَاهِ. وَقَالَ اللهُ: «لِيَكُنْ نُورٌ»، فَكَانَ نُورٌ.</p>
-    </main>
 
-    <hr>
-    <aside id="annotation-menu">
-      <div class="buttons-area">
-        <button name="hh-color" value="red">Red</button>
-        <button name="hh-color" value="orange">Orange</button>
-        <button name="hh-color" value="yellow">Yellow</button>
-        <button name="hh-color" value="green">Green</button>
-        <button name="hh-color" value="blue">Blue</button>
-        <button name="hh-style" value="fill"> Fill</button>
-        <button name="hh-style" value="underline"> Underline</button>
-        <button name="hh-style" value="double-underline"> Double underline</button>
-        <button name="hh-style" value="colored-text"> Colored text</button>
-        <button name="hh-style" value="redacted"> Redacted</button>
-        <button name="hh-remove">Remove</button>
-        <button name="hh-wrapper" value="none" title="No wrapper"><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="footnote" title="Footnote"><span class="footnote-marker" data-content="a" data-aria-label="Footnote [a]">&NoBreak;</span><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="margin-indicator" title="Margin indicator"><span class="margin-container"><span class="note" data-content="🙂" data-aria-label="Smile emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
-        <button name="hh-wrapper" value="margin-indicator" title="Margin indicator"><span class="margin-container"><span class="note" data-content="✅" data-aria-label="Checkmark emoji"></span>&NoBreak;</span><span class="highlight-placeholder">…</span></button>
-      </div>
-      <p>
-        <label><input type="checkbox" id="hh-remember-style" checked> Remember most recent color and style</label><br>
-        <label><input type="checkbox" id="hh-snap-to-word"> Snap highlights to the nearest word</label><br>
-      </p>
-      <p>
-        Pointer mode:<br>
-        <label><input type="radio" name="hh-pointer-mode" value="auto" checked> Auto (based on input device)</label><br>
-        <label><input type="radio" name="hh-pointer-mode" value="simple"> Simple</label><br>
-        <label><input type="radio" name="hh-pointer-mode" value="live"> Live</label><br>
-      </p>
-      <p>
-        Drawing mode:<br>
-        <label><input type="radio" name="hh-drawing-mode" value="svg" checked> SVG shapes</label><br>
-        <label><input type="radio" name="hh-drawing-mode" value="highlight-api"> Custom Highlight API</label><br>
-        <label><input type="radio" name="hh-drawing-mode" value="mark-elements"> HTML mark elements</label><br>
-      </p>
-      <p>
-        Show custom drag handles:<br>
-        <label><input type="checkbox" name="hh-drag-handles" value="highlights" checked> For active highlights</label><br>
-        <label><input type="checkbox" name="hh-drag-handles" value="selection"> For text selection</label><br>
-        <label><input type="checkbox" name="hh-drag-handles" value="touch"> On touch devices</label><br>
-      </p>
-      <b>Active highlight:</b>
-      <div id="snippet-container">
-        <div id="snippet">N/A</div>
-      </div>
-      <p id="highlight-info"></p>
-    </aside>
-    <dialog id="disambiguation-panel">
-      <h1>Select One</h1>
-      <div id="disambiguation-buttons"></div>
-      <button id="disambiguation-cancel">Cancel</button>
-    </dialog>
-    <p>
-      ← <a href="https://github.com/samuelbradshaw/highlight-helper-js">Back to GitHub</a>
-    </p>
+        // Add event listeners for removing a highlight
+        function removeHighlight(event) {
+          const activeHighlightId = highlighter.getActiveHighlightId();
+          highlighter.removeHighlights([activeHighlightId]);
+        }
+        document.getElementById('remove').addEventListener('click', removeHighlight);
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Backspace') removeHighlight(event);
+        });
 
-    <!-- Link to the HighlightHelper.js JavaScript file -->
-    <script src="highlight-helper.js"></script>
-    <script>
-      // Example highlights
-      let highlights = [
-        {
-          highlightId: 'hh-1729991847207',
-          color: 'green', style: 'fill',
-          startParagraphId: 'p1', startParagraphOffset: 27,
-          endParagraphId: 'p1', endParagraphOffset: 59,
-        },
-        {
-          highlightId: 'hh-1735379721523',
-          color: 'red', style: 'fill', wrapper: 'screen-reader-label',
-          variables: { startLabel: '(start red highlight)', endLabel: '(end red highlight)', },
-          startParagraphId: 'p1', startParagraphOffset: 239,
-          endParagraphId: 'p1', endParagraphOffset: 252,
-        },
-        {
-          highlightId: 'hh-1735379727958',
-          color: 'yellow', style: 'fill', wrapper: 'screen-reader-label',
-          variables: { startLabel: '(start yellow highlight)', endLabel: '(end yellow highlight)', },
-          startParagraphId: 'p1', startParagraphOffset: 248,
-          endParagraphId: 'p1', endParagraphOffset: 261,
-        },
-        {
-          highlightId: 'hh-1729991847300',
-          color: 'blue', style: 'fill', wrapper: 'margin-indicator',
-          variables: { content: '🙂', ariaLabel: 'Smile emoji', },
-          startParagraphId: 'p2', startParagraphOffset: 27,
-          endParagraphId: 'p2', endParagraphOffset: 42,
-        },
-        {
-          highlightId: 'hh-1729991847468',
-          color: 'red', style: 'underline', wrapper: 'footnote',
-          variables: { content: 'a', ariaLabel: 'Footnote [a]', },
-          readOnly: true,
-          startParagraphId: 'p2', startParagraphOffset: 119,
-          endParagraphId: 'p2', endParagraphOffset: 127,
-        },
-        {
-          highlightId: 'hh-1729991847301',
-          color: 'orange', style: 'fill',
-          startParagraphId: 'p3', startParagraphOffset: 56,
-          endParagraphId: 'p3', endParagraphOffset: 65,
-        },
-        {
-          highlightId: 'hh-1735479727958',
-          color: 'yellow', style: 'colored-text',
-          startParagraphId: 'p4', startParagraphOffset: 191,
-          endParagraphId: 'p4', endParagraphOffset: 207,
-        },
-      ];
+        // Add an event listener for selection change (used for live highlighting)
+        function respondToSelectionChange(event) {
+          if (liveHighlighting && !highlighter.getActiveHighlightId()) {
+            highlighter.createOrUpdateHighlight({
+              color: previousColor,
+              style: previousStyle,
+              wrapper: previousWrapper ? 'margin-indicator' : '',
+              variables: previousWrapper ? { content: previousWrapper } : {},
+            });
+          }
+        }
+        container.addEventListener('hh:selectionchange', respondToSelectionChange);
 
-      const options = {
-        drawingMode: 'svg',
-        enableHover: true,
-        styleDefs: {
-          'fill': {
+        const colorButtons = document.querySelectorAll('[name="color"]');
+        for (const colorButton of colorButtons) {
+          colorButton.addEventListener('change', (event) => {
+            if (window.getSelection().type === 'Range') {
+              highlighter.createOrUpdateHighlight({ color: colorButton.value });
+            } else {
+              colorButton.checked = false;
+            }
+            previousColor = colorButton.value;
+          });
+        }
+
+        const styleMenu = document.querySelector('[name="style"]');
+        styleMenu.addEventListener('change', (event) => {
+          highlighter.createOrUpdateHighlight({ style: styleMenu.value });
+          previousStyle = styleMenu.value;
+        });
+
+        const wrapperMenu = document.querySelector('[name="wrapper"]');
+        wrapperMenu.addEventListener('change', (event) => {
+          highlighter.createOrUpdateHighlight({
+            wrapper: wrapperMenu.value ? 'margin-indicator' : '',
+            variables: { content: wrapperMenu.value },
+          });
+          previousWrapper = wrapperMenu.value;
+        });
+
+        const highContrastToggle = document.querySelector('[name="highContrast"]');
+        highContrastToggle.addEventListener('change', (event) => {
+          const styleDefs = highlighter.getOptions().styleDefs;
+          const highContrastFill = {
+            css: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
+            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 100%);',
+            svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
+            svgActive: `
+              <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 100%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
+            `,
+          }
+          const regularFill = {
             css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
             cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-            svg: '<rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 50%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.15));" />',
+            svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
             svgActive: `
-              <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 80%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.15));" />
+              <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
             `,
-          },
-          'underline': {
-            css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-            svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.95));" />',
-            svgActive: `
-              <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.15));" />
-              <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.95));" />
-            `,
-          },
-          'double-underline': {
-            css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
-            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-style: double; text-decoration-skip-ink: none;',
-            svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" /><rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />',
-            svgActive: `
-              <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.14));" />
-              <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 0.9));" />
-              <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 15); transform: translateY(calc({height}px * 1.05));" />
-            `,
-          },
-          'colored-text': {
-            css: 'color: var(--hh-color);',
-          },
-          'redacted': {
-            css: 'background-color: transparent; color: transparent;',
-          },
-        },
-        wrapperDefs: {
-          'footnote': {
-            start: '<span class="footnote-marker" data-content="{content}" aria-label="{ariaLabel}"></span>&NoBreak;',
-            end: '',
-          },
-          'margin-indicator': {
-            start: '<span class="margin-container"><span class="note" data-content="{content}" aria-label="{ariaLabel}"></span></span>&NoBreak;',
-            end: '',
-          },
-        },
-      }
-
-      // Set defaults
-      let defaultColor = 'yellow';
-      let defaultStyle = 'fill';
-      let pointerMode = 'auto';
-
-      // ── Initialization ────────────────────────────────────────────────────────
-      const highlighter = new Highlighter('main', 'main [id]');
-      highlighter.setOptions(options);
-      highlighter.loadHighlights(highlights);
-
-      // ── Annotation buttons (color / style / wrapper / remove) ────────────────
-      let rememberStyle = true;
-      document.getElementById('hh-remember-style').addEventListener('change', (event) => { rememberStyle = event.target.checked; });
-
-      for (const colorButton of document.getElementsByName('hh-color')) {
-        colorButton.addEventListener('click', () => {
-          highlighter.createOrUpdateHighlight({ color: colorButton.value });
-          if (rememberStyle) defaultColor = colorButton.value;
-        });
-      }
-      for (const styleButton of document.getElementsByName('hh-style')) {
-        styleButton.addEventListener('click', () => {
-          highlighter.createOrUpdateHighlight({ style: styleButton.value });
-          if (rememberStyle) defaultStyle = styleButton.value;
-        });
-      }
-      for (const wrapperButton of document.getElementsByName('hh-wrapper')) {
-        const contentSpan = wrapperButton.querySelector('[data-content]');
-        wrapperButton.addEventListener('click', () => {
-          highlighter.createOrUpdateHighlight({
-            wrapper: wrapperButton.value === 'none' ? null : wrapperButton.value,
-            variables: { content: contentSpan?.dataset?.content ?? '', ariaLabel: contentSpan?.dataset?.ariaLabel ?? '' },
-          });
-        });
-      }
-      document.getElementsByName('hh-remove')[0].addEventListener('click', () => {
-        highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
-      });
-      document.addEventListener('keydown', respondToKeyPress);
-      function respondToKeyPress(event) {
-        if (event.key === 'Backspace') highlighter.removeHighlights([highlighter.getActiveHighlightId()]);
-      }
-
-      // ── Options controls (checkboxes, radio buttons) ──────────────────────────
-      document.getElementById('hh-snap-to-word').addEventListener('change', (event) => {
-        highlighter.setOptions({ snapToWord: event.target.checked });
-      });
-      for (const radioButton of document.getElementsByName('hh-pointer-mode')) {
-        radioButton.addEventListener('change', (event) => { pointerMode = event.target.value });
-      }
-      for (const radioButton of document.getElementsByName('hh-drawing-mode')) {
-        radioButton.addEventListener('change', (event) => {
-          if (event.target.value === 'highlight-api' && !CSS.highlights) {
-            alert('Your browser doesn’t support the CSS Highlight API.');
-          } else {
-            highlighter.setOptions({ drawingMode: event.target.value });
           }
-        })
-      }
+          styleDefs.fill = highContrastToggle.checked ? highContrastFill : regularFill;
+          highlighter.setOptions({ styleDefs: styleDefs });
+        });
 
-      const dragHandleCheckboxes = document.querySelectorAll('[name="hh-drag-handles"]');
-      for (const dragHandleCheckbox of dragHandleCheckboxes) {
-        dragHandleCheckbox.addEventListener('change', (event) => {
-          const showDragHandles = Array.from(dragHandleCheckboxes).filter(el => el.checked).map(el => el.value);
-          console.log(showDragHandles);
+        const liveHighlightingToggle = document.querySelector('[name="liveHighlighting"]');
+        liveHighlightingToggle.addEventListener('change', (event) => {
+          liveHighlighting = liveHighlightingToggle.checked;
+        });
+
+        const showHandlesSelectToggle = document.querySelector('[name="showHandlesSelect"]');
+        showHandlesSelectToggle.addEventListener('change', (event) => {
+          const showDragHandles = ['highlights'];
+          if (showHandlesSelectToggle.checked) showDragHandles.push('selection');
           highlighter.setOptions({ showDragHandles: showDragHandles });
-        })
-      }
+        });
 
-      // ── Highlight event handlers ──────────────────────────────────────────────
-      const container = document.querySelector('main');
-      const snippetDiv = document.getElementById('snippet');
-      const infoDiv = document.getElementById('highlight-info');
+        const snapToWordToggle = document.querySelector('[name="snapToWord"]');
+        snapToWordToggle.addEventListener('change', (event) => {
+          highlighter.setOptions({ snapToWord: snapToWordToggle.checked });
+        });
 
-      // Respond to highlight update and highlight activate event
-      container.addEventListener('hh:highlightupdate', updateHighlightInfo);
-      container.addEventListener('hh:highlightactivate', updateHighlightInfo);
-      function updateHighlightInfo(event) {
-        clearHighlightInfo();
-        infoDiv.innerHTML = `
-          <b>Highlight:</b> ${event.detail.highlight.highlightId}<br>
-          <b>Color and style:</b> ${event.detail.highlight.color}, ${event.detail.highlight.style}<br>
-          <b>Wrapper:</b> ${event.detail.highlight.wrapper}, ${JSON.stringify(event.detail.highlight.variables)}<br>
-          <b>Read-only:</b> ${event.detail.highlight.readOnly}<br>
-          <b>Start:</b> #${event.detail.highlight.startParagraphId}, offset ${event.detail.highlight.startParagraphOffset}<br>
-          <b>End:</b> #${event.detail.highlight.endParagraphId}, offset ${event.detail.highlight.endParagraphOffset}
-        `;
-        const annotatedParagraphs = container.querySelectorAll(`#${event.detail.highlight.rangeParagraphIds.join(', #')}`);
-        for (const annotatedParagraph of annotatedParagraphs) {
-          const snippetParagraph = annotatedParagraph.cloneNode(true);
-          for (const element of snippetParagraph.querySelectorAll('[data-hh-highlight-id]')) element.remove();
-          snippetParagraph.id = `${snippetParagraph.id}_snippet`;
-          snippetDiv.append(snippetParagraph);
+
+        function handleSelectionChange(event) {
+          if (activeHighlightId !== highlighter.getActiveHighlightId()) {
+            activeHighlightId = highlighter.getActiveHighlightId();
+            const activeHighlightInfo = highlighter.getHighlightInfo([activeHighlightId])?.[0] ?? null;
+            if (activeHighlightInfo) {
+              document.querySelector(`[name="color"][value="${activeHighlightInfo.color}"]`).checked = true;
+            } else {
+              const checkedColorButton = document.querySelector(`[name="color"]:checked`);
+              if (checkedColorButton) checkedColorButton.checked = false;
+            }
+            styleMenu.value = activeHighlightInfo?.style ?? 'fill';
+            wrapperMenu.value = activeHighlightInfo?.variables?.content ?? '';
+          }
+          moveMarginIndicator(event);
         }
-        const snippetHighlighter = new Highlighter('#snippet-container', '#snippet [id]');
-        const snippetHighlights = [
+        container.addEventListener('hh:selectionchange', handleSelectionChange);
+
+
+        // Update margin indicator position when a highlight with a start wrapper is active
+        function moveMarginIndicator(event) {
+          const activeHighlightId = highlighter.getActiveHighlightId();
+          if (!activeHighlightId) return;
+          const note = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
+          if (!note) return;
+          const selection = getSelection();
+          const startRect = selection.type === 'Range' ? selection.getRangeAt(0).getBoundingClientRect() : null;
+          if (startRect) note.style.top = (startRect.top + window.scrollY - 1) + 'px';
+        }
+
+      </script>
+      <style>
+        #basic-highlighter .container {
+          padding-right: 1em;
+        }
+        #disambiguation-panel {
+          width: 400px; max-width: 100%;
+          box-sizing: border-box;
+        }
+        #disambiguation-panel h2 { margin: 0 }
+        #disambiguation-buttons {
+          display: flex;
+          flex-direction: column;
+          margin: 0.5em 0;
+        }
+        #disambiguation-buttons button {
+          all: unset;
+          display: block;
+          cursor: pointer;
+          padding: 0.5em 0;
+        }
+        #disambiguation-buttons button * { display: inline; }
+        #disambiguation-panel::backdrop {
+          background-color: hsla(0, 0%, 0%, 0.5);
+        }
+        #basic-highlighter .controls {
+          border: 1px solid var(--dark-gray);
+          background-color: var(--page-bg);
+          margin: 2em 0; padding: 1em;
+          -webkit-user-select: none;
+          user-select: none;
+          max-width: 600px;
+          font-family: sans-serif;
+          font-size: 0.8em;
+        }
+        #basic-highlighter .toggle-buttons {
+          display: flex;
+          justify-content: stretch;
+          gap: 0.8em;
+          margin-bottom: 0.8em;
+        }
+        #basic-highlighter .toggle-buttons label,
+        #basic-highlighter .toggle-buttons button {
+          all: unset;
+          flex-grow: 1;
+          border: 1px solid var(--dark-gray);
+          background-color: var(--hh-color, var(--light-gray));
+          padding: 0.3em 0.6em;
+          border-radius: 0.25em;
+          text-align: center;
+          cursor: pointer;
+        }
+        #basic-highlighter .toggle-proxy:has(input:checked),
+        #basic-highlighter button:focus-visible {
+          outline: 4px solid hsl(from var(--hh-color, var(--dark-gray)) h s l / 60%);
+          outline-offset: 0;
+        }
+        #basic-highlighter .toggle-proxy input {
+          position: absolute;
+          width: 1px; height: 1px;
+          margin: -1px; padding: 0;
+          overflow: hidden;
+          clip-path: inset(50%);
+          border: 0;
+        }
+        #basic-highlighter .other-controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.6em;
+          margin-top: 1.2em;
+        }
+
+        #basic-highlighter .margin-container {
+          display: inline-block;
+          visibility: visible;
+          font-style: normal;
+          height: 1em;
+        }
+        #basic-highlighter .margin-container .note {
+          position: absolute;
+          inset-inline-end: 0.8rem;
+          font-size: 1.2rem;
+          margin-top: -0.2rem;
+        }
+        #basic-highlighter .margin-container .note::before {
+          content: attr(data-content);
+        }
+        @media (width <= 500px) {
+          #basic-highlighter .controls {
+            position: sticky;
+            bottom: 0;
+            margin: 0 -1em;
+            border-width: 1px 0 0 0;
+          }
+        }
+
+      </style>
+
+    </section>
+
+    <p id="compatibility-warning">Warning: For simpler code snippets, the below demos use <a href="https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@scope">CSS @scope</a>, which is not supported on your browser.</p>
+
+    <section id="audio-sync">
+      <h2>Demo 2: Audio sync</h2>
+      <audio src="https://media2.ldscdn.org/assets/scriptures/the-new-testament/2015-11-1460-1-corinthians-13-male-voice-64k-eng.mp3" controls></audio>
+      <div class="container">
+        <p id="title-1">CHAPTER 13</p>
+        <p id="summary-1">Paul discusses the high status of charity—Charity, a pure love, excels and exceeds almost all else.</p>
+        <div class="columns">
+          <div class="verse-group">
+            <p class="verse" id="verse-1"> <span class="verse-number">1</span> <span class="drop-cap">T</span>hough I speak with the tongues of men and of angels, and have not charity, I am become as sounding brass, or a tinkling cymbal.</p>
+            <p class="verse" id="verse-2"><span class="verse-number">2</span> And though I have the gift of prophecy, and understand all mysteries, and all knowledge; and though I have all faith, so that I could remove mountains, and have not charity, I am nothing.</p>
+            <p class="verse" id="verse-3"><span class="verse-number">3</span> And though I bestow all my goods to feed the poor, and though I give my body to be burned, and have not charity, it profiteth me nothing.</p>
+          </div>
+          <div class="verse-group">
+            <p class="verse" id="verse-4"><span class="verse-number">4</span> Charity suffereth long, and is kind; charity envieth not; charity vaunteth not itself, is not puffed up,</p>
+            <p class="verse" id="verse-5"><span class="verse-number">5</span> Doth not behave itself unseemly, seeketh not her own, is not easily provoked, thinketh no evil;</p>
+            <p class="verse" id="verse-6"><span class="verse-number">6</span> Rejoiceth not in iniquity, but rejoiceth in the truth;</p>
+            <p class="verse" id="verse-7"><span class="verse-number">7</span> Beareth all things, believeth all things, hopeth all things, endureth all things.</p>
+            <p class="verse" id="verse-8"><span class="verse-number">8</span> Charity never faileth: but whether there be prophecies, they shall fail; whether there be tongues, they shall cease; whether there be knowledge, it shall vanish away.</p>
+            <p class="verse" id="verse-9"><span class="verse-number">9</span> For we know in part, and we prophesy in part.</p>
+            <p class="verse" id="verse-10"><span class="verse-number">10</span> But when that which is perfect is come, then that which is in part shall be done away.</p>
+            <p class="verse" id="verse-11"><span class="verse-number">11</span> When I was a child, I spake as a child, I understood as a child, I thought as a child: but when I became a man, I put away childish things.</p>
+            <p class="verse" id="verse-12"><span class="verse-number">12</span> For now we see through a glass, darkly; but then face to face: now I know in part; but then shall I know even as also I am known.</p>
+          </div>
+          <div class="verse-group">
+            <p class="verse" id="verse-13"><span class="verse-number">13</span> And now abideth faith, hope, charity, these three; but the greatest of these is charity.</p>
+          </div>
+          <hr>
+          <p class="explanation">This demo example has two highlights: a bold highlight for the current word, and an invisible highlight for the current verse. The highlights move as the audio advances. The callout bar is a wrapper on the verse highlight.</p>
+        </div>
+      </div>
+
+      <script type="module">
+        const options = {
+          colorDefs: { 'red': '#d00' },
+          styleDefs: {
+            'bold': { css: 'font-weight: bold;' },
+            'unstyled': {},
+          },
+          wrapperDefs: {
+            'callout-bar': {
+              start: '<div class="callout-bar" style="top: calc({range.top}px + 0.3em); left: calc({column.left}px - 0.8em); height: {range.height}px; background-color: var(--hh-color);" data-verse-number="{verseNumber}"></div>',
+            },
+          },
+        };
+
+        // Load Highlighter instance
+        const highlighter = new Highlighter('#audio-sync .container', '[id]');
+        highlighter.setOptions(options);
+
+        // Paragraph/verse and word timestamps
+        const paragraphTimestamps = [0.88, 2.64, 11.6, 21.56, 35.82, 45.86, 55.68, 64.54, 69.52, 76.36, 88.74, 93.14, 99.1, 111.38, 122.36];
+        const wordTimeStamps = [0.88, 1.1, 2.64, 2.8, 3.38, 3.52, 3.74, 4.22, 4.52, 5.84, 6.78, 6.88, 7.18, 7.98, 8.38, 8.8, 9.24, 9.78, 10.28, 11.6, 11.74, 11.94, 12.28, 12.66, 12.84, 13.18, 13.46, 13.78, 14.2, 14.34, 15.28, 15.4, 15.58, 15.8, 17.08, 17.22, 17.38, 17.76, 18.08, 18.52, 19.62, 19.74, 19.88, 20.26, 21.56, 21.66, 21.88, 22.12, 22.36, 22.6, 23.0, 23.12, 24.26, 24.4, 24.9, 25.32, 26.26, 26.36, 26.54, 27.62, 27.72, 27.92, 28.12, 28.4, 28.7, 29.84, 30.02, 30.18, 30.34, 30.54, 30.96, 32.06, 32.18, 32.36, 32.64, 33.96, 34.1, 34.26, 35.82, 35.82, 36.0, 36.22, 36.74, 37.04, 37.28, 37.64, 38.1, 38.26, 38.5, 39.44, 39.54, 39.76, 39.92, 40.08, 40.3, 40.72, 40.94, 41.12, 41.94, 42.06, 42.28, 42.52, 43.78, 44.02, 44.46, 44.7, 45.86, 46.26, 46.96, 47.78, 47.9, 48.06, 49.18, 49.5, 50.16, 51.3, 51.7, 52.36, 52.58, 53.68, 53.84, 54.04, 54.54, 55.68, 55.82, 56.04, 56.44, 56.94, 58.4, 58.86, 59.06, 59.38, 60.26, 60.4, 60.6, 61.1, 62.46, 62.94, 63.16, 64.54, 65.06, 65.36, 65.72, 66.76, 66.88, 67.62, 67.94, 68.08, 69.52, 69.74, 70.0, 70.96, 71.44, 71.68, 72.66, 73.0, 73.34, 74.32, 75.0, 75.16, 76.36, 76.78, 77.3, 78.66, 78.76, 79.06, 79.28, 79.46, 80.72, 80.88, 81.16, 82.18, 82.34, 82.56, 82.74, 83.74, 83.82, 84.06, 85.12, 85.3, 85.54, 85.74, 86.74, 86.84, 87.06, 87.44, 88.74, 88.84, 89.02, 89.34, 89.56, 90.42, 90.52, 90.68, 91.4, 91.82, 93.14, 93.14, 93.36, 93.58, 93.82, 94.2, 94.46, 94.84, 95.74, 95.88, 96.08, 96.34, 96.54, 96.72, 97.44, 97.54, 97.72, 97.94, 99.1, 99.18, 99.36, 99.54, 99.74, 100.46, 100.56, 100.98, 101.18, 101.3, 102.36, 102.46, 102.88, 103.6, 103.72, 104.68, 104.8, 105.1, 105.58, 105.68, 106.82, 106.92, 107.12, 107.3, 107.6, 107.9, 108.8, 108.9, 109.1, 109.4, 109.96, 111.38, 111.48, 111.74, 112.02, 112.34, 112.62, 112.82, 113.42, 114.36, 114.46, 114.76, 115.16, 115.4, 116.42, 116.58, 116.8, 117.1, 117.38, 118.32, 118.42, 118.64, 118.9, 119.12, 119.42, 119.9, 120.16, 120.56, 121.0, 121.16, 122.36, 122.36, 122.66, 123.3, 124.26, 125.3, 126.4, 126.62, 127.84, 127.94, 128.1, 128.48, 128.8, 129.16, 129.6];
+
+        const audio = document.querySelector('#audio-sync audio');
+        const container = document.querySelector('#audio-sync .container');
+        const paragraphs = container.querySelectorAll('[id]');
+        const dataTrack = audio.addTextTrack('metadata');
+        let currentParagraphId;
+
+        // Add event listeners for playback
+        audio.addEventListener('play', () => { container.dataset.playing = '' });
+        audio.addEventListener('pause', () => { delete container.dataset.playing });
+        audio.addEventListener('ended', () => { highlighter.removeHighlights(); });
+
+        // Add audio cues for paragraphs and words
+        let wordCounter = 0;
+        for (const paragraph of paragraphs) {
+          let charCounter = 0;
+          const words = paragraph.textContent.trim().split(/(?<=[^\s—]+[\s—]+)/g);
+          for (const word of words) {
+            const startOffset = charCounter;
+            charCounter += word.length;
+            if (/^\d+\s$/.test(word)) continue; // Skip verse numbers
+
+            const cue = new VTTCue(wordTimeStamps[wordCounter], wordTimeStamps[wordCounter + 1] ?? 1e9, '');
+            cue.data = {
+              paragraphId: paragraph.id,
+              startOffset: startOffset,
+              endOffset: charCounter,
+            }
+            dataTrack.addCue(cue);
+            wordCounter += 1;
+          }
+        }
+
+        // Add event listener for audio cue change
+        dataTrack.addEventListener('cuechange', (event) => {
+          const cueData = dataTrack.activeCues[0]?.data;
+          if (!cueData) return;
+          const highlights = highlighter.getHighlightInfo();
+          const paragraphHighlight = highlights.find(hl => hl.highlightId === 'hh-paragraph');
+          const wordHighlight = highlights.find(hl => hl.highlightId === 'hh-word');
+
+          // Update paragraph/verse highlight
+          if (cueData.paragraphId !== currentParagraphId) {
+            const newParagraph = document.getElementById(cueData.paragraphId);
+            highlighter.createOrUpdateHighlight({
+              highlightId: 'hh-paragraph',
+              color: 'red', style: 'unstyled',
+              wrapper: 'callout-bar',
+              startParagraphId: newParagraph.id,
+              startParagraphOffset: 0,
+              endParagraphId: newParagraph.id,
+              endParagraphOffset: newParagraph.textContent.length,
+              variables: {
+                verseNumber: newParagraph.querySelector('.verse-number')?.textContent ?? '',
+              },
+            }, true, false);
+            currentParagraphId = newParagraph.id;
+          }
+
+          // Update word highlight
+          highlighter.createOrUpdateHighlight({
+            highlightId: 'hh-word',
+            style: 'bold',
+            startParagraphId: currentParagraphId,
+            startParagraphOffset: cueData.startOffset,
+            endParagraphId: currentParagraphId,
+            endParagraphOffset: cueData.endOffset,
+          }, true, false);
+        });
+
+      </script>
+      <style>
+        @scope {
+          .container { padding: 1em; }
+          #title-1 { font-weight: bold; }
+          #summary-1, .explanation { font-style: italic; }
+          .columns {
+            column-width: 300px;
+            gap: 3em;
+          }
+          .verse-group { margin-bottom: 1em; }
+          .verse { display: inline; }
+          .verse-number {
+            vertical-align: text-top;
+            font-size: 0.8em;
+          }
+          #verse-1 .verse-number { display: none; }
+          #verse-1 .drop-cap mark { font-weight: normal; }
+          .drop-cap {
+            float: left;
+            font-size: 3.1em;
+            line-height: 0.9;
+            padding-right: 0.06em;
+            margin-bottom: -0.3em;
+          }
+          .callout-bar {
+            width: 0.2em;
+            position: absolute;
+            transition: top 0.25s ease, height 0.25s ease, left 0.25s ease;
+          }
+          .callout-bar::before {
+            content: attr(data-verse-number);
+            position: absolute;
+            inset-block-start: 0;
+            inset-inline-end: 100%;
+            padding-inline-end: 0.3em;
+            white-space: nowrap;
+            text-align: end;
+          }
+          .container[data-playing] p:not(:has(.callout-bar)) {
+            opacity: 0.5;
+          }
+        }
+      </style>
+    </section>
+
+    <section id="document-draft">
+      <h2>Demo 3: Document draft</h2>
+      <article>
+        <div class="container">
+          <h3 id="cereal-title">About Cereal</h3>
+          <p id="cereal">A cereal is a grass (family Poaceae) cultivated for its edible grain. Cereals are the worlds largest crops, and are therefore staple foods. They include rice, wheat, rye, oats, barley, millet, and maize. Edible grains from other plant families, such as amaranth, buckwheat and quinoa, are pseudocereals (Eudicots). Most cereals are annuals, producing one crop from each planting, though rice is sometimes grown as a perennial. Winter varieties are hardy enough to be planted in the autumn, becoming dormant in the winter, and harvested in spring or early summer; spring varieties are planted in spring and harvested in late summer. The term cereal is derived from the name of the Roman goddess of grain crops and fertility, Ceres.</p>
+          <p id="more-cereal">Cereals were domesticated in the Neolithic around 8,000 years ago. Wheat and barley were domesticated in the Fertile Crescent. Rice and some millets were domesticated in East Asia, while sorghum and other millets were domesticated in Sudan. Maize was domesticated by Indigenous peoples of the Americas in southern Mexico about 9,000 years ago.</p>
+          <p id="even-more-cereal">In the 20th century, cereal productivity was greatly increased by the Green Revolution. This increase in production has acompanied a growing international trade, with some countrys producing large portions of the cereal supply for other countries.</p>
+          <p class="explanation">This demo uses highlights to show spelling errors, review comments, and the location of other people working in the document. Highlight wrappers are used for hover/tap popups and caret indicators.</p>
+
+        </div>
+      </article>
+
+      <script type="module">
+        const highlights = [
           {
-            highlightId: event.detail.highlight.highlightId + '_snippet',
-            readOnly: true,
-            color: event.detail.highlight.color, style: event.detail.highlight.style,
-            startParagraphId: `${event.detail.highlight.startParagraphId}_snippet`, startParagraphOffset: event.detail.highlight.startParagraphOffset,
-            endParagraphId: `${event.detail.highlight.endParagraphId}_snippet`, endParagraphOffset: event.detail.highlight.endParagraphOffset,
+            highlightId: 'spellcheck-1',
+            color: 'red', style: 'spelling-error',
+            wrapper: 'spelling-suggestion',
+            variables: {
+              'suggestionText': 'world’s',
+            },
+            startParagraphId: 'cereal', startParagraphOffset: 86,
+            endParagraphId: 'cereal', endParagraphOffset: 92,
+          },
+          {
+            highlightId: 'spellcheck-2',
+            color: 'red', style: 'spelling-error',
+            wrapper: 'spelling-suggestion',
+            variables: {
+              'suggestionText': 'countries',
+            },
+            startParagraphId: 'even-more-cereal', startParagraphOffset: 172,
+            endParagraphId: 'even-more-cereal', endParagraphOffset: 180,
+          },
+          {
+            highlightId: 'comment-1',
+            color: 'gray', style: 'comment',
+            wrapper: 'comment',
+            variables: {
+              'name': 'Alice',
+              'commentText': 'Start new paragraph?',
+            },
+            startParagraphId: 'cereal', startParagraphOffset: 315,
+            endParagraphId: 'cereal', endParagraphOffset: 327,
+          },
+          {
+            highlightId: 'comment-2',
+            color: 'gray', style: 'comment',
+            wrapper: 'comment',
+            variables: {
+              'name': 'Alice',
+              'commentText': 'Add citation',
+            },
+            startParagraphId: 'cereal', startParagraphOffset: 93,
+            endParagraphId: 'cereal', endParagraphOffset: 107,
+          },
+          {
+            highlightId: 'alice',
+            color: 'green', style: 'text-selection',
+            wrapper: 'user-caret',
+            variables: {
+              'name': 'Alice',
+            },
+            startParagraphId: 'more-cereal', startParagraphOffset: 67,
+            endParagraphId: 'more-cereal', endParagraphOffset: 88,
+          },
+          {
+            highlightId: 'henry',
+            color: 'orange', style: 'text-selection',
+            wrapper: 'user-caret',
+            variables: {
+              'name': 'Henry',
+            },
+            startParagraphId: 'even-more-cereal', startParagraphOffset: 10,
+            endParagraphId: 'even-more-cereal', endParagraphOffset: 11,
+          },
+          {
+            highlightId: 'bob',
+            color: 'blue', style: 'text-selection',
+            wrapper: 'user-caret',
+            variables: {
+              'name': 'Bob',
+            },
+            startParagraphId: 'cereal-title', startParagraphOffset: 0,
+            endParagraphId: 'cereal-title', endParagraphOffset: 5,
           },
         ];
-        snippetHighlighter.setOptions({
-          ...options,
-          drawingMode: 'mark-elements',
-        });
-        snippetHighlighter.loadHighlights(snippetHighlights);
-      }
 
-      // Respond to highlight deactivate event
-      container.addEventListener('hh:highlightdeactivate', clearHighlightInfo);
-      function clearHighlightInfo(event) {
-        snippetDiv.innerHTML = '';
-        infoDiv.innerHTML = 'N/A';
-      }
+        const options = {
+          drawingMode: 'svg',
+          enableHover: true,
+          colorDefs: {
+            'gray': 'var(--text-color)',
+          },
+          styleDefs: {
+            'spelling-error': {
+              css: 'text-decoration: var(--hh-color) underline wavy; text-decoration-skip-ink: none;',
+            },
+            'comment': {
+              css: 'background-color: hsl(from var(--hh-color) h s l / 15%);',
+              svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 15%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
+            },
+            'text-selection': {
+              css: 'background-color: hsl(from var(--hh-color) h s l / 30%);',
+              svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 30%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
+            },
+          },
+          wrapperDefs: {
+            'spelling-suggestion': {
+              start: '<label class="spelling-error toggle-proxy"><input type="checkbox" aria-label="Spelling suggestion"></label><div class="popup">{suggestionText}</div>',
+            },
+            'comment': {
+              start: '<label class="comment toggle-proxy"><input type="checkbox" aria-label="Show/hide comment"></label><div class="popup"><b>{name}:</b> {commentText}</div>',
+            },
+            'user-caret': {
+              end: '<span class="user-caret" data-name="{name}" style="bottom: calc(-1 * {line.height}px * 0.3);"></span>',
+            },
+          },
+        };
 
-      // Respond to hover
-      container.addEventListener('hh:hover', (event) => {
-        container.style.cursor = (event.detail.targetCount > 0 && !highlighter.getActiveHighlightId()) ? 'pointer' : '';
-      });
+        // Load highlights
+        const highlighter = new Highlighter('#document-draft .container', '[id]');
+        highlighter.setOptions(options);
+        highlighter.loadHighlights(highlights);
 
-      // Respond to tap
-      container.addEventListener('hh:tap', respondToTap);
-      function respondToTap(event) {
-        if (event.detail.targetCount === 0 || event.detail.isLongPress || event.detail.selectionType === 'Range') return;
-        if (event.detail.targetCount > 1) {
-          handleAmbiguousAction(event);
-        } else if (event.detail.targetCount === 1) {
-          if (event.detail.highlights.length === 1) {
-            highlighter.activateHighlight(event.detail.highlights[0].highlightId);
-          } else if (event.detail.wrappers.length === 1) {
-            highlighter.activateHighlight(event.detail.wrappers[0].highlight.highlightId);
-          } else if (event.detail.hyperlinks.length === 1) {
-            highlighter.activateHyperlink(event.detail.hyperlinks[0].index);
+        // Add event listener for tap and hover
+        let hoverHighlightId;
+        const container = document.querySelector('#document-draft .container');
+        const checkbox = (id) => container.querySelector(`[data-hh-wrapper][data-hh-highlight-id="${id}"] [type="checkbox"]`);
+        function showPopup(event) {
+          const highlight = event.detail.highlights[0];
+          if (hoverHighlightId && hoverHighlightId !== highlight?.highlightId) {
+            checkbox(hoverHighlightId).checked = false;
+            hoverHighlightId = null;
+          }
+          if (highlight?.style === 'spelling-error' || highlight?.style === 'comment') {
+            if (event.type === 'hh:hover') {
+              container.style.cursor = 'pointer';
+              hoverHighlightId = highlight?.highlightId;
+            }
+            checkbox(hoverHighlightId).checked = !checkbox(hoverHighlightId)?.checked;
+          } else {
+            container.style.cursor = '';
           }
         }
+        container.addEventListener('hh:tap', showPopup);
+        container.addEventListener('hh:hover', showPopup);
+      </script>
+      <style>
+        @scope {
+          article {
+            position: relative;
+            padding-right: 1em;
+          }
+          .explanation { font-style: italic; }
+
+          .user-caret {
+            position: relative;
+            display: inline-block;
+            height: 1em;
+            margin: 0 1px 0 -1px;
+          }
+          .user-caret::after {
+            display: inline-block;
+            content: "";
+            position: absolute; bottom: 0;
+            width: 3px;
+            height: 1.6em;
+            background-color: var(--hh-color);
+          }
+          .user-caret:hover::before {
+            position: absolute; top: -2em;
+            content: attr(data-name);
+            color: white;
+            font-size: 0.7rem;
+            padding: 0 0.4em;
+            font-family: sans-serif;
+            font-weight: normal;
+            background-color: var(--hh-color);
+          }
+
+          .toggle-proxy { display: inline; }
+          .toggle-proxy:has(input:focus-visible) {
+            outline: 2px solid -webkit-focus-ring-color;
+          }
+          .toggle-proxy input {
+            position: absolute;
+            width: 1px; height: 1px;
+            margin: -1px; padding: 0;
+            overflow: hidden;
+            clip-path: inset(50%);
+            border: 0;
+          }
+          .popup {
+            position: absolute;
+            padding: 0.2em 0.4em;
+            background-color: var(--page-bg);
+            border: 1px solid var(--dark-gray);
+            z-index: 1;
+          }
+          .toggle-proxy:has(input:not(:checked)) + .popup {
+            display: none;
+          }
+          [data-hh-wrapper="spelling-suggestion"] { position: relative; }
+          .toggle-proxy.comment::after {
+            content: "💬";
+            cursor: pointer;
+            position: absolute; right: -0.8rem;
+          }
+          [data-hh-wrapper="comment"] .popup { right: 0; }
+          [data-hh-wrapper="spelling-suggestion"] .popup {
+            bottom: 1.2em; left: -0.4em;
+          }
+        }
+      </style>
+    </section>
+
+    <!-- Demo template -->
+<!--
+    <section id="demo-name">
+      <h2>Demo name</h2>
+      <div class="container">
+      </div>
+
+      <script type="module">
+      </script>
+      <style>
+      </style>
+    </section>
+ -->
+
+
+    <section>
+      <h3>Demo Credits</h3>
+      <ul>
+        <li>1 Corinthians 13 text and audio from <a href="https://www.churchofjesuschrist.org/study/scriptures/nt/1-cor/13?lang=eng">ChurchofJesusChrist.org</a>.</li>
+        <li>“Cereal” text adapted from <a href="https://en.wikipedia.org/wiki/Cereal">Wikipedia</a>.</li>
+      </ul>
+    </section>
+
+    <!-- GLOBAL JS for all demos -->
+    <script>
+      const jumpLinksList = document.getElementById('jump-links');
+      const sections = document.querySelectorAll('section');
+
+      if (typeof CSSScopeRule != 'undefined') document.getElementById('compatibility-warning').style.display = 'none';
+
+      for (const section of sections) {
+        showCode(section);
+        const title = section.querySelector('h2')?.textContent;
+        if (title) jumpLinksList.insertAdjacentHTML('beforeend', `<li><a href="#${section.id}">${title}</a></li>`)
       }
 
-      // Respond to selection change
-      // Live highlighting
-      function respondToSelectionChange(event) {
-        if (
-          (pointerMode === 'live' || (pointerMode === 'auto' && event.detail.pointerType === 'pen'))
-          && !highlighter.getActiveHighlightId()
-        ) {
-          highlighter.createOrUpdateHighlight({
-            color: defaultColor,
-            style: defaultStyle,
-          });
+      function showCode(section) {
+        const buildCodeBlock = (code, caption) => {
+          const codeLines = code.replaceAll('&', '&amp;').replaceAll('<', '&lt;').split('\n').slice(1, -1);
+          const minIndent = codeLines.reduce((min, line) => {
+            const spaces = line.length - line.trimStart().length;
+            return spaces === line.length ? min : Math.min(min, spaces);
+          }, Infinity);
+          return `<figure class="code-block"><figcaption>${caption}</figcaption>` + codeLines.map(line => {
+            const indent = line.length - line.trimStart().length - minIndent;
+            return `<code style="--indent: ${indent}em;">${line}</code>`;
+          }).join('') + '</figure>';
+        }
+        const jsCodeBlock = buildCodeBlock(section.querySelector('script')?.textContent ?? '', 'JavaScript');
+        const cssCodeBlock = buildCodeBlock(section.querySelector('style')?.textContent ?? '', 'CSS');
+        if (jsCodeBlock || cssCodeBlock) {
+          section.insertAdjacentHTML('beforeend', `
+            <details data-hh-ignore="">
+              <summary>See code</summary>
+              ${jsCodeBlock}
+              ${cssCodeBlock}
+            </details>
+          `);
         }
       }
-      container.addEventListener('hh:selectionchange', respondToSelectionChange);
-
-
-      // ── Disambiguation dialog ─────────────────────────────────────────────────
-      const disambiguationPanel = document.getElementById('disambiguation-panel');
-      const disambiguationButtonsDiv = document.getElementById('disambiguation-buttons');
-      const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
-      disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
-      container.addEventListener('hh:ambiguousaction', handleAmbiguousAction);
-      function handleAmbiguousAction(event) {
-        disambiguationButtonsDiv.innerHTML = '';
-        const highlightIds = new Set();
-        for (const highlight of event.detail.highlights) highlightIds.add(highlight.highlightId);
-        for (const wrapper of event.detail.wrappers) highlightIds.add(wrapper.highlightInfo.highlightId);
-        const highlights = highlighter.getHighlightInfo(highlightIds);
-        for (const highlight of highlights) {
-          let buttonStyle = highlighter.getOptions().styleDefs[highlight.style]['css']
-          let buttonHtml = `
-            <button data-hh-color="${highlight.color}" onclick="disambiguationPanel.close();highlighter.activateHighlight('${highlight.highlightId}');">
-              <span style="${buttonStyle}">${highlight.rangeHtml}</span>
-            </button>
-          `;
-          disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
-        }
-        for (const hyperlink of event.detail.hyperlinks) {
-          let buttonStyle = 'color: var(--gray-50); text-decoration: underline;'
-          let buttonHtml = `
-            <button onclick="disambiguationPanel.close();highlighter.activateHyperlink(${hyperlink.index});">
-              <span style="${buttonStyle}">${hyperlink.text}</span>
-            </button>
-          `;
-          disambiguationButtonsDiv.insertAdjacentHTML('beforeend', buttonHtml);
-        }
-        // TODO: Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:ambiguousaction. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
-        setTimeout(function() { disambiguationPanel.showModal(); }, 10);
-      }
-
-      // ── Margin note positioning ───────────────────────────────────────────────
-      // Update margin note position when a highlight with a start wrapper is active
-      function moveMarginIndicator(event) {
-        const activeHighlightId = highlighter.getActiveHighlightId();
-        if (!activeHighlightId) return;
-        const note = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
-        if (!note) return;
-        const selection = getSelection();
-        const startRect = selection.type === 'Range' ? selection.getRangeAt(0).getBoundingClientRect() : null;
-        if (startRect) note.style.top = (startRect.top + window.scrollY - 1) + 'px';
-      }
-      container.addEventListener('hh:highlightactivate', moveMarginIndicator);
-      container.addEventListener('hh:selectionchange', moveMarginIndicator);
-
     </script>
   </body>
 </html>

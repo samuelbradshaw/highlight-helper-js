@@ -224,7 +224,7 @@ Highlighter.prototype._loadEventListeners = function () {
     }
 
     // If the user taps away or creates a new selection range outside of the previous selection range, deactivate any active highlights (but don't clear the selection range that was just created)
-    this._detectSelectionResize(this._previousSelectionRange, selectionRange);
+    this._detectSelectionResize(this._previousSelectionRange, selectionRange, selection.type);
     if (!this._activeHandle && !this._isResizingSelection && this._previousSelectionRange) {
       const isSelectionOutsidePreviousRange =
         this._previousSelectionRange.comparePoint(selectionRange.startContainer, selectionRange.startOffset) === 1 ||
@@ -1579,9 +1579,9 @@ Highlighter.prototype._getStyleString = function (style, type, active = false, v
 }
 
 // Check if the text selection is being resized. If a new selection range is within 2 characters of the previous selection range, the selection is assumed to be resizing. There's not a reliable way to track dragging of a native OS selection handle from JavaScript, but this can be used as an approximation. It will also trigger when dragging a custom handle, and when expanding a selection with arrow keys.
-Highlighter.prototype._detectSelectionResize = function (prevRange, newRange) {
+Highlighter.prototype._detectSelectionResize = function (prevRange, newRange, selectionType) {
   this._handleDragTimeoutId = clearTimeout(this._handleDragTimeoutId);
-  if (prevRange && newRange) {
+  if (prevRange && newRange && selectionType === 'Range') {
     const expandedPrevRange = document.createRange();
 
     if (prevRange.startOffset >= 2) {

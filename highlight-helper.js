@@ -561,6 +561,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
   }
 
   // If there are no valid changes, return
+  // TODO: Checking for an empty highlight range ensures that regular highlights can't collapse and become invisible. However, there may be use cases where showing just a caret is desired (example: document draft demo).
   if (!highlightRange || highlightRange.toString() === '' || appearanceChanges.length + boundsChanges.length === 0) {
     return;
   }
@@ -699,7 +700,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       }
       if (wrapperDef.start) range.insertNode(wrapperElements.get(`${highlightId}:start`));
       range = this._getCorrectedRangeObj(highlightId, true);
-      
+
       // If current highlight is active, update selection range to match highlight range
       if (highlightId === this._activeHighlightId) {
         const selectionForWrapper = globalThis.getSelection();
@@ -719,7 +720,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
     highlightInfo.rangeRect = rangeRect;
     highlightInfo.rangeLineRects = rangeLineRects;
 
-    // Update wrappers
+    // Update wrapper variables
     let wrapperRectChanged = false;
     if (wrapperDef) {
       for (const position of ['start', 'end']) {
@@ -911,7 +912,7 @@ Highlighter.prototype.getActiveHighlightId = function () {
 
 // Get info for specified highlights, or all highlights on the page
 Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(this._highlightsById), paragraphId = null) {
-  const highlights = Array.from(highlightIds).map(id => this._highlightsById[id])
+  const highlights = Array.from(new Set(highlightIds)).map(id => this._highlightsById[id])
     .filter(info => info && (!paragraphId || paragraphId === info.startParagraphId));
 
   // Sort highlights based on their order on the page
@@ -996,7 +997,7 @@ Highlighter.prototype.setOptions = function (optionsToUpdate) {
 
 // Get all of the initialized options
 Highlighter.prototype.getOptions = function () {
-  return this._options;
+  return { ...this._options };
 }
 
 // Get the current selection state. Returns the same object that arrives in the most recent hh:selectionchange event's detail.
@@ -1189,8 +1190,8 @@ Highlighter.prototype._updateSelectionState = function () {
   let rangeText = null, rangeHtml = null, rangeParagraphIds = null, rangeObj = null;
   let rangeRect = null, rangeParagraphs = [], rangeLineRects = [];
   if (selectionRange) {
-    const startParagraph = selectionRange.startContainer.parentElement?.closest(this._paragraphSelector);
-    const endParagraph = selectionRange.endContainer.parentElement?.closest(this._paragraphSelector) ?? startParagraph;
+    const startParagraph = this._closestValidParagraph(selectionRange.startContainer.parentElement);
+    const endParagraph = this._closestValidParagraph(selectionRange.endContainer.parentElement) ?? startParagraph;
     if (startParagraph && endParagraph) {
       if (startParagraph === endParagraph) {
         rangeParagraphs = [startParagraph];
@@ -1385,7 +1386,7 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
 
 // Get the character offset relative to the annotatable paragraph
 Highlighter.prototype._getParagraphOffset = function (referenceTextNode, referenceTextNodeOffset) {
-  const paragraph = referenceTextNode.parentElement.closest(this._paragraphSelector);
+  const paragraph = this._closestValidParagraph(referenceTextNode.parentElement);
   const walker = this._getTextNodeWalker(paragraph);
   let currentOffset = 0;
   let textNode;
@@ -1457,7 +1458,7 @@ Highlighter.prototype._getPreviousValidTextNode = function (currentNode) {
 
 // Determine if text node should be skipped when snapping to word or calculating character offsets
 Highlighter.prototype._shouldSkipTextNode = function (textNode) {
-  const parentParagraph = textNode.parentNode.closest(this._paragraphSelector);
+  const parentParagraph = this._closestValidParagraph(textNode.parentNode);
   const ignoreParent = textNode.parentNode.closest('[data-hh-ignore]');
   if (!parentParagraph || ignoreParent || textNode.textContent === '') return true;
   return false;
@@ -1467,6 +1468,12 @@ Highlighter.prototype._shouldSkipTextNode = function (textNode) {
 Highlighter.prototype._getTextNodeWalker = function (root = this._annotatableContainer) {
   if (!root) root = this._annotatableContainer;
   return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, (node) => this._shouldSkipTextNode(node) ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT);
+}
+
+// Get the closest valid paragraph
+Highlighter.prototype._closestValidParagraph = function (element) {
+  const parentParagraph = element ? element.closest(this._paragraphSelector) : null;
+  if (parentParagraph && this._annotatableContainer.contains(parentParagraph)) return parentParagraph;
 }
 
 // Update color stylesheet
@@ -1482,6 +1489,7 @@ Highlighter.prototype._updateColorStylesheet = function () {
 // Get the resolved drawing mode for a highlight
 Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
   const options = this._options;
+  if (options.drawingMode === 'mark-elements') return 'mark-elements';
   const resolvedStyle = Object.hasOwn(options.styleDefs, highlightInfo.style) ? highlightInfo.style : _defaultStyle;
   if ((options.drawingMode === 'svg' && !options.styleDefs[resolvedStyle]?.svg)
     || (options.drawingMode === 'highlight-api' && !supportsHighlightApi)) {
@@ -1668,7 +1676,7 @@ Highlighter.prototype._getCaretFromCoordinates = function (clientX, clientY, che
     if (checkXDistance && Math.abs(clientX - caretClientRect.x) > maxDistance) return;
     if (checkYDistance && Math.abs(clientY - caretClientRect.top) > maxDistance && Math.abs(clientY - caretClientRect.bottom) > maxDistance) return;
   }
-  if (checkAnnotatable && !range.startContainer.parentElement?.closest(this._paragraphSelector)) return;
+  if (checkAnnotatable && !this._closestValidParagraph(range.startContainer.parentElement)) return;
   return range;
 }
 

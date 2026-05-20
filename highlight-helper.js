@@ -12,29 +12,29 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
 
   // Load container
   this._containerSelector = containerSelector;
-  this._annotatableContainer = document.querySelector(containerSelector);
-  if (!this._annotatableContainer) {
+  this._container = document.querySelector(containerSelector);
+  if (!this._container) {
     return console.error(`Unable to create Highlighter with container selector "${containerSelector}" (element not found).`);
   }
 
   // Handle cases where a highlighter already exists for the container, or one of its children or ancestors
-  if (this._annotatableContainer.highlighter) {
-    this._annotatableContainer.highlighter.removeHighlighter();
-  } else if (this._annotatableContainer.closest('[data-hh-container]') || this._annotatableContainer.querySelector('[data-hh-container]')) {
+  if (this._container.highlighter) {
+    this._container.highlighter.removeHighlighter();
+  } else if (this._container.closest('[data-hh-container]') || this._container.querySelector('[data-hh-container]')) {
     return console.error(`Unable to create Highlighter with container selector "${containerSelector}" (annotatable container can't be a child or ancestor of another annotatable container).`);
   }
 
   // Load annotatable paragraphs
   this._paragraphSelector = paragraphSelector;
-  this._annotatableParagraphIds = [];
-  this._annotatableParagraphs = Array.from(this._annotatableContainer.querySelectorAll(paragraphSelector));
-  for (const paragraph of this._annotatableParagraphs) {
+  this._paragraphIds = [];
+  this._paragraphs = Array.from(this._container.querySelectorAll(paragraphSelector));
+  for (const paragraph of this._paragraphs) {
     if (!paragraph.id) {
       return console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph must have a valid ID).`);
-    } else if (this._annotatableParagraphIds.includes(paragraph.id)) {
+    } else if (this._paragraphIds.includes(paragraph.id)) {
       return console.error(`Unable to create Highlighter with paragraph selector "${paragraphSelector}" (each selected paragraph's ID must be unique).`);
     }
-    this._annotatableParagraphIds.push(paragraph.id);
+    this._paragraphIds.push(paragraph.id);
   }
 
   // Abort controller can be used to cancel event listeners if the highlighter is removed
@@ -44,20 +44,20 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
   document.body.tabIndex = -1;
 
   // Set up additions (SVG background and selection handles)
-  this._annotatableContainer.insertAdjacentHTML('beforeend', `
+  this._container.insertAdjacentHTML('beforeend', `
     <div data-hh-additions="">
       <svg data-hh-svg-background=""><g data-hh-svg-active-overlay=""></g></svg>
       <div data-hh-handle="" data-hh-side="left" data-hh-position="start" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
       <div data-hh-handle="" data-hh-side="right" data-hh-position="end" data-hh-ignore=""><div draggable="true"></div><div data-hh-handle-content=""></div></div>
     </div>
   `);
-  this._additionsDiv = this._annotatableContainer.querySelector('[data-hh-additions]');
+  this._additionsDiv = this._container.querySelector('[data-hh-additions]');
   this._svgBackground = this._additionsDiv.querySelector('[data-hh-svg-background]');
   this._svgActiveOverlay = this._additionsDiv.querySelector('[data-hh-svg-active-overlay]');
   this._dragHandles = this._additionsDiv.querySelectorAll('[data-hh-handle]');
 
   // Check for hyperlinks on the page
-  this._hyperlinkElements = this._annotatableContainer.getElementsByTagName('a');
+  this._hyperlinkElements = this._container.getElementsByTagName('a');
   this._hyperlinksByIndex = {}
   for (let hyp = 0; hyp < this._hyperlinkElements.length; hyp++) {
     const hyperlink = this._hyperlinkElements[hyp];
@@ -72,8 +72,8 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
 
   this._highlightsById = {};
   this._wrapperElements = new Map();
-  this._annotatableContainer.dataset.hhContainer = '';
-  this._annotatableContainer.highlighter = this;
+  this._container.dataset.hhContainer = '';
+  this._container.highlighter = this;
   this._selectionState = {
     activeHighlightId: null,
     color: null,
@@ -203,7 +203,7 @@ Highlighter.prototype._loadEventListeners = function () {
     const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
     const selectionRange = selection.type === 'None' ? null : selection.getRangeAt(0);
     const selectionContainer = this._getSelectionContainer();
-    const selectionInThisContainer = selectionContainer === this._annotatableContainer;
+    const selectionInThisContainer = selectionContainer === this._container;
     const selectionInOtherContainer = selectionContainer !== null && !selectionInThisContainer;
     if (selectionInOtherContainer) return;
 
@@ -255,10 +255,10 @@ Highlighter.prototype._loadEventListeners = function () {
   }
   document.addEventListener('selectionchange', (event) => respondToSelectionChange(event), { signal: this._controller.signal });
 
-  // Pointer down in annotatable container
+  // Pointer down in container
   const respondToPointerDown = (event) => {
     const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
-    if (!isSecondaryClick) this._annotatableContainer.dataset.hhPointerDown = 'true';
+    if (!isSecondaryClick) this._container.dataset.hhPointerDown = 'true';
     this._pointerType = event.pointerType;
 
     // Pointer down on a selection handle
@@ -271,7 +271,7 @@ Highlighter.prototype._loadEventListeners = function () {
         const selectionRange = globalThis.getSelection().getRangeAt(0);
         this._dragAnchorNode = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
         this._dragAnchorOffset = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
-        this._annotatableContainer.addEventListener('pointermove', respondToHandleDrag, { signal: this._controller.signal });
+        this._container.addEventListener('pointermove', respondToHandleDrag, { signal: this._controller.signal });
         this._updateSelectionState();
       }
       // Prevent default drag interaction (which would show a thumbnail and drag selected text)
@@ -293,7 +293,7 @@ Highlighter.prototype._loadEventListeners = function () {
 
     this._tapResult = this._checkForTapTargets(event);
   }
-  this._annotatableContainer.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
+  this._container.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
 
   // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
   const respondToHandleDrag = (event) => {
@@ -319,25 +319,25 @@ Highlighter.prototype._loadEventListeners = function () {
     selection.setBaseAndExtent(this._dragAnchorNode, this._dragAnchorOffset, dragCaret.endContainer, dragCaret.endOffset);
   }
 
-  // Long press in annotatable container (triggered by setTimeout() in pointerdown event)
+  // Long press in container (triggered by setTimeout() in pointerdown event)
   const respondToLongPress = (event) => {
     respondToPointerUp(event, true);
     this._tapResult = null;
   }
 
-  // Pointer up in annotatable container
+  // Pointer up in container
   const respondToPointerUp = (event, isLongPress = false) => {
     if (this._tapResult) {
       this._tapResult.isLongPress = isLongPress;
-      this._annotatableContainer.dispatchEvent(new CustomEvent('hh:tap', { detail: this._tapResult, }));
+      this._container.dispatchEvent(new CustomEvent('hh:tap', { detail: this._tapResult, }));
     }
   }
-  this._annotatableContainer.addEventListener('pointerup', (event) => respondToPointerUp(event), { signal: this._controller.signal });
+  this._container.addEventListener('pointerup', (event) => respondToPointerUp(event), { signal: this._controller.signal });
 
   // Pointer up or cancel in window
   const respondToWindowPointerUp = (event) => {
     const selection = globalThis.getSelection();
-    if (selection.type === 'Range' && this._activeHighlightId && this._getSelectionContainer() === this._annotatableContainer) {
+    if (selection.type === 'Range' && this._activeHighlightId && this._getSelectionContainer() === this._container) {
       const adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);
 
       // Update the selection range if needed
@@ -351,17 +351,17 @@ Highlighter.prototype._loadEventListeners = function () {
     }
     this._tapResult = null;
     this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
-    this._annotatableContainer.dataset.hhPointerDown = 'false';
+    this._container.dataset.hhPointerDown = 'false';
     if (this._activeHandle) {
       this._activeHandle = null;
       this._updateSelectionState();
-      this._annotatableContainer.removeEventListener('pointermove', respondToHandleDrag);
+      this._container.removeEventListener('pointermove', respondToHandleDrag);
     }
   }
   globalThis.addEventListener('pointerup', (event) => respondToWindowPointerUp(event), { signal: this._controller.signal });
   globalThis.addEventListener('pointercancel', (event) => respondToWindowPointerUp(event), { signal: this._controller.signal });
 
-  // Mouse move in annotatable container (for hh:hover events)
+  // Mouse move in container (for hh:hover events)
   let rafId = null;
   let latestMoveEvent = null;
   const handleHoverEvent = (event) => {
@@ -373,7 +373,7 @@ Highlighter.prototype._loadEventListeners = function () {
     ].sort().join('\x00');
     if (newHoverHash === this._hoverHash) return;
     this._hoverHash = newHoverHash;
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:hover', {
+    this._container.dispatchEvent(new CustomEvent('hh:hover', {
       detail: {
         ...targets,
         selectionType: globalThis.getSelection().type,
@@ -382,17 +382,17 @@ Highlighter.prototype._loadEventListeners = function () {
       },
     }));
   };
-  this._annotatableContainer.addEventListener('mousemove', (event) => {
+  this._container.addEventListener('mousemove', (event) => {
     if (!options.enableHover) return;
     latestMoveEvent = event;
     rafId ??= requestAnimationFrame(() => { rafId = null; handleHoverEvent(latestMoveEvent); });
   }, { signal: this._controller.signal });
-  this._annotatableContainer.addEventListener('mouseleave', (event) => {
+  this._container.addEventListener('mouseleave', (event) => {
     if (!options.enableHover) return;
     handleHoverEvent(event);
   }, { signal: this._controller.signal });
 
-  // Hyperlink click (for each hyperlink in annotatable container)
+  // Hyperlink click (for each hyperlink in container)
   for (const hyperlinkElement of this._hyperlinkElements) {
     hyperlinkElement.addEventListener('click', (event) => {
       this.deactivateHighlights();
@@ -400,13 +400,13 @@ Highlighter.prototype._loadEventListeners = function () {
     }, { signal: this._controller.signal });
   }
 
-  // Annotatable container resize (debounced)
-  let computedStyle = globalThis.getComputedStyle(this._annotatableContainer);
-  let previousWidth = Math.round(this._annotatableContainer.clientWidth - Number.parseInt(computedStyle.getPropertyValue('padding-left')) - Number.parseInt(computedStyle.getPropertyValue('padding-right')));
+  // Container resize (debounced)
+  let computedStyle = globalThis.getComputedStyle(this._container);
+  let previousWidth = Math.round(this._container.clientWidth - Number.parseInt(computedStyle.getPropertyValue('padding-left')) - Number.parseInt(computedStyle.getPropertyValue('padding-right')));
   this._resizeObserver = new ResizeObserver(_debounce((entries) => {
     for (const entry of entries) {
       const width = Math.round(entry.contentBoxSize[0].inlineSize);
-      // Only respond if the annotatable content width changed
+      // Only respond if the container width changed
       if (width !== previousWidth) {
         if (options.drawingMode === 'svg') this.drawHighlights();
         if (this._previousSelectionRange) this._updateSelectionState();
@@ -414,7 +414,7 @@ Highlighter.prototype._loadEventListeners = function () {
       }
     }
   }, Math.floor(Object.keys(this._highlightsById).length / 20)));
-  this._resizeObserver.observe(this._annotatableContainer);
+  this._resizeObserver.observe(this._container);
 
   // Set drawing mode to mark elements temporarily when printing (highlights get offset in SVG drawing mode)
   let previousDrawingMode = null;
@@ -460,7 +460,7 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   if (knownHighlightIds.size > 0) this.removeHighlights([...knownHighlightIds]);
   this.drawHighlights(highlightIdsToDraw);
 
-  const container = this._annotatableContainer;
+  const container = this._container;
   const eventDetail = {
     addedCount: addedCount, removedCount: knownHighlightIds.size, updatedCount: updatedCount,
     totalCount: Object.keys(this._highlightsById).length,
@@ -553,11 +553,11 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
 
     // Set variables that depend on the range
     ({ rangeHtml, rangeText } = this._getRangeContent(highlightRange, true, true));
-    let startParagraphIndex = this._annotatableParagraphIds.indexOf(startParagraphId);
-    let endParagraphIndex = this._annotatableParagraphIds.indexOf(endParagraphId);
+    let startParagraphIndex = this._paragraphIds.indexOf(startParagraphId);
+    let endParagraphIndex = this._paragraphIds.indexOf(endParagraphId);
     if (startParagraphIndex === -1) startParagraphIndex = 0;
-    if (endParagraphIndex === -1) endParagraphIndex = this._annotatableParagraphIds.length - 1;
-    rangeParagraphIds = this._annotatableParagraphIds.slice(startParagraphIndex, endParagraphIndex + 1);
+    if (endParagraphIndex === -1) endParagraphIndex = this._paragraphIds.length - 1;
+    rangeParagraphIds = this._paragraphIds.slice(startParagraphIndex, endParagraphIndex + 1);
   }
 
   // If there are no valid changes, return
@@ -611,9 +611,9 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
     changes: appearanceChanges.concat(boundsChanges),
   }
   if (isNewHighlight) {
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightcreate', { detail: detail }));
+    this._container.dispatchEvent(new CustomEvent('hh:highlightcreate', { detail: detail }));
   } else {
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
+    this._container.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
   }
 }
 
@@ -621,7 +621,7 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
 Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
   if (highlightIds.length === 0 || highlightIds.size === 0) return;
   const options = this._options;
-  this._containerRect = this._annotatableContainer.getBoundingClientRect();
+  this._containerRect = this._container.getBoundingClientRect();
   this._additionsRect = this._additionsDiv.getBoundingClientRect();
   const wrapperElements = this._wrapperElements;
 
@@ -857,8 +857,8 @@ Highlighter.prototype.activateHighlight = function (highlightId) {
   const highlightToActivate = this._highlightsById[highlightId];
   if (highlightToActivate.readOnly) {
     // If the highlight is read-only, return events, but don't actually activate it
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: highlightToActivate } }));
+    this._container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
+    this._container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: highlightToActivate } }));
     return;
   }
   const selection = globalThis.getSelection();
@@ -876,7 +876,7 @@ Highlighter.prototype.activateHighlight = function (highlightId) {
   }
 
   this._updateSelectionState();
-  this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
+  this._container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
 }
 
 // Activate a link by index
@@ -892,14 +892,14 @@ Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = t
   const deactivatedHighlight = this._highlightsById[this._activeHighlightId];
   this._activeHighlightId = null;
   this._previousSelectionRange = null;
-  if (removeSelectionRanges && this._getSelectionContainer() === this._annotatableContainer) {
+  if (removeSelectionRanges && this._getSelectionContainer() === this._container) {
     const selection = globalThis.getSelection();
     selection.collapseToStart();
   }
   this._updateSelectionState();
   if (deactivatedHighlight) {
     this.drawHighlights([deactivatedHighlight.highlightId]);
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
+    this._container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
       highlight: deactivatedHighlight,
     }}));
   }
@@ -916,7 +916,7 @@ Highlighter.prototype.getHighlightInfo = function (highlightIds = Object.keys(th
     .filter(info => info && (!paragraphId || paragraphId === info.startParagraphId));
 
   // Sort highlights based on their order on the page
-  this._paragraphIdsMap ??= new Map(this._annotatableParagraphIds.map((id, i) => [id, i]));
+  this._paragraphIdsMap ??= new Map(this._paragraphIds.map((id, i) => [id, i]));
   const paragraphIdsMap = this._paragraphIdsMap;
   highlights.sort((a, b) =>
     (paragraphIdsMap.get(a.startParagraphId) - paragraphIdsMap.get(b.startParagraphId)) ||
@@ -933,7 +933,7 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
   const wrapperElements = new Set();
   const targetElements = document.elementsFromPoint(clientX, clientY);
   for (const element of targetElements) {
-    if (element === this._annotatableContainer) break;
+    if (element === this._container) break;
     if (element.matches('mark[data-hh-highlight-id]')) {
       highlightIds.add(element.dataset.hhHighlightId);
     }
@@ -1011,7 +1011,7 @@ Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(th
   this._undrawHighlights(highlightIds);
   for (const highlightId of highlightIds) {
     delete this._highlightsById[highlightId];
-    this._annotatableContainer.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
+    this._container.dispatchEvent(new CustomEvent('hh:highlightremove', { detail: {
       highlightId: highlightId,
     }}));
   }
@@ -1026,8 +1026,8 @@ Highlighter.prototype.removeHighlighter = function () {
   this._resizeObserver.disconnect();
   this._controller.abort();
 
-  delete this._annotatableContainer.dataset.hhContainer;
-  this._annotatableContainer.highlighter = undefined;
+  delete this._container.dataset.hhContainer;
+  this._container.highlighter = undefined;
 }
 
 
@@ -1075,7 +1075,7 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
     if (highlightId === this._activeHighlightId && highlightInfo.resolvedDrawingMode === 'mark-elements') {
       this.deactivateHighlights();
     }
-    for (const element of this._annotatableContainer.querySelectorAll(`[data-hh-highlight-id="${highlightId}"]`)) {
+    for (const element of this._container.querySelectorAll(`[data-hh-highlight-id="${highlightId}"]`)) {
       if (element.matches('g')) {
         element.remove();
         continue;
@@ -1146,10 +1146,10 @@ Highlighter.prototype._updateSelectionState = function () {
   const options = this._options;
   const selection = globalThis.getSelection();
 
-  // If the selection starts in another annotatable container, let the other container handle it
+  // If the selection starts in another container, let the other container handle it
   const selectionContainer = this._getSelectionContainer();
-  if (selectionContainer && selectionContainer !== this._annotatableContainer) return;
-  this._containerRect = this._annotatableContainer.getBoundingClientRect();
+  if (selectionContainer && selectionContainer !== this._container) return;
+  this._containerRect = this._container.getBoundingClientRect();
   this._additionsRect = this._additionsDiv.getBoundingClientRect();
 
   // Get bounds hash
@@ -1196,9 +1196,9 @@ Highlighter.prototype._updateSelectionState = function () {
       if (startParagraph === endParagraph) {
         rangeParagraphs = [startParagraph];
       } else {
-        const startIdx = this._annotatableParagraphs.indexOf(startParagraph);
-        const endIdx = this._annotatableParagraphs.indexOf(endParagraph);
-        rangeParagraphs = this._annotatableParagraphs.slice(startIdx, endIdx + 1);
+        const startIdx = this._paragraphs.indexOf(startParagraph);
+        const endIdx = this._paragraphs.indexOf(endParagraph);
+        rangeParagraphs = this._paragraphs.slice(startIdx, endIdx + 1);
       }
       ([rangeRect, rangeLineRects] = this._getRangeRects(selectionRange, rangeParagraphs));
     }
@@ -1231,7 +1231,7 @@ Highlighter.prototype._updateSelectionState = function () {
   // Update selection stylesheet
   if (['activeHighlightId', 'color', 'style', 'variables'].some(ch => changes.includes(ch))) {
     const colorString = options.colorDefs[color] ?? (supportsAccentColor ? 'AccentColor' : 'dodgerblue');
-    this._annotatableContainer.style.setProperty('--hh-color', colorString);
+    this._container.style.setProperty('--hh-color', colorString);
 
     // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
     if (isSvgActive) {
@@ -1297,7 +1297,7 @@ Highlighter.prototype._updateSelectionState = function () {
   }
 
   // Send event
-  this._annotatableContainer.dispatchEvent(new CustomEvent('hh:selectionchange', { detail: this._selectionState }));
+  this._container.dispatchEvent(new CustomEvent('hh:selectionchange', { detail: this._selectionState }));
 }
 
 Highlighter.prototype._setDragHandleVisibility = function (visible = this._dragHandles[0].style.visibility === 'hidden') {
@@ -1311,7 +1311,7 @@ Highlighter.prototype._getSelectionContainer = function () {
   return selection.anchorNode?.parentElement?.closest('[data-hh-container]') ?? null;
 }
 
-// Update the selection or highlight range to stay within the annotatable container
+// Update the selection or highlight range to stay within the container
 Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = null) {
   const options = this._options;
   let startNode = range.startContainer;
@@ -1319,18 +1319,18 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
   let startOffset = range.startOffset;
   let endOffset = range.endOffset;
 
-  // Prevent the range from going outside of the annotatable container
-  if (!this._annotatableContainer.contains(range.commonAncestorContainer)) {
-    if (anchorNode && !this._annotatableContainer.contains(anchorNode)) {
+  // Prevent the range from going outside of the container
+  if (!this._container.contains(range.commonAncestorContainer)) {
+    if (anchorNode && !this._container.contains(anchorNode)) {
       // Range is from a selection, and the selection anchor is outside of the container
       return range.cloneRange().collapse(true);
-    } else if (anchorNode === startNode || this._annotatableContainer.contains(startNode)) {
+    } else if (anchorNode === startNode || this._container.contains(startNode)) {
       // Range starts in the container but ends outside
-      endNode = this._getLastTextNode(this._annotatableParagraphs[this._annotatableParagraphs.length - 1]);
+      endNode = this._getLastTextNode(this._paragraphs[this._paragraphs.length - 1]);
       endOffset = endNode.length;
-    } else if (anchorNode === endNode || this._annotatableContainer.contains(endNode)) {
+    } else if (anchorNode === endNode || this._container.contains(endNode)) {
       // Range starts outside of the container but ends inside
-      startNode = this._getFirstTextNode(this._annotatableParagraphs[0]);
+      startNode = this._getFirstTextNode(this._paragraphs[0]);
       startOffset = 0;
     }
   }
@@ -1349,7 +1349,7 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
   // Prevent the range from starting or ending in an invalid text node
   const skipStart = this._shouldSkipTextNode(startNode);
   const skipEnd = this._shouldSkipTextNode(endNode);
-  if (this._annotatableContainer.contains(range.commonAncestorContainer) && (skipStart || skipEnd)) {
+  if (this._container.contains(range.commonAncestorContainer) && (skipStart || skipEnd)) {
     if (skipStart) {
       startNode = this._getNextValidTextNode(startNode);
       startOffset = 0;
@@ -1384,7 +1384,7 @@ Highlighter.prototype._snapRangeToBoundaries = function (range, anchorNode = nul
   return newRange;
 }
 
-// Get the character offset relative to the annotatable paragraph
+// Get a character offset relative to the paragraph
 Highlighter.prototype._getParagraphOffset = function (referenceTextNode, referenceTextNodeOffset) {
   const paragraph = this._closestValidParagraph(referenceTextNode.parentElement);
   const walker = this._getTextNodeWalker(paragraph);
@@ -1442,14 +1442,14 @@ Highlighter.prototype._getLastTextNode = function (element) {
   return lastNode;
 }
 
-// Get the previous valid text node in the annotatable container
+// Get the previous valid text node in the container
 Highlighter.prototype._getNextValidTextNode = function (currentNode) {
   const walker = this._getTextNodeWalker();
   walker.currentNode = currentNode;
   return walker.nextNode();
 }
 
-// Get the next valid text node in the annotatable container
+// Get the next valid text node in the container
 Highlighter.prototype._getPreviousValidTextNode = function (currentNode) {
   const walker = this._getTextNodeWalker();
   walker.currentNode = currentNode;
@@ -1465,15 +1465,15 @@ Highlighter.prototype._shouldSkipTextNode = function (textNode) {
 }
 
 // Get text node walker
-Highlighter.prototype._getTextNodeWalker = function (root = this._annotatableContainer) {
-  if (!root) root = this._annotatableContainer;
+Highlighter.prototype._getTextNodeWalker = function (root = this._container) {
+  if (!root) root = this._container;
   return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, (node) => this._shouldSkipTextNode(node) ? NodeFilter.FILTER_SKIP : NodeFilter.FILTER_ACCEPT);
 }
 
 // Get the closest valid paragraph
 Highlighter.prototype._closestValidParagraph = function (element) {
   const parentParagraph = element ? element.closest(this._paragraphSelector) : null;
-  if (parentParagraph && this._annotatableContainer.contains(parentParagraph)) return parentParagraph;
+  if (parentParagraph && this._container.contains(parentParagraph)) return parentParagraph;
 }
 
 // Update color stylesheet

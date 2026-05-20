@@ -155,7 +155,7 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 
 HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) to the annotatable container. These can be used to trigger actions.
 
-- **hh:tap** – Sent when a user taps in the annotatable container (potentially trying to tap a highlight, wrapper, or link).
+- **hh:tap** – Sent when a user taps in the container (potentially trying to tap a highlight, wrapper, or link).
 - **hh:hover** – Sent when a user hovers over a highlight, wrapper, or link. Requires `enableHover` to be set in [options](#options).
 - **hh:selectionchange** – Sent when the selection bounds or appearance changes.
 - **hh:highlightsload** – Sent when an array of highlights loads.
@@ -168,8 +168,8 @@ HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/doc
 Each event has a `detail` attribute that provides additional information. For example, the `hh:tap` event could be used to activate a highlight:
 
 ```javascript
-const annotatableContainer = document.getElementById('annotatable-container');
-annotatableContainer.addEventListener('hh:tap', (event) => {
+const container = document.getElementById('annotatable-container');
+container.addEventListener('hh:tap', (event) => {
   console.log(event.detail);
   if (event.detail.highlights.length >= 1 {
     highlighter.activateHighlight(event.detail.highlights[0].highlightId);

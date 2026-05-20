@@ -1557,7 +1557,7 @@ Highlighter.prototype._applySubstitutions = function (str, variables = {}, range
   const map = {};
   const rectKeys = ['x', 'y', 'width', 'height', 'top', 'right', 'bottom', 'left'];
   for (const key of Object.keys(variables)) map[`{${key}}`] = variables[key];
-  if (lineRect) for (const k of rectKeys) map[`{${k}}`] = lineRect[k];
+  if (lineRect) for (const k of rectKeys) map[`{line.${k}}`] = lineRect[k];
   if (rangeRect) for (const k of rectKeys) map[`{range.${k}}`] = rangeRect[k];
   if (rangeRect?.columnRect) for (const k of rectKeys) map[`{column.${k}}`] = rangeRect.columnRect[k];
   if (this._containerRect) for (const k of rectKeys) map[`{container.${k}}`] = this._containerRect[k];
@@ -2064,18 +2064,18 @@ const _defaultOptions = {
     'fill': {
       css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-      svg: '<rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.15));" />',
+      svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
       svgActive: `
-        <rect x="{x}" y="{y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {width}px; height: calc({height}px * 0.85); transform: translateY(calc({height}px * 0.15));" />
+        <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
       `,
     },
     'underline': {
       css: 'text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
       cssActive: 'background-color: hsl(from var(--hh-color) h s l / 25%); text-decoration: underline; text-decoration-color: var(--hh-color); text-decoration-thickness: 0.15em; text-underline-offset: 0.15em; text-decoration-skip-ink: none;',
-      svg: '<rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.95));" />',
+      svg: '<rect x="{line.x}" y="{line.y}" style="fill: var(--hh-color); width: {line.width}px; height: calc({line.height}px / 12); transform: translateY(calc({line.height}px * 0.95));" />',
       svgActive: `
-        <rect x="{x}" y="{y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({width}px + ({height}px / 6)); height: calc({height}px * 0.85); transform: translateX(calc({height}px / -12)) translateY(calc({height}px * 0.15));" />
-        <rect x="{x}" y="{y}" style="fill: var(--hh-color); width: {width}px; height: calc({height}px / 12); transform: translateY(calc({height}px * 0.95));" />
+        <rect x="{line.x}" y="{line.y}" rx="4" style="fill: hsl(from var(--hh-color) h s l / 25%); width: calc({line.width}px + ({line.height}px / 6)); height: calc({line.height}px * 0.85); transform: translateX(calc({line.height}px / -12)) translateY(calc({line.height}px * 0.15));" />
+        <rect x="{line.x}" y="{line.y}" style="fill: var(--hh-color); width: {line.width}px; height: calc({line.height}px / 12); transform: translateY(calc({line.height}px * 0.95));" />
       `,
     },
   },

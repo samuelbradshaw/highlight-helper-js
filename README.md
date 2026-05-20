@@ -231,9 +231,9 @@ The following options can be set using the `setOptions()` method. Options that a
     - **svgActive** (optional) – alternate SVG string for active highlights. Falls back to `svg`, `cssActive`, or `css`.
     - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. The following variable substitutions are also supported (applied in this precedence order):
         - `{key}` – replaced with provided values from the highlight's `variables` property.
-        - `{x}`, `{y}`, `{width}`, `{height}`, `{top}`, `{bottom}`, `{left}`, `{right}` – replaced with values from the bounding rect of the current line of the highlight.
+        - `{line.x}`, `{line.y}`, `{line.width}`, `{line.height}`, `{line.top}`, `{line.bottom}`, `{line.left}`, `{line.right}` – replaced with values from the bounding rect of the current line of the highlight.
         - `{range.x}`, `{range.y}`, `{range.width}`, `{range.height}`, `{range.top}`, `{range.bottom}`, `{range.left}`, `{range.right}` – replaced with values from the bounding rect of the highlight range.
-        - `{column.x}`, `{column.y}`, `{column.width}`, `{column.height}`, `{column.top}`, `{column.bottom}`, `{column.left}`, `{column.right}` – replaced with values from the bounding rect of the nearest column or block element.
+        - `{column.x}`, `{column.y}`, `{column.width}`, `{column.height}`, `{column.top}`, `{column.bottom}`, `{column.left}`, `{column.right}` – replaced with values from the bounding rect of the nearest column or block element ancestor of the paragraph.
         - `{container.x}`, `{container.y}`, `{container.width}`, `{container.height}`, `{container.top}`, `{container.bottom}`, `{container.left}`, `{container.right}` – replaced with values from bounding rect of the annotatable container.
 - **wrapperDefs** – Object. Defines highlight wrapper templates. Keys are wrapper names. Default keys: `screen-reader-label`. Each wrapper has two properties:
     - **start** – HTML template for the start wrapper. Default: `null`.

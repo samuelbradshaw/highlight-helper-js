@@ -278,8 +278,8 @@ Other:
 
 ### <a name="known-issues"></a>Known issues
 
-- **Chrome on Android** doesn't show text selection handles when text is selected programmatically (such as from a disambiguation panel, or with snap-to-word). Text selection must be initiated by a user gesture.
-    - Workaround: None.
+- **Chrome on Android** doesn't show text selection handles when text is selected programmatically (such as from a disambiguation panel, or with snap-to-word). Text selection UI must be initiated by a user gesture.
+    - Workaround: Tap the highlight again to show the handles.
 - **Safari on iOS and macOS** doesn't allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the CSS Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
     - Workaround: Use a different drawing mode.
 - **Safari on iOS** doesn't respect text selection colors set via CSS, so when a highlight is active for editing it has a blue overlay.
@@ -289,9 +289,7 @@ Other:
 - **Safari on macOS** – SVG highlights are slightly shifted when zoomed to the maximum zoom size.
     - Workaround: Reduce text size.
 - **Amazon Fire webview** doesn’t show selection handles, making it difficult to resize an existing highlight (and custom drag handles don't work reliably on touch devices).
-    - Workaround: None.
-- **All browsers** don’t redraw SVG highlights in the correct location when printing.
-    - Workaround: HighlightHelper.js switches to mark element highlights temporarily when printing.
+    - Workaround: Long-press and drag to select everything you need before lifting your finger.
 
 
 ### <a name="choosing-a-drawing-mode"></a>Choosing a drawing mode
@@ -306,10 +304,12 @@ Other:
 | **Printing** | Poor by default, but falls back to mark elements | Good | Good |
 | **Screen reader accessibility** | None by default; good with wrappers | None by default; good with wrappers | Good by default; poor with overlapping highlights |
 
-See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html).
+See the [load test page](https://samuelbradshaw.github.io/highlight-helper-js/test-load.html) for informal benchmarking.
 
 
 ### <a name="code-snippets"></a>Code snippets
+
+These code snippets demonstrate some of the ways that HighlightHelper.js can be used. The [HighlightHelper.js Demo](https://samuelbradshaw.github.io/highlight-helper-js/demo.html) may also be helpful.
 
 #### Floating menu
 
@@ -442,7 +442,7 @@ mark[data-hh-highlight-id][data-hh-style="fill"] + mark[hh-highlight-id][data-hh
 }
 ```
 
-#### Keep wrapper on same line as highlight
+#### Keeping wrapper on same line as highlight
 
 ```css
 [data-hh-wrapper="smile"] {
@@ -462,7 +462,7 @@ const options = {
 highlighter.setOptions(options);
 ```
 
-#### Insert dynamic elements
+#### Inserting dynamic elements
 
 ```html
 <!-- data-hh-ignore prevents text content from being included in character counts -->
@@ -573,7 +573,7 @@ document.addEventListener('keydown', (event) => {
 });
 ```
 
-#### Copy selected text
+#### Copying selected text or HTML
 
 ```html
 <button id="copy-text">Copy Text</button>

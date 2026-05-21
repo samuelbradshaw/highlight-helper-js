@@ -121,7 +121,7 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 
 - **loadHighlights(highlights)** – Load a set of highlights. If highlights are already loaded, this method will diff for changes and replace the loaded highlights. Parameters:
     - **highlights** – Array of [highlight objects](#highlight-objects). Each highlight should have a `highlightId`, and one or more other attributes. Omitted or invalid properties will fall back to previous or default values.
-- **createOrUpdateHighlight(properties, draw = true, activate = true)** – Create and load a new highlight, or update an existing highlight. Parameters:
+- **createOrUpdateHighlight(properties, draw = true, activate = true)** – Create and load a new highlight, or update an existing highlight. Return value: updated highlight object. Parameters:
     - **properties** – Object with one or more [highlight object](#highlight-objects) properties. When updating an existing highlight, only the `highlightId` and properties that changed need to be provided. If a highlight ID isn't provided, HighlightHelper.js will update the currently-active highlight or create a new highlight with a default ID.
     - **draw** – Boolean. Indicates if the highlight should be drawn after loading. Default: `true`.
     - **activate** – Boolean. Indicates if the highlight should be activated after loading. Default: `true`.
@@ -131,8 +131,9 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
     - **highlightId** – The `highlightId` of the highlight to activate.
 - **activateHyperlink(index)** – Activate the specified hyperlink (i.e. open the link). A link without overlapping highlights will open automatically, but if there are overlaps it will need to be handled manually in response to the `hh:tap` event. Parameters:
     - **index** – The 0-based index of the link, relative to other links in the container.
-- **deactivateHighlights(removeSelectionRanges = true)** – Deactivate the active highlight, if there is one. Highlights are deactivated automatically if the user taps away. Parameters:
+- **deactivateHighlights(removeSelectionRanges = true, redraw = true)** – Deactivate the active highlight, if there is one. Highlights are deactivated automatically if the user taps away. Parameters:
     - **removeSelectionRanges** – Boolean. Indicates whether text selection should be cleared. Default: `true`.
+    - **redraw** – Boolean. Indicates whether the highlight should be redrawn. Default: `true`.
 - **getActiveHighlightId()** – Get the highlight ID of the active highlight (if there is one).
 - **getHighlightInfo(highlightIds = all, paragraphId = null)** – Get an array of [highlight objects](#highlight-objects) for specified highlight IDs. Highlights will be sorted based on their position on the page. Parameters:
     - **highlightIds** – Array of highlight IDs. Default: all highlights.
@@ -171,7 +172,7 @@ Each event has a `detail` attribute that provides additional information. For ex
 const container = document.getElementById('annotatable-container');
 container.addEventListener('hh:tap', (event) => {
   console.log(event.detail);
-  if (event.detail.highlights.length >= 1 {
+  if (event.detail.highlights.length >= 1) {
     highlighter.activateHighlight(event.detail.highlights[0].highlightId);
   }
 });
@@ -310,58 +311,283 @@ See also the [load test page](https://samuelbradshaw.github.io/highlight-helper-
 
 ### <a name="code-snippets"></a>Code snippets
 
-UNDER CONSTRUCTION
-
 #### Floating menu
 
-<!--
-How to hide built-in menu
-How to position
-show/hide custom menu on scroll and on resize
- -->
+```javascript
+function updateFloatingMenu() {
+  const selection = window.getSelection();
+  if (selection.type === 'Range' && !isResizing && !isScrolling) {
+    showMenu(selection.getBoundingClientRect());
+  } else {
+    hideMenu();
+  }
+}
 
-#### Live highlighting with a stylus
+// Respond to selection resize
+let isResizing;
+container.addEventListener('hh:selectionchange', (event) => {
+  isResizing = event.detail.isResizing;
+  updateFloatingMenu();
+});
 
-#### Remembering color and style
+// Respond to page scroll
+let scrollTimeout, isScrolling;
+window.addEventListener('scroll', (event) => {
+  isScrolling = true;
+  updateFloatingMenu();
+  clearTimeout(scrollTimeout);
+  scrollTimeout = setTimeout(() => {
+    isScrolling = false;
+    updateFloatingMenu();
+  }, 200);
+});
+```
 
-#### Light and dark mode colors
+#### Live highlighting with a stylus or Apple Pencil
+
+```javascript
+let previousColor = 'yellow';
+let previousStyle = 'fill';
+function createLiveHighlight(event) {
+  if (event.detail.pointerType === 'pen' && !highlighter.getActiveHighlightId()) {
+    highlighter.createOrUpdateHighlight({
+      highlightId: crypto.randomUUID(),
+      color: previousColor,
+      style: previousStyle,
+    });
+  }
+}
+container.addEventListener('hh:selectionchange', createLiveHighlight);
+```
 
 #### Responding to selection color change
 
-#### Text wrapping
+```javascript
+// In a native app, this could be used to update the color of the system selection UI
+function updateColors(event) {
+  if (event.detail.changes.includes('color')) {
+    setNativeAccentColor(event.detail.color);
+  }
+}
+container.addEventListener('hh:selectionchange', updateColors);
+```
 
-<!--
-prevent wrapping mid-wrapper or between wrapper and highlight (noBreak entity)
-/* Prevent line breaks mid-wrapper. You can also prevent line breaks between the wrapper and the highlight by adding &NoBreak; at the start or end of the wrapper content. */
-box-decoration-break: clone
- -->
+#### Light and dark mode colors
+
+```css
+html { color-scheme: light dark; }
+html[data-theme="light"] { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+```
+
+```javascript
+const options = {
+  colorDefs: {
+    'red': 'light-dark(#ff8080, #cc0000)',
+  },
+}
+highlighter.setOptions(options);
+```
+
+#### Changing color vibrance or opacity
+
+```javascript
+const options = {
+  styleDefs: {
+    'fill': {
+      css: 'background-color: hsl(from var(--hh-color) h s l / var(--highlight-opacity, 50%));',
+      cssActive: 'background-color: hsl(from var(--hh-color) h s l / var(--highlight-opacity-active, 80%));',
+      svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / var(--highlight-opacity, 50%)); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
+      svgActive: `
+        <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / var(--highlight-opacity-active, 80%)); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
+      `,
+    },
+  },
+}
+highlighter.setOptions(options);
+
+function setColorOpacity(highContrast = false) {
+  if (highContrast) {
+    container.style.setProperty('--highlight-opacity', '80%');
+    container.style.setProperty('--highlight-opacity-active', '100%');
+  } else {
+    container.style.setProperty('--highlight-opacity', '50%');
+    container.style.setProperty('--highlight-opacity-active', '80%');
+  }
+}
+const highContrastToggle = document.querySelector('[name="highContrast"]');
+highContrastToggle.addEventListener('change', (event) => { setColorOpacity(highContrastToggle.checked) });
+setColorOpacity();
+```
+
+#### Styling start and end mark elements
+
+```css
+mark[data-hh-highlight-id][data-hh-style="fill"] {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+mark[data-hh-highlight-id][data-hh-style="fill"][data-hh-position~="start"] {
+  border-top-left-radius: 0.25em;
+  border-bottom-left-radius: 0.25em;
+  margin-left: -0.13em; padding-left: 0.13em;
+}
+mark[data-hh-highlight-id][data-hh-style="fill"][data-hh-position~="end"] {
+  border-top-right-radius: 0.25em;
+  border-bottom-right-radius: 0.25em;
+  margin-right: -0.13em; padding-right: 0.13em;
+}
+mark[data-hh-highlight-id][data-hh-style="fill"] + mark[hh-highlight-id][data-hh-style="fill"] {
+  margin-left: 0; padding-left: 0;
+}
+```
+
+#### Keep wrapper on same line as highlight
+
+```css
+[data-hh-wrapper="smile"] {
+  white-space: nowrap;
+}
+```
+
+```javascript
+const options = {
+  wrapperDefs: {
+    'smile': {
+      start: '<span>[:)]</span>&NoBreak;',
+      end: '&NoBreak;<span>[(:]</span>',
+    },
+  },
+};
+highlighter.setOptions(options);
+```
 
 #### Insert dynamic elements
 
-<!-- .sr-only, data-hh-ignore -->
+```html
+<!-- data-hh-ignore prevents text content from being included in character counts -->
+<a href="#footnote" class="footnote-marker" data-hh-ignore>**</a>
 
-#### Managing built-in selection handles
+<!-- class="sr-only" makes text content only visible to screen readers -->
+<span class="sr-only" data-hh-ignore>(begin highlight)</span>
+```
 
 #### Responding to tap events
 
-<!--
-activate, don't activate if already active
-disambiguation
- -->
+```javascript
+// Add event listener for tap
+container.addEventListener('hh:tap', respondToTap);
+function respondToTap(event) {
+  if (event.detail.targetCount === 0 || event.detail.isLongPress || event.detail.selectionType === 'Range') return;
+  if (event.detail.targetCount > 1) {
+    handleAmbiguousTap(event);
+  } else if (event.detail.targetCount === 1) {
+    if (event.detail.highlights.length === 1) {
+      highlighter.activateHighlight(event.detail.highlights[0].highlightId);
+    } else if (event.detail.wrappers.length === 1) {
+      highlighter.activateHighlight(event.detail.wrappers[0].highlight.highlightId);
+    } else if (event.detail.hyperlinks.length === 1) {
+      highlighter.activateHyperlink(event.detail.hyperlinks[0].index);
+    }
+  }
+}
+
+// Load disambiguation panel for ambiguous taps
+const disambiguationPanel = document.getElementById('disambiguation-panel');
+const disambiguationButtons = document.getElementById('disambiguation-buttons');
+const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
+disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
+const handleAmbiguousTap = (event) => {
+  // Build buttons
+  let buttonsHtml = '';
+  const highlightIds = new Set();
+  for (const highlight of event.detail.highlights) highlightIds.add(highlight.highlightId);
+  for (const wrapper of event.detail.wrappers) highlightIds.add(wrapper.highlight.highlightId);
+  for (const highlight of highlighter.getHighlightInfo(highlightIds)) {
+    let colorString = highlighter.getOptions().colorDefs[highlight.color];
+    let styleString = highlighter.getOptions().styleDefs[highlight.style]['css'];
+    buttonsHtml += `
+      <button data-highlight-id="${highlight.highlightId}" style="--hh-color: ${colorString};">
+        <span style="${styleString}">${highlight.rangeText}</span>
+      </button>
+    `;
+  }
+  for (const hyperlink of event.detail.hyperlinks) {
+    buttonsHtml += `
+      <button data-hyperlink-index="${hyperlink.index}">
+        <span style="color: var(--dark-gray); text-decoration: underline;">${hyperlink.text}</span>
+      </button>
+    `;
+  }
+  disambiguationButtons.innerHTML = buttonsHtml;
+
+  // Add event listeners to buttons
+  for (const button of disambiguationButtons.children) {
+    button.addEventListener('click', () => {
+      disambiguationPanel.close();
+      if (button.dataset.highlightId) {
+        highlighter.activateHighlight(button.dataset.highlightId);
+      } else if (button.dataset.hyperlinkIndex) {
+        highlighter.activateHyperlink(button.dataset.hyperlinkIndex);
+      }
+    });
+  }
+
+  // Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:tap. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
+  setTimeout(function() { disambiguationPanel.showModal(); }, 10);
+}
+```
 
 #### Responding to hover events
 
-<!--
-change cursor
-show popup
- -->
+```javascript
+container.addEventListener('hh:hover', (event) => {
+  container.style.cursor = (event.detail.targetCount > 0) ? 'pointer' : '';
+});
+```
 
 #### Moving wrappers during highlight resize
 
-#### Keyboard shortcuts for deleting or modifying a highlight
+```javascript
+// Wrappers redraw when the highlight deactivates, but they can be manually adjusted while the highlight is active
+function moveMarginIndicator(event) {
+  const activeHighlightId = highlighter.getActiveHighlightId();
+  if (!event.detail.activeHighlightId) return;
+  const marginIndicator = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
+  if (marginIndicator) {
+    marginIndicator.style.top = `${event.detail.rangeRect.top}px`;
+  }
+}
+container.addEventListener('hh:selectionchange', moveMarginIndicator);
+```
 
-#### Changing color vibrance
+#### Keyboard shortcut for deleting a highlight
 
-#### Callout bar
+```javascript
+function removeHighlight(event) {
+  const activeHighlightId = highlighter.getActiveHighlightId();
+  highlighter.removeHighlights([activeHighlightId]);
+}
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Backspace') removeHighlight(event);
+});
+```
 
 #### Copy selected text
+
+```html
+<button id="copy-text">Copy Text</button>
+<button id="copy-html">Copy HTML</button>
+```
+
+```javascript
+function copyToClipboard(plainText = true) {
+  const selectionState = highlighter.getSelectionState();
+  const content = plainText ? selectionState.rangeText : selectionState.rangeHtml;
+  navigator.clipboard.writeText(content);
+}
+document.getElementById('copy-text').addEventListener('click', copyToClipboard);
+document.getElementById('copy-html').addEventListener('click', (event) => {
+  copyToClipboard(false);
+});
+```

@@ -198,9 +198,19 @@
         const options = {
           drawingMode: 'svg',
           enableHover: true,
+          styleDefs: {
+            'fill': {
+              css: 'background-color: hsl(from var(--hh-color) h s l / var(--highlight-opacity, 50%));',
+              cssActive: 'background-color: hsl(from var(--hh-color) h s l / var(--highlight-opacity-active, 80%));',
+              svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / var(--highlight-opacity, 50%)); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
+              svgActive: `
+                <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / var(--highlight-opacity-active, 80%)); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
+              `,
+            },
+          },
           wrapperDefs: {
             'margin-indicator': {
-              start: '<span class="margin-container"><span class="note" data-content="{content}" aria-label="{ariaLabel}"></span></span>&NoBreak;',
+              start: '<span class="margin-indicator"><span class="note" data-content="{content}" aria-label="{ariaLabel}"></span></span>&NoBreak;',
             },
           },
         };
@@ -235,8 +245,8 @@
         const disambiguationCancelButton = document.getElementById('disambiguation-cancel');
         disambiguationCancelButton.addEventListener('click', (event) => disambiguationPanel.close());
         const handleAmbiguousTap = (event) => {
+          // Build buttons
           let buttonsHtml = '';
-
           const highlightIds = new Set();
           for (const highlight of event.detail.highlights) highlightIds.add(highlight.highlightId);
           for (const wrapper of event.detail.wrappers) highlightIds.add(wrapper.highlight.highlightId);
@@ -256,8 +266,9 @@
               </button>
             `;
           }
-
           disambiguationButtons.innerHTML = buttonsHtml;
+
+          // Add event listeners to buttons
           for (const button of disambiguationButtons.children) {
             button.addEventListener('click', () => {
               disambiguationPanel.close();
@@ -269,7 +280,7 @@
             });
           }
 
-          // TODO: Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:ambiguousaction. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
+          // Waiting 10 milliseconds before showing the disambiguation panel is a workaround for an issue in Android Chrome where a click event fires right after the pointerup event that triggered hh:tap. If the click event happens to be at the same position as a button in the panel, the button will receive the click, dismissing the panel before the user sees it.
           setTimeout(function() { disambiguationPanel.showModal(); }, 10);
         }
 
@@ -299,14 +310,16 @@
         const colorButtons = document.querySelectorAll('[name="color"]');
         for (const colorButton of colorButtons) {
           colorButton.addEventListener('change', (event) => {
-            if (window.getSelection().type === 'Range') {
-              highlighter.createOrUpdateHighlight({ color: colorButton.value });
-            } else {
-              colorButton.checked = false;
-            }
-            previousColor = colorButton.value;
+            highlighter.createOrUpdateHighlight({ color: colorButton.value });
+            if (window.getSelection().type !== 'Range') colorButton.checked = false;
+            if (colorButton.value) previousColor = colorButton.value;
           });
         }
+
+        const drawingModeMenu = document.querySelector('[name="drawingMode"]');
+        drawingModeMenu.addEventListener('change', (event) => {
+          highlighter.setOptions({ drawingMode: drawingModeMenu.value });
+        });
 
         const styleMenu = document.querySelector('[name="style"]');
         styleMenu.addEventListener('change', (event) => {
@@ -323,28 +336,18 @@
           previousWrapper = wrapperMenu.value;
         });
 
+        function setColorOpacity(highContrast = false) {
+          if (highContrast) {
+            container.style.setProperty('--highlight-opacity', '80%');
+            container.style.setProperty('--highlight-opacity-active', '100%');
+          } else {
+            container.style.setProperty('--highlight-opacity', '50%');
+            container.style.setProperty('--highlight-opacity-active', '80%');
+          }
+        }
         const highContrastToggle = document.querySelector('[name="highContrast"]');
-        highContrastToggle.addEventListener('change', (event) => {
-          const styleDefs = highlighter.getOptions().styleDefs;
-          const highContrastFill = {
-            css: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 100%);',
-            svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
-            svgActive: `
-              <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 100%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
-            `,
-          }
-          const regularFill = {
-            css: 'background-color: hsl(from var(--hh-color) h s l / 50%);',
-            cssActive: 'background-color: hsl(from var(--hh-color) h s l / 80%);',
-            svg: '<rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 50%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />',
-            svgActive: `
-              <rect x="{line.x}" y="{line.y}" style="fill: hsl(from var(--hh-color) h s l / 80%); width: {line.width}px; height: calc({line.height}px * 0.85); transform: translateY(calc({line.height}px * 0.15));" />
-            `,
-          }
-          styleDefs.fill = highContrastToggle.checked ? highContrastFill : regularFill;
-          highlighter.setOptions({ styleDefs: styleDefs });
-        });
+        highContrastToggle.addEventListener('change', (event) => { setColorOpacity(highContrastToggle.checked) });
+        setColorOpacity();
 
         const liveHighlightingToggle = document.querySelector('[name="liveHighlighting"]');
         liveHighlightingToggle.addEventListener('change', (event) => {
@@ -363,7 +366,6 @@
           highlighter.setOptions({ snapToWord: snapToWordToggle.checked });
         });
 
-
         function handleSelectionChange(event) {
           if (activeHighlightId !== highlighter.getActiveHighlightId()) {
             activeHighlightId = highlighter.getActiveHighlightId();
@@ -381,16 +383,14 @@
         }
         container.addEventListener('hh:selectionchange', handleSelectionChange);
 
-
         // Update margin indicator position when a highlight with a start wrapper is active
         function moveMarginIndicator(event) {
           const activeHighlightId = highlighter.getActiveHighlightId();
-          if (!activeHighlightId) return;
-          const note = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
-          if (!note) return;
-          const selection = getSelection();
-          const startRect = selection.type === 'Range' ? selection.getRangeAt(0).getBoundingClientRect() : null;
-          if (startRect) note.style.top = (startRect.top + window.scrollY - 1) + 'px';
+          if (!event.detail.activeHighlightId) return;
+          const marginIndicator = container.querySelector(`[data-hh-wrapper][data-hh-position="start"][data-hh-highlight-id="${activeHighlightId}"] .note`);
+          if (marginIndicator) {
+            marginIndicator.style.top = `${event.detail.rangeRect.top}px`;
+          }
         }
 
       </script>
@@ -464,20 +464,22 @@
           gap: 0.6em;
           margin-top: 1.2em;
         }
-
-        #basic-highlighter .margin-container {
+        [data-hh-wrapper="margin-indicator"] {
+          white-space: nowrap;
+        }
+        #basic-highlighter .margin-indicator {
           display: inline-block;
-          visibility: visible;
           font-style: normal;
           height: 1em;
         }
-        #basic-highlighter .margin-container .note {
+        #basic-highlighter .margin-indicator .note {
+          visibility: visible;
           position: absolute;
           inset-inline-end: 0.8rem;
           font-size: 1.2rem;
           margin-top: -0.2rem;
         }
-        #basic-highlighter .margin-container .note::before {
+        #basic-highlighter .margin-indicator .note::before {
           content: attr(data-content);
         }
         @media (width <= 500px) {
@@ -488,7 +490,6 @@
             border-width: 1px 0 0 0;
           }
         }
-
       </style>
 
     </section>
@@ -919,6 +920,7 @@
 
       function showCode(section) {
         const buildCodeBlock = (code, caption) => {
+          if (!code) return;
           const codeLines = code.replaceAll('&', '&amp;').replaceAll('<', '&lt;').split('\n').slice(1, -1);
           const minIndent = codeLines.reduce((min, line) => {
             const spaces = line.length - line.trimStart().length;

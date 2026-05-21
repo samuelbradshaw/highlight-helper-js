@@ -207,10 +207,10 @@ Highlighter.prototype._loadEventListeners = function () {
     const selectionInOtherContainer = selectionContainer !== null && !selectionInThisContainer;
     if (selectionInOtherContainer) return;
 
-    // In "Mac (Designed for iPad)" apps (iPad app running on macOS – most recently tested with macOS Sequoia 15.3.1), in-app webviews have several quirks related to text selection. One of these is text selection collapsing to a caret more often than expected. This code attempts to restore the previous selection range if it unexpectedly collapses to a caret in these scenarios:
-    // 1. While dragging custom handles (happens randomly). TODO: Dragging custom handles in this environment is still sometimes a little jumpy.
-    // 2. Just after clicking to activate a highlight (happens if it's the first click after the page loads).
-    if (isWKWebView && !isTouchDevice && this._previousSelectionRange && selection.type === 'Caret') {
+    // If the selection collapses to a caret inside the previous selection range, restore the range. This handles:
+    // 1. "Mac (Designed for iPad)" in-app webviews collapsing the selection just after clicking to activate a highlight, or randomly while dragging custom handles.
+    // 2. Android Chrome collapsing the selection when the user taps a form control (e.g. a <select>) outside the container while a highlight is active.
+    if (this._previousSelectionRange && selection.type === 'Caret') {
       const caret = selectionRange;
       const isCaretInPreviousRange = this._previousSelectionRange.comparePoint(caret.startContainer, caret.startOffset) === 0;
       if (this._activeHandle || isCaretInPreviousRange) {
@@ -615,6 +615,8 @@ Highlighter.prototype.createOrUpdateHighlight = function (properties, draw = tru
   } else {
     this._container.dispatchEvent(new CustomEvent('hh:highlightupdate', { detail: detail }));
   }
+
+  return newHighlightInfo;
 }
 
 // Draw (or redraw) specified highlights, or all highlights on the page
@@ -888,7 +890,7 @@ Highlighter.prototype.activateHyperlink = function (index) {
 }
 
 // Deactivate any highlights that are currently active/selected
-Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = true) {
+Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = true, redraw = true) {
   const deactivatedHighlight = this._highlightsById[this._activeHighlightId];
   this._activeHighlightId = null;
   this._previousSelectionRange = null;
@@ -898,7 +900,7 @@ Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = t
   }
   this._updateSelectionState();
   if (deactivatedHighlight) {
-    this.drawHighlights([deactivatedHighlight.highlightId]);
+    if (redraw) this.drawHighlights([deactivatedHighlight.highlightId]);
     this._container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: {
       highlight: deactivatedHighlight,
     }}));
@@ -1002,7 +1004,7 @@ Highlighter.prototype.getOptions = function () {
 
 // Get the current selection state. Returns the same object that arrives in the most recent hh:selectionchange event's detail.
 Highlighter.prototype.getSelectionState = function () {
-  return this._selectionState;
+  return { ...this._selectionState };
 }
 
 // Remove the specified highlights, or all highlights on the page
@@ -1073,7 +1075,7 @@ Highlighter.prototype._undrawHighlights = function (highlightIds = Object.keys(t
     if (!highlightInfo) continue;
     // If removing a mark-elements highlight that's currently active, deactivate first to avoid an invalid selection range
     if (highlightId === this._activeHighlightId && highlightInfo.resolvedDrawingMode === 'mark-elements') {
-      this.deactivateHighlights();
+      this.deactivateHighlights(true, false);
     }
     for (const element of this._container.querySelectorAll(`[data-hh-highlight-id="${highlightId}"]`)) {
       if (element.matches('g')) {
@@ -1779,8 +1781,9 @@ Highlighter.prototype._getRangeRects = function (range, paragraphs, paragraphLin
         const centerY = rect.y + rect.height / 2;
         for (let i = previousTextNodeLine; i < lines.length; i++) {
           const lineRect = lines[i];
-          // Skip rects that extend outside the line of text (such as absolutely-positioned elements)
-          if (rect.left >= lineRect.left && rect.right <= lineRect.right
+          // Skip rects that extend outside the line of text (such as absolutely-positioned elements).
+          // The 1px tolerance fixes an issue on Android Chrome where range rect coordinates aren't exact (sub-pixel precision)
+          if (rect.left >= lineRect.left - 1 && rect.right <= lineRect.right + 1
               && centerY > lineStates[i].topY && centerY <= lineRect.bottom) {
             const s = lineStates[i];
             s.left = Math.min(s.left, rect.left);

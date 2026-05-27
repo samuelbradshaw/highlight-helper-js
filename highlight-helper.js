@@ -422,11 +422,11 @@ Highlighter.prototype._loadEventListeners = function () {
     previousDrawingMode = this._options.drawingMode;
     this.setOptions({ drawingMode: 'mark-elements' });
     this.drawHighlights();
-  });
+  }, { signal: this._controller.signal });
   globalThis.addEventListener('afterprint', () => {
     this.setOptions({ drawingMode: previousDrawingMode });
     this.drawHighlights();
-  });
+  }, { signal: this._controller.signal });
 
 }
 
@@ -445,9 +445,9 @@ Highlighter.prototype.loadHighlights = function (highlights) {
   for (const highlight of highlights) {
     if (knownHighlightIds.has(highlight.highlightId)) {
       knownHighlightIds.delete(highlight.highlightId);
-      const highlightInfo = this._diffHighlight(highlight, this._highlightsById[highlight.highlightId]);
-      if (highlightInfo) {
-        this.createOrUpdateHighlight(highlight, false, false);
+      const changedHighlightInfo = this._diffHighlight(highlight, this._highlightsById[highlight.highlightId]);
+      if (changedHighlightInfo) {
+        this.createOrUpdateHighlight(changedHighlightInfo, false, false);
         highlightIdsToDraw.add(highlight.highlightId);
         updatedCount++;
       }
@@ -857,6 +857,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
 // Activate a highlight by ID
 Highlighter.prototype.activateHighlight = function (highlightId) {
   const highlightToActivate = this._highlightsById[highlightId];
+  if (!highlightToActivate || highlightId === this._activeHighlightId) return;
   if (highlightToActivate.readOnly) {
     // If the highlight is read-only, return events, but don't actually activate it
     this._container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
@@ -892,6 +893,7 @@ Highlighter.prototype.activateHyperlink = function (index) {
 // Deactivate any highlights that are currently active/selected
 Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = true, redraw = true) {
   const deactivatedHighlight = this._highlightsById[this._activeHighlightId];
+  if (!deactivatedHighlight) return;
   this._activeHighlightId = null;
   this._previousSelectionRange = null;
   if (removeSelectionRanges && this._getSelectionContainer() === this._container) {
@@ -1444,14 +1446,14 @@ Highlighter.prototype._getLastTextNode = function (element) {
   return lastNode;
 }
 
-// Get the previous valid text node in the container
+// Get the next valid text node in the container
 Highlighter.prototype._getNextValidTextNode = function (currentNode) {
   const walker = this._getTextNodeWalker();
   walker.currentNode = currentNode;
   return walker.nextNode();
 }
 
-// Get the next valid text node in the container
+// Get the previous valid text node in the container
 Highlighter.prototype._getPreviousValidTextNode = function (currentNode) {
   const walker = this._getTextNodeWalker();
   walker.currentNode = currentNode;

@@ -239,7 +239,7 @@ The following options can be set using the `setOptions()` method. Options that a
 - **wrapperDefs** – Object. Defines highlight wrapper templates. Keys are wrapper names. Default keys: `screen-reader-label`. Each wrapper has two properties:
     - **start** – HTML template for the start wrapper. Default: `null`.
     - **end** – HTML template for the end wrapper. Default: `null`.
-    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. The same `{key}`, `{range.*}`, and `{container.*}` substitutions described under `styleDefs` are also supported.
+    - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color. All of the substitutions described under `styleDefs` are also supported.
 
 
 ### <a name="element-attributes"></a>Element attributes
@@ -313,7 +313,16 @@ These code snippets demonstrate some of the ways that HighlightHelper.js can be 
 
 #### Floating menu
 
+```css
+body {
+  -webkit-touch-callout: none; /* Hide default text selction menu */
+}
+```
+
 ```javascript
+// Hide default text selection menu
+window.addEventListener('contextmenu', event => { event.preventDefault() });
+
 function updateFloatingMenu() {
   const selection = window.getSelection();
   if (selection.type === 'Range' && !isResizing && !isScrolling) {

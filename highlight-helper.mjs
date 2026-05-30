@@ -1,3 +1,3 @@
 await import('./highlight-helper.js');
-const Highlighter = window.Highlighter;
+const Highlighter = globalThis.Highlighter;
 export { Highlighter };

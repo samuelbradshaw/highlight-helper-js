@@ -38,7 +38,7 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
   }
 
   // Abort controller can be used to cancel event listeners if the highlighter is removed
-  this._controller = new AbortController;
+  this._controller = new AbortController();
 
   // Setting tabIndex -1 on <body> allows focus to be set programmatically (needed to initialize text selection in iOS Safari). It also prevents "tap to search" from interfering with text selection in Android Chrome.
   document.body.tabIndex = -1;
@@ -104,8 +104,6 @@ function Highlighter(containerSelector = 'body', paragraphSelector = ':is(h1, h2
 }
 
 Highlighter.prototype._loadStyles = function () {
-  const options = this._options;
-
   // Set up stylesheets
   this._stylesheets = {}
   this._generalStylesheet = _addStylesheet(this._stylesheets, 'general');
@@ -371,7 +369,7 @@ Highlighter.prototype._loadEventListeners = function () {
       ...targets.highlights.map(h => h.highlightId),
       ...targets.wrappers.map(w => `${w.highlight.highlightId}:${w.position}`),
       ...targets.hyperlinks.map(h => h.index),
-    ].sort().join('\x00');
+    ].sort().join('\u0000');
     if (newHoverHash === this._hoverHash) return;
     this._hoverHash = newHoverHash;
     this._container.dispatchEvent(new CustomEvent('hh:hover', {
@@ -734,9 +732,8 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
         const wrapperTemplateHash = this._getWrapperTemplateHash(highlightInfo);
         const wrapperHash = this._getWrapperHash(highlightInfo, wrapperTemplateHash);
         if (wrapperHash !== wrapper.dataset.hhWrapperHash) {
-          const rawTemplate = wrapperDef[position];
           const lineRect = position === 'start' ? highlightInfo.rangeLineRects[0] : highlightInfo.rangeLineRects.at(-1);
-          const innerHtml = this._applySubstitutions(rawTemplate, highlightInfo.variables, highlightInfo.rangeRect, lineRect);
+          const innerHtml = this._applySubstitutions(template, highlightInfo.variables, highlightInfo.rangeRect, lineRect);
           if (wrapperTemplateHash === wrapper.dataset.hhWrapperTemplateHash) {
             this._updateWrapperInPlace(wrapper, innerHtml);
           } else {
@@ -963,7 +960,7 @@ Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
     if (!rangeLineRects) continue;
     for (const rect of rangeLineRects) {
       const padding = rect.height / 8;
-      if (this._isPointInRect(x, y, rect, padding)) { highlightIds.add(highlightId); break; }
+      if (_isPointInRect(x, y, rect, padding)) { highlightIds.add(highlightId); break; }
     }
   }
   return {
@@ -1516,19 +1513,19 @@ Highlighter.prototype._getWrapperHash = function (highlightInfo, templateHash = 
   const wrapperTemplate = (wrapperDef?.start ?? '') + (wrapperDef?.end ?? '');
   let hash = templateHash ?? this._getWrapperTemplateHash(highlightInfo);
   for (const key of Object.keys(highlightInfo.variables).sort()) {
-    hash += '\x00' + key + '\x01' + highlightInfo.variables[key];
+    hash += '\u0000' + key + '\u0001' + highlightInfo.variables[key];
   }
-  if (highlightInfo.rangeRect && /\{range\./.test(wrapperTemplate)) {
+  if (highlightInfo.rangeRect && wrapperTemplate.includes('{range.')) {
     const r = highlightInfo.rangeRect;
-    hash += '\x02' + Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.width) + ',' + Math.round(r.height);
+    hash += '\u0002' + Math.round(r.x) + ',' + Math.round(r.y) + ',' + Math.round(r.width) + ',' + Math.round(r.height);
   }
-  if (highlightInfo.rangeRect?.columnRect && /\{column\./.test(wrapperTemplate)) {
+  if (highlightInfo.rangeRect?.columnRect && wrapperTemplate.includes('{column.')) {
     const c = highlightInfo.rangeRect.columnRect;
-    hash += '\x04' + Math.round(c.x) + ',' + Math.round(c.y) + ',' + Math.round(c.width) + ',' + Math.round(c.height);
+    hash += '\u0004' + Math.round(c.x) + ',' + Math.round(c.y) + ',' + Math.round(c.width) + ',' + Math.round(c.height);
   }
-  if (this._containerRect && /\{container\./.test(wrapperTemplate)) {
+  if (this._containerRect && wrapperTemplate.includes('{container.')) {
     const c = this._containerRect;
-    hash += '\x03' + Math.round(c.x) + ',' + Math.round(c.y) + ',' + Math.round(c.width) + ',' + Math.round(c.height);
+    hash += '\u0003' + Math.round(c.x) + ',' + Math.round(c.y) + ',' + Math.round(c.width) + ',' + Math.round(c.height);
   }
   return hash;
 }
@@ -1688,14 +1685,6 @@ Highlighter.prototype._getCaretFromCoordinates = function (clientX, clientY, che
   }
   if (checkAnnotatable && !this._closestValidParagraph(range.startContainer.parentElement)) return;
   return range;
-}
-
-// Check if a point is in a DOMRect
-Highlighter.prototype._isPointInRect = function (x, y, rect, padding = 0) {
-  return (
-    x >= rect.x - padding && x <= rect.x + rect.width + padding &&
-    y >= rect.y - padding && y <= rect.y + rect.height + padding
-  )
 }
 
 // Get line rectangles for a given paragraph
@@ -2011,6 +2000,14 @@ function _rectsEqual(rect1, rect2, epsilon = 0.001) {
 // Check if two ranges are roughly the same
 function _rangesEqual(range1, range2) {
   return range1.compareBoundaryPoints(Range.START_TO_START, range2) === 0 && range1.compareBoundaryPoints(Range.END_TO_END, range2) === 0;
+}
+
+// Check if a point is in a DOMRect
+function _isPointInRect(x, y, rect, padding = 0) {
+  return (
+    x >= rect.x - padding && x <= rect.x + rect.width + padding &&
+    y >= rect.y - padding && y <= rect.y + rect.height + padding
+  );
 }
 
 

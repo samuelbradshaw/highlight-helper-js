@@ -352,8 +352,9 @@ Highlighter.prototype._loadEventListeners = function () {
     this._tapResult = null;
     this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
     this._container.dataset.hhPointerDown = 'false';
-    if (this._activeHandle) {
+    if (this._activeHandle || this._isResizingSelection) {
       this._activeHandle = null;
+      this._isResizingSelection = false;
       this._updateSelectionState();
       this._container.removeEventListener('pointermove', respondToHandleDrag);
     }
@@ -1586,6 +1587,7 @@ Highlighter.prototype._getStyleString = function (style, type, active = false, v
 Highlighter.prototype._detectSelectionResize = function (prevRange, newRange, selectionType) {
   this._handleDragTimeoutId = clearTimeout(this._handleDragTimeoutId);
   if (prevRange && newRange && selectionType === 'Range') {
+    if (_rangesEqual(prevRange, newRange)) return;
     const expandedPrevRange = document.createRange();
 
     if (prevRange.startOffset >= 2) {
@@ -1610,10 +1612,14 @@ Highlighter.prototype._detectSelectionResize = function (prevRange, newRange, se
     this._isResizingSelection = false;
   }
   if (this._isResizingSelection) {
+    // For most browsers: If we know the pointer is down, we can assume that the user is still resizing the selection. this._isResizingSelection will be set to false on pointerup.
+    if (this._container.dataset.hhPointerDown === 'true') return;
+
+    // For Android Chrome: Set this._isResizingSelection to false if it's been more than 400 milliseconds since the last selection change. Android doesn't send a pointerdown event when dragging the built-in text selection handle, so we can't rely on the the pointerup event to set this._isResizingSelection back to false. A side effect of this approach is that this._isResizingSelection may be set to false if a user pauses (finger still on the screen) while dragging the selection handle. If a custom popup menu is triggered based on this flag, it may briefly flicker each time the user pauses.
     this._handleDragTimeoutId = setTimeout(() => {
       this._isResizingSelection = false;
       this._updateSelectionState();
-    }, 300);
+    }, 400);
   }
 }
 
@@ -2000,6 +2006,11 @@ function _rectsEqual(rect1, rect2, epsilon = 0.001) {
          Math.abs(rect1.y - rect2.y) < epsilon &&
          Math.abs(rect1.width - rect2.width) < epsilon &&
          Math.abs(rect1.height - rect2.height) < epsilon;
+}
+
+// Check if two ranges are roughly the same
+function _rangesEqual(range1, range2) {
+  return range1.compareBoundaryPoints(Range.START_TO_START, range2) === 0 && range1.compareBoundaryPoints(Range.END_TO_END, range2) === 0;
 }
 
 

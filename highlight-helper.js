@@ -341,8 +341,7 @@ Highlighter.prototype._loadEventListeners = function () {
       // Update the selection range if needed
       // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
       const selectionRange = selection.getRangeAt(0);
-      const rangesMatch = selectionRange.compareBoundaryPoints(Range.START_TO_START, adjustedSelectionRange) === 0
-            && selectionRange.compareBoundaryPoints(Range.END_TO_END, adjustedSelectionRange) === 0;
+      const rangesMatch = _rangesEqual(selectionRange, adjustedSelectionRange);
       if (!rangesMatch) {
         selection.setBaseAndExtent(adjustedSelectionRange.startContainer, adjustedSelectionRange.startOffset, adjustedSelectionRange.endContainer, adjustedSelectionRange.endOffset);
       }
@@ -706,9 +705,7 @@ Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this
       if (highlightId === this._activeHighlightId) {
         const selectionForWrapper = globalThis.getSelection();
         const selectionRangeForWrapper = selectionForWrapper.type !== 'None' ? selectionForWrapper.getRangeAt(0) : null;
-        const rangesMatchForWrapper = selectionRangeForWrapper
-              && selectionRangeForWrapper.compareBoundaryPoints(Range.START_TO_START, range) === 0
-              && selectionRangeForWrapper.compareBoundaryPoints(Range.END_TO_END, range) === 0;
+        const rangesMatchForWrapper = _rangesEqual(selectionRangeForWrapper, range);
         if (selectionRangeForWrapper && !rangesMatchForWrapper) {
           selectionForWrapper.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset);
         }
@@ -869,9 +866,7 @@ Highlighter.prototype.activateHighlight = function (highlightId) {
   // Update the selection range if needed
   // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
   let selectionRange = selection.type === 'Range' ? selection.getRangeAt(0) : null;
-  const rangesMatch = selectionRange
-        && selectionRange.compareBoundaryPoints(Range.START_TO_START, highlightRange) === 0
-        && selectionRange.compareBoundaryPoints(Range.END_TO_END, highlightRange) === 0;
+  const rangesMatch = _rangesEqual(selectionRange, highlightRange);
   if (!rangesMatch) {
     selection.setBaseAndExtent(highlightRange.startContainer, highlightRange.startOffset, highlightRange.endContainer, highlightRange.endOffset);
   }
@@ -1583,8 +1578,9 @@ Highlighter.prototype._getStyleString = function (style, type, active = false, v
 // Check if the text selection is being resized. If a new selection range is within 2 characters of the previous selection range, the selection is assumed to be resizing. There's not a reliable way to track dragging of a native OS selection handle from JavaScript, but this can be used as an approximation. It will also trigger when dragging a custom handle, and when expanding a selection with arrow keys.
 Highlighter.prototype._detectSelectionResize = function (prevRange, newRange, selectionType) {
   this._handleDragTimeoutId = clearTimeout(this._handleDragTimeoutId);
-  if (prevRange && newRange && selectionType === 'Range') {
-    if (_rangesEqual(prevRange, newRange)) return;
+  const rangesMatch = _rangesEqual(prevRange, newRange);
+  if (rangesMatch) return;
+  if (selectionType === 'Range' && prevRange && newRange) {
     const expandedPrevRange = document.createRange();
 
     if (prevRange.startOffset >= 2) {
@@ -1999,7 +1995,7 @@ function _rectsEqual(rect1, rect2, epsilon = 0.001) {
 
 // Check if two ranges are roughly the same
 function _rangesEqual(range1, range2) {
-  return range1.compareBoundaryPoints(Range.START_TO_START, range2) === 0 && range1.compareBoundaryPoints(Range.END_TO_END, range2) === 0;
+  return range1 && range2 && range1.compareBoundaryPoints(Range.START_TO_START, range2) === 0 && range1.compareBoundaryPoints(Range.END_TO_END, range2) === 0;
 }
 
 // Check if a point is in a DOMRect

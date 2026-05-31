@@ -485,7 +485,7 @@
     const oldHighlightInfo = this._highlightsById[highlightId];
     const isNewHighlight = !oldHighlightInfo;
 
-    // If the highlight is currently activate, ignore programmatic bounds changes (selection range takes priority)
+    // If the highlight is currently active, ignore programmatic bounds changes (selection range takes priority)
     if (highlightId === this._activeHighlightId) {
       properties.startParagraphId = null;
       properties.startParagraphOffset = null;
@@ -620,7 +620,7 @@
 
   // Draw (or redraw) specified highlights, or all highlights on the page
   Highlighter.prototype.drawHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
-    if (highlightIds.length === 0 || highlightIds.size === 0) return;
+    if ((highlightIds.size ?? highlightIds.length) === 0) return;
     const options = this._options;
     this._containerRect = this._container.getBoundingClientRect();
     this._additionsRect = this._additionsDiv.getBoundingClientRect();

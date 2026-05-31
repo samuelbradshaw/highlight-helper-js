@@ -360,7 +360,8 @@ window.addEventListener('scroll', (event) => {
 let previousColor = 'yellow';
 let previousStyle = 'fill';
 function createLiveHighlight(event) {
-  if (event.detail.pointerType === 'pen' && !highlighter.getActiveHighlightId()) {
+  const selectionState = event.detail;
+  if (selectionState.pointerType === 'pen' && selectionState.changes.includes('selection') && selectionState.selection.type === 'Range' && !highlighter.getActiveHighlightId()) {
     highlighter.createOrUpdateHighlight({
       highlightId: crypto.randomUUID(),
       color: previousColor,

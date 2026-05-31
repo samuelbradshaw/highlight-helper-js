@@ -282,6 +282,8 @@ Other:
     - Workaround: Tap the highlight again to show the handles.
 - **Safari on iOS and macOS** doesn't allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the CSS Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
     - Workaround: Use a different drawing mode.
+- **Safari on iOS and macOS** expand text selection to include the previous word when selecting a word in an inline element at the beginning of the line of text. Code to reproduce: `<p style="font-family: Times; font-size: 16px; width: 250px">This is an example of <i>text selection</i> <b>jumping</b> to include the previous word when text wraps at the beginning of an inline element. Double-click (macOS) or long-press (iOS) the word "jumping."</p>`
+    - Workaround: Manually adjust highlight after it's created.
 - **Safari on iOS** doesn't respect text selection colors set via CSS, so when a highlight is active for editing it has a blue overlay.
     - Workaround: In a native app with a webview, you may be able to set colors natively. See [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
 - **Safari on iOS 26** doesn't create a text selection when using an Apple Pencil (or other compatible stylus), until the stylus is lifted.

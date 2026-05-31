@@ -887,7 +887,6 @@
   // Deactivate any highlights that are currently active/selected
   Highlighter.prototype.deactivateHighlights = function (removeSelectionRanges = true, redraw = true) {
     const deactivatedHighlight = this._highlightsById[this._activeHighlightId];
-    if (!deactivatedHighlight) return;
     this._activeHighlightId = null;
     this._previousSelectionRange = null;
     if (removeSelectionRanges && this._getSelectionContainer() === this._container) {

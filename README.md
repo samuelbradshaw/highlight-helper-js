@@ -606,7 +606,7 @@ document.getElementById('copy-html').addEventListener('click', (event) => {
 ```css
 @media print {
   [data-hh-additions] { display: none; } /* Hide SVG highlights and custom drag handles */
-  mark[data-hh-highlight-id] { all: unset; } /* Hide <mark> highlights
+  mark[data-hh-highlight-id] { all: unset; } /* Hide mark-element highlights */
 }
 ```
 

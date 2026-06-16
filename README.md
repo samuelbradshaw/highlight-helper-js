@@ -113,8 +113,8 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 ### <a name="constructor"></a>Constructor
 
 - **Highlighter(containerSelector, paragraphSelector)** – Create a Highlighter instance. Parameters:
-- * **containerSelector** – CSS selector for the “annotatable container” – the section of the page with content to be highlighted. You can have multiple highlighters on a page, but they must be in different, non-overlapping containers. Default: `body`.
-- * **paragraphSelector** – CSS selector for the paragraphs (or other block elements) that can be highlighted within the container. Each paragraph is expected to have an ID attribute for anchoring highlights. Default: `:is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]`.
+    - **containerSelector** – CSS selector for the “annotatable container” – the section of the page with content to be highlighted. You can have multiple highlighters on a page, but they must be in different, non-overlapping containers. Default: `body`.
+    - **paragraphSelector** – CSS selector for the paragraphs (or other block elements) that can be highlighted within the container. Each paragraph is expected to have an ID attribute for anchoring highlights. Default: `:is(h1, h2, h3, h4, h5, h6, p, ol, ul, dl)[id]`.
 
 
 ### <a name="public-methods"></a>Public methods
@@ -166,7 +166,7 @@ HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/doc
 - **hh:highlightdeactivate** – Sent when a highlight is deactivated.
 - **hh:highlightremove** – Sent when a highlight is removed.
 
-Each event has a `detail` attribute that provides additional information. For example, the `hh:tap` event could be used to activate a highlight:
+Each event has a `detail` property that provides additional information. For example, the `hh:tap` event could be used to activate a highlight:
 
 ```javascript
 const container = document.getElementById('annotatable-container');
@@ -181,7 +181,7 @@ container.addEventListener('hh:tap', (event) => {
 
 ## <a name="highlight-objects"></a>Highlight objects
 
-Highlight objects have the following editable properties:
+Highlight objects have the following properties that can be edited using the createOrUpdateHighlight() method:
 
 - **highlightId** – String. Unique identifier for the highlight. Example: `dQw4w9WgXcQ`. Default: `hh-[timestamp]`.
 - **color** – String. Highlight color (key from the `colorDefs` option). Default: `yellow`.
@@ -194,7 +194,7 @@ Highlight objects have the following editable properties:
 - **endParagraphId** – String. Paragraph ID where the highlight ends. Example: `p1`. Default based on selected text.
 - **endParagraphOffset** – Integer. Character offset* where the highlight ends (exclusive), relative to the beginning of the paragraph. Example: `27`. Default based on selected text.
 
-These additional properties are updated on the fly:
+These additional properties are added/updated automatically:
 
 - **rangeText** – String. Plain text of the highlighted range.
 - **rangeHtml** – String. HTML content of the highlighted range.
@@ -203,7 +203,7 @@ These additional properties are updated on the fly:
 - **rangeParagraphIds** – Array of paragraph IDs. Paragraphs in the highlighted range.
 - **rangeObj** – [Range](https://developer.mozilla.org/en-US/docs/Web/API/Range) object that represents where the highlight is drawn.
 - **resolvedDrawingMode** – String. Drawing mode used to render the highlight. Should be either the current drawing mode, or `mark-elements` (fallback when a highlight can't be rendered in the current drawing mode).
-- **escapedHighlightId** – Strong. Escaped highlight ID used internally in case the provided ID isn't a valid CSS identifier.
+- **escapedHighlightId** – String. Escaped highlight ID used internally in case the provided ID isn't a valid CSS identifier.
 
 *Elements with the attribute `data-hh-ignore` are skipped when calculating character offsets. See [element attributes](#element-attributes).
 

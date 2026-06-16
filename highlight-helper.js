@@ -402,14 +402,17 @@
     // Container resize (debounced)
     let computedStyle = globalThis.getComputedStyle(this._container);
     let previousWidth = Math.round(this._container.clientWidth - Number.parseInt(computedStyle.getPropertyValue('padding-left')) - Number.parseInt(computedStyle.getPropertyValue('padding-right')));
+    let previousHeight = Math.round(this._container.clientHeight - Number.parseInt(computedStyle.getPropertyValue('padding-top')) - Number.parseInt(computedStyle.getPropertyValue('padding-bottom')));
     this._resizeObserver = new ResizeObserver(_debounce((entries) => {
       for (const entry of entries) {
         const width = Math.round(entry.contentBoxSize[0].inlineSize);
-        // Only respond if the container width changed
-        if (width !== previousWidth) {
+        const height = Math.round(entry.contentBoxSize[0].blockSize);
+        // Respond to width changes (resize window, device rotation) and height changes (lazy-loaded images, dynamically-inserted elements)
+        if (width !== previousWidth || height !== previousHeight) {
           if (options.drawingMode === 'svg') this.drawHighlights();
           if (this._previousSelectionRange) this._updateSelectionState();
           previousWidth = width;
+          previousHeight = height;
         }
       }
     }, Math.floor(Object.keys(this._highlightsById).length / 20)));

@@ -158,7 +158,7 @@ HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/doc
 
 - **hh:tap** – Sent when a user taps in the container (potentially trying to tap a highlight, wrapper, or link).
 - **hh:hover** – Sent when a user hovers over a highlight, wrapper, or link. Requires `enableHover` to be set in [options](#options).
-- **hh:selectionchange** – Sent when the selection bounds or appearance changes.
+- **hh:selectionchange** – Sent when the selection state changes.
 - **hh:highlightsload** – Sent when an array of highlights loads.
 - **hh:highlightcreate** – Sent when a new highlight is created.
 - **hh:highlightupdate** – Sent when a highlight is updated.

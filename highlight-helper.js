@@ -1752,6 +1752,7 @@
       }
       const { lines, snapTolerance, pseudoElemRects } = paragraphLineRects;
       // If the previous paragraph is below the current paragraph (such as in multi-column layouts), reset prevParagraphBottom
+      if (lines.length === 0) continue;
       if (prevParagraphBottom > lines[0].bottom) prevParagraphBottom = Number.NEGATIVE_INFINITY;
       const lineStates = lines.map((lineRect, i) => ({
         topY: i === 0 ? prevParagraphBottom : lines[i - 1].bottom,

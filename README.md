@@ -609,6 +609,7 @@ document.getElementById('copy-html').addEventListener('click', (event) => {
 ```css
 @media print {
   [data-hh-additions] { display: none; } /* Hide SVG highlights and custom drag handles */
+  [data-hh-wrapper] { display: none; } /* Hide wrappers */
   mark[data-hh-highlight-id] { all: unset; } /* Hide mark-element highlights */
 }
 ```
@@ -618,5 +619,4 @@ document.getElementById('copy-html').addEventListener('click', (event) => {
 ```javascript
 // After a period of inactivity with a locked screen, certain versions of iOS Safari may get into a state where system selection handles don't show when the app tries to select text programmatically (such as when a user taps an existing highlight). Sending a visibilitychange event triggers HighlightHelper.js to run code that enables programmatic text selection again.
 document.dispatchEvent(new Event('visibilitychange'));
-});
 ```

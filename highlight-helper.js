@@ -1131,8 +1131,12 @@
         const styleString = this._getStyleString(highlightInfo.style, 'css', false, highlightInfo.variables, highlightInfo.rangeRect);
         if (resolvedMode === 'highlight-api') {
           const colorString = this._options.colorDefs[highlightInfo.color];
-          cssText += `${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }\n`;
-          cssText += `${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }\n`;
+          cssText += `
+            ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+            ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
+            ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }
+            ${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }
+          `;
         } else {
           cssText += `mark[data-hh-highlight-id=${highlightInfo.escapedHighlightId}][data-hh-style] { ${styleString} }\n`;
         }
@@ -1250,8 +1254,10 @@
           ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
           ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
           ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
-          ${this._containerSelector} ::selection { --hh-color: ${colorString}; ${styleString} }
-          ${this._containerSelector} rt::selection, ${this._containerSelector} img::selection { background-color: transparent; }
+          ${this._containerSelector} ::selection { background-color: transparent; }
+          ${this._containerSelector} :is(${this._paragraphSelector})::selection,
+          ${this._containerSelector} :is(${this._paragraphSelector}) *::selection { --hh-color: ${colorString}; ${styleString} }
+          ${this._containerSelector} :is(rt, img)::selection { background-color: transparent; }
         `);
 
       // No active highlight (show the regular selection UI)

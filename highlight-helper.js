@@ -1475,7 +1475,7 @@
   // Determine if text node should be skipped when snapping to word or calculating character offsets
   Highlighter.prototype._shouldSkipTextNode = function (textNode) {
     const parentParagraph = this._closestValidParagraph(textNode.parentNode);
-    const ignoreParent = textNode.parentNode.closest('[data-hh-ignore]');
+    const ignoreParent = textNode.parentNode.closest(`${this._containerSelector} [data-hh-ignore]`);
     if (!parentParagraph || ignoreParent || textNode.textContent === '') return true;
     return false;
   }
@@ -1691,7 +1691,7 @@
       range = document.caretRangeFromPoint(clientX, clientY);
     }
     if (!range) return;
-    if (range.startContainer.parentElement?.closest('[data-hh-ignore]')) return;
+    if (range.startContainer.parentElement?.closest(`${this._containerSelector} [data-hh-ignore]`)) return;
     if (checkXDistance || checkYDistance) {
       const maxDistance = 30;
       const caretClientRect = range.getBoundingClientRect();

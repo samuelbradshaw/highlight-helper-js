@@ -531,13 +531,23 @@
         startParagraphOffset = Number.parseInt(properties.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
         endParagraphId = properties.endParagraphId ?? oldHighlightInfo?.endParagraphId;
         endParagraphOffset = Number.parseInt(properties.endParagraphOffset ?? oldHighlightInfo?.endParagraphOffset);
+        if (!this._paragraphIds.includes(startParagraphId) || !this._paragraphIds.includes(endParagraphId)) return;
         ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
         ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
       } else if (adjustedSelectionRange) {
         startNode = adjustedSelectionRange.startContainer;
         startOffset = adjustedSelectionRange.startOffset;
+        if (this._shouldSkipTextNode(startNode)) {
+          startNode = this._getNextValidTextNode(startNode);
+          startOffset = 0;
+        }
         endNode = adjustedSelectionRange.endContainer;
         endOffset = adjustedSelectionRange.endOffset;
+        if (this._shouldSkipTextNode(endNode)) {
+          endNode = this._getPreviousValidTextNode(endNode);
+          endOffset = endNode?.length;
+        }
+        if (!startNode || !endNode) return;
         ([ startParagraphId, startParagraphOffset ] = this._getParagraphOffset(startNode, startOffset));
         ([ endParagraphId, endParagraphOffset ] = this._getParagraphOffset(endNode, endOffset));
       }
@@ -1274,7 +1284,7 @@
       (options.showDragHandles.includes('touch') || pointerType === 'mouse')
       && (options.showDragHandles.includes('highlights') && activeHighlightId
         || options.showDragHandles.includes('selection') && !activeHighlightId);
-    if (selection.type === 'Range' && showDragHandles) {
+    if (selection.type === 'Range' && showDragHandles && rangeLineRects.length > 0) {
       const startNodeIsRtl = globalThis.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
       const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
       for (const handle of this._dragHandles) {
@@ -1362,7 +1372,7 @@
       }
       if (skipEnd) {
         endNode = this._getPreviousValidTextNode(endNode);
-        endOffset = endNode.length;
+        endOffset = endNode?.length;
       }
       if (!startNode || !endNode || (startNode === endNode && startOffset === endOffset)) {
         return range.cloneRange().collapse(true);

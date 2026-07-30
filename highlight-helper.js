@@ -409,7 +409,11 @@
         const height = Math.round(entry.contentBoxSize[0].blockSize);
         // Respond to width changes (resize window, device rotation) and height changes (lazy-loaded images, dynamically-inserted elements)
         if (width !== previousWidth || height !== previousHeight) {
-          if (options.drawingMode === 'svg') this.drawHighlights();
+          if (options.drawingMode === 'svg') {
+            this.drawHighlights();
+          } else {
+            this._updateHighlightRects();
+          }
           if (this._previousSelectionRange) this._updateSelectionState();
           previousWidth = width;
           previousHeight = height;
@@ -962,9 +966,9 @@
     this._additionsRect = this._additionsDiv.getBoundingClientRect();
     const x = clientX - this._additionsRect.left;
     const y = clientY - this._additionsRect.top;
-    for (const highlightId of Object.keys(this._highlightsById)) {
+    for (const [highlightId, highlightInfo] of Object.entries(this._highlightsById)) {
       if (highlightIds.has(highlightId)) continue;
-      const rangeLineRects = this._highlightsById[highlightId].rangeLineRects;
+      const rangeLineRects = highlightInfo.rangeLineRects;
       if (!rangeLineRects) continue;
       for (const rect of rangeLineRects) {
         const padding = rect.height / 8;
@@ -1751,6 +1755,16 @@
     });
 
     return { lines, snapTolerance, pseudoElemRects };
+  }
+
+  Highlighter.prototype._updateHighlightRects = function (highlightIds = Object.keys(this._highlightsById), paragraphLineRectsCache = new Map(), columnGeometryCache = new Map()) {
+    for (const highlightId of highlightIds) {
+      const highlightInfo = this._highlightsById[highlightId];
+      const rangeParagraphs = highlightInfo.rangeParagraphIds.map(id => document.getElementById(id));
+      const [rangeRect, rangeLineRects] = this._getRangeRects(highlightInfo.rangeObj, rangeParagraphs, paragraphLineRectsCache, columnGeometryCache);
+      highlightInfo.rangeRect = rangeRect;
+      highlightInfo.rangeLineRects = rangeLineRects;
+    }
   }
 
   // Get merged client rects from the highlight range

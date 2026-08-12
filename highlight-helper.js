@@ -272,6 +272,9 @@
           this._dragAnchorOffset = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
           this._container.addEventListener('pointermove', respondToHandleDrag, { signal: this._controller.signal });
           this._updateSelectionState();
+
+          // Check for tap targets so hh:tap can fire if the area around a handle is tapped without dragging (tap result will reset to null if the user starts dragging)
+          this._tapResult = this._checkForTapTargets(event);
         }
         // Prevent default drag interaction (which would show a thumbnail and drag selected text)
         return event.preventDefault();

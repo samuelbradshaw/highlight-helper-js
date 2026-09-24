@@ -1154,7 +1154,8 @@
             ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
             ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
             ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }
-            ${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }
+            ${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}),
+            ${this._containerSelector} :is(${this._paragraphSelector}) :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }
           `;
         } else {
           cssText += `mark[data-hh-highlight-id=${highlightInfo.escapedHighlightId}][data-hh-style] { ${styleString} }\n`;
@@ -1270,13 +1271,16 @@
         }
         const styleString = this._getStyleString(style, 'css', true, highlightInfo.variables, highlightInfo.rangeRect);
         this._selectionStylesheet.replaceSync(`
-          ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+          ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}),
+          ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
+          ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
           ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
           ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
           ${this._containerSelector} ::selection { background-color: transparent; }
           ${this._containerSelector} :is(${this._paragraphSelector})::selection,
           ${this._containerSelector} :is(${this._paragraphSelector}) *::selection { --hh-color: ${colorString}; ${styleString} }
-          ${this._containerSelector} :is(rt, img)::selection { background-color: transparent; }
+          ${this._containerSelector} :is(rt, img)::selection,
+          ${this._containerSelector} :is(${this._paragraphSelector}) :is(rt, img)::selection { background-color: transparent; }
         `);
 
       // No active highlight (show the regular selection UI)
@@ -1777,6 +1781,8 @@
   }
 
   Highlighter.prototype._updateHighlightRects = function (highlightIds = Object.keys(this._highlightsById), paragraphLineRectsCache = new Map(), columnGeometryCache = new Map()) {
+    // Refresh _additionsRect in case it has stale data
+    this._additionsRect = this._additionsDiv.getBoundingClientRect();
     for (const highlightId of highlightIds) {
       const highlightInfo = this._highlightsById[highlightId];
       const rangeParagraphs = highlightInfo.rangeParagraphIds.map(id => document.getElementById(id));

@@ -1718,6 +1718,22 @@
     const paragraphFontSize = Number.parseFloat(paragraphStyle.fontSize);
     const snapTolerance = Math.max(paragraphFontSize / 2, 4);
 
+    const pseudoElemRects = _gatherPseudoElemRects(paragraph);
+
+    // Horizontal distance between a rect and a line's span so far, ignoring space taken up by pseudoelements (such as footnote markers) that contribute no text nodes. Zero or negative means the rect overlaps the span.
+    const distanceToLine = (pos, rect) => {
+      const gapLeft = Math.min(pos.maxRight, rect.right);
+      const gapRight = Math.max(pos.minLeft, rect.left);
+      let distance = gapRight - gapLeft;
+      if (distance <= snapTolerance) return distance;
+      for (const pseudoRect of pseudoElemRects) {
+        if (pseudoRect.top >= rect.bottom || pseudoRect.bottom <= rect.top) continue;
+        const overlap = Math.min(pseudoRect.right, gapRight) - Math.max(pseudoRect.left, gapLeft);
+        if (overlap > 0) distance -= overlap;
+      }
+      return distance;
+    };
+
     const linePositions = {};
     const lineBottomKeys = [];
     const textNodeRange = document.createRange();
@@ -1733,8 +1749,7 @@
       for (const rect of textNodeRange.getClientRects()) {
         const lineBottom = lineBottomKeys.find(b => {
           if (Math.abs(b - rect.bottom) >= snapTolerance) return false;
-          const pos = linePositions[b];
-          return rect.left <= pos.maxRight + snapTolerance && rect.right >= pos.minLeft - snapTolerance;
+          return distanceToLine(linePositions[b], rect) <= snapTolerance;
         }) ?? rect.bottom;
         if (!linePositions[lineBottom]) lineBottomKeys.push(lineBottom);
         const pos = linePositions[lineBottom] ??= { minLeft: rect.left, maxRight: rect.right, maxFontSize: fontSize, maxLineHeight: lineHeight };
@@ -1746,7 +1761,6 @@
     }
 
     // Expand line rects to include pseudoelements, and snap to the paragraph's leading edge
-    const pseudoElemRects = _gatherPseudoElemRects(paragraph);
     lineBottomKeys.sort((a, b) => a - b);
     const lines = lineBottomKeys.map((lineBottom) => {
       const pos = linePositions[lineBottom];
@@ -1786,9 +1800,9 @@
         paragraphLineRectsCache.set(paragraph.id, paragraphLineRects);
       }
       const { lines, snapTolerance, pseudoElemRects } = paragraphLineRects;
-      // If the previous paragraph is below the current paragraph (such as in multi-column layouts), reset prevParagraphBottom
       if (lines.length === 0) continue;
-      if (prevParagraphBottom > lines[0].bottom) prevParagraphBottom = Number.NEGATIVE_INFINITY;
+      // The previous paragraph's bottom is only a valid boundary if it sits above this paragraph's first line — reset it if the paragraphs are side by side, or in a later column
+      if (prevParagraphBottom > lines[0].top + snapTolerance) prevParagraphBottom = Number.NEGATIVE_INFINITY;
       const lineStates = lines.map((lineRect, i) => ({
         topY: i === 0 ? prevParagraphBottom : lines[i - 1].bottom,
         left: Infinity, right: -Infinity,

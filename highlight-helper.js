@@ -429,10 +429,12 @@
     let previousDrawingMode = null;
     globalThis.addEventListener('beforeprint', () => {
       previousDrawingMode = this._options.drawingMode;
+      if (previousDrawingMode === 'mark-elements') return;
       this.setOptions({ drawingMode: 'mark-elements' });
       this.drawHighlights();
     }, { signal: this._controller.signal });
     globalThis.addEventListener('afterprint', () => {
+      if (previousDrawingMode === 'mark-elements') return;
       this.setOptions({ drawingMode: previousDrawingMode });
       this.drawHighlights();
     }, { signal: this._controller.signal });

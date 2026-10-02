@@ -124,6 +124,7 @@
         position: absolute;
         width: 0px;
         visibility: hidden;
+        touch-action: none;
       }
       [data-hh-pointer-down="true"] [data-hh-handle] {
         /* Hiding selection handle reduces jumpiness when dragging (and makes it easier to see the selection) */
@@ -136,13 +137,13 @@
       [data-hh-handle] [draggable] {
         position: absolute;
         top: -0.3em;
-        width: 3.2em;
-        height: calc(100% + 1.3em);
+        width: 2.2em;
+        height: calc(100% + 1.8em);
         background-color: transparent;
         z-index: 1;
       }
-      [data-hh-handle][data-hh-side="left"] [draggable] { right: -2em; }
-      [data-hh-handle][data-hh-side="right"] [draggable] { left: -2em; }
+      [data-hh-handle][data-hh-side="left"] [draggable] { right: -0.4em; }
+      [data-hh-handle][data-hh-side="right"] [draggable] { left: -0.4em; }
       [data-hh-default-handle] {
         position: absolute;
         width: 0.8em;

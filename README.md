@@ -221,9 +221,9 @@ The following options can be set using the `setOptions()` method. Options that a
     - **right** – HTML string for the right selection handle.
     - Template variables (optional): `var(--hh-color)` can be used to reference the highlight color.
 - **showDragHandles** – Array. Indicates when custom drag handles should be shown. Default: `['highlights']`. Possible values:
-    - **highlights** – Show custom handles for active highlights. Default: `true`.
-    - **selection** – Show custom handles for text selection. Default: `false`.
-    - **touch** – Show custom handles on touch devices (may be unstable due to interaction with built-in selection handles). Default: `false`.
+    - **highlights** – Show custom handles for active highlights.
+    - **selection** – Show custom handles for text selection.
+    - **touch** – Show custom handles on touch devices (may conflict with built-in selection handles).
 - **colorDefs** – Object. Defines highlight colors. Keys are color names, and values are [CSS color values](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value). Default keys: `red`, `orange`, `yellow`, `green`, `blue`.
 - **styleDefs** – Object. Defines highlight style templates. Keys are style names. Default keys: `fill`, `underline`. Each style has four available properties:
     - **css** (required) – CSS string used in `highlight-api` and `mark-elements` drawing modes, for active text selection, and as a fallback in `svg` drawing mode.
@@ -279,7 +279,7 @@ Other:
 ### <a name="known-issues"></a>Known issues
 
 - **Chrome on Android** doesn't show text selection handles when text is selected programmatically (such as from a disambiguation panel, or with snap-to-word). Text selection UI must be initiated by a user gesture.
-    - Workaround: Tap the highlight again to show the handles.
+    - Workaround: Tap the highlight again to show the handles, or enable custom drag handles.
 - **Safari on iOS and macOS** doesn't allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the CSS Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
     - Workaround: Use a different drawing mode.
 - **Safari on iOS and macOS** expand text selection to include the previous word when selecting a word in an inline element at the beginning of the line of text. Code to reproduce: `<p style="font-family: Times; font-size: 16px; width: 250px">This is an example of <i>text selection</i> <b>jumping</b> to include the previous word when text wraps at the beginning of an inline element. Double-click (macOS) or long-press (iOS) the word "jumping."</p>`
@@ -290,8 +290,8 @@ Other:
     - Workaround: Double-tap then drag the stylus.
 - **Safari on macOS** – SVG highlights are slightly shifted when zoomed to the maximum zoom size.
     - Workaround: Reduce text size.
-- **Amazon Fire webview** doesn’t show selection handles, making it difficult to resize an existing highlight (and custom drag handles don't work reliably on touch devices).
-    - Workaround: Long-press and drag to select everything you need before lifting your finger.
+- **Amazon Fire webview** doesn’t show selection handles, making it difficult to resize an existing highlight.
+    - Workaround: Long-press and drag to select everything you need before lifting your finger, or enable custom drag handles.
 
 
 ### <a name="choosing-a-drawing-mode"></a>Choosing a drawing mode

@@ -1211,6 +1211,19 @@
     if (boundsHash != this._previousBoundsHash) changes.push('selection');
     if (changes.length === 0) return;
 
+    // WebKit doesn't draw text decorations on ::selection. If the style has an SVG template, use it for the active selection without changing how inactive highlights are drawn.
+    let useSvgSelection = isSvgActive;
+    if (isWebKit && activeHighlightId && !isSvgActive) {
+      const resolvedStyle = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
+      if (options.styleDefs[resolvedStyle]?.svg) {
+        const selectionStyle = document.createElement('span').style;
+        selectionStyle.cssText = this._getStyleString(style, 'css', true, variables, highlightInfo.rangeRect);
+        // A shorthand with var() values may not expand into textDecorationLine until computed.
+        const decoration = selectionStyle.textDecorationLine || selectionStyle.textDecoration;
+        useSvgSelection = /(^|\s)(underline|overline|line-through)(\s|$)/.test(decoration);
+      }
+    }
+
     // Get range metadata
     let rangeText = null, rangeHtml = null, rangeParagraphIds = null, rangeObj = null;
     let rangeRect = null, rangeParagraphs = [], rangeLineRects = [];
@@ -1236,9 +1249,9 @@
     this._selectionState = { activeHighlightId, color, style, variables, isResizing, pointerType, selection, changes, rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
     this._previousBoundsHash = boundsHash;
 
-    // Draw SVG selection rects (SVG drawing mode only)
+    // Draw SVG selection rects (SVG drawing mode, or WebKit text decoration fallback)
     this._svgActiveOverlay.innerHTML = '';
-    if (isSvgActive) {
+    if (useSvgSelection) {
       this._svgActiveOverlay.dataset.hhColor = color;
       this._svgActiveOverlay.dataset.hhStyle = style;
       let svgContent = '';
@@ -1259,9 +1272,13 @@
       this._container.style.setProperty('--hh-color', colorString);
 
       // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
-      if (isSvgActive) {
+      if (useSvgSelection) {
         this._selectionStylesheet.replaceSync(`
           ${this._containerSelector} g[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { display: none; }
+          ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}),
+          ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
+          ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+          ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
           ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
           ${this._containerSelector} ::selection { background-color: transparent; }
         `);
@@ -2071,7 +2088,7 @@
 
   // Check browser type
   const isTouchDevice = navigator.maxTouchPoints > 0;
-  const isWebKit = /^((?!Chrome|Firefox|Android|Samsung).)*AppleWebKit/i.test(navigator.userAgent);
+  const isWebKit = /^(?!.*(Chrome|Firefox|Android|Samsung)).*AppleWebKit/i.test(navigator.userAgent);
   const isWKWebView = isWebKit && globalThis.webkit?.messageHandlers;
   const supportsCaretPositionFromPoint = document.caretPositionFromPoint;
   const supportsCaretRangeFromPoint = document.caretRangeFromPoint;

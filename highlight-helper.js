@@ -1211,7 +1211,7 @@
     if (boundsHash != this._previousBoundsHash) changes.push('selection');
     if (changes.length === 0) return;
 
-    // WebKit doesn't draw text decorations on ::selection. If the style has an SVG template, use it for the active selection without changing how inactive highlights are drawn.
+    // WebKit doesn't draw text decorations on ::selection, and iOS ignores selection colors. If the style has an SVG template, use it for the active selection without changing how inactive highlights are drawn.
     let useSvgSelection = isSvgActive;
     if (isWebKit && activeHighlightId && !isSvgActive) {
       const resolvedStyle = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
@@ -1220,7 +1220,7 @@
         selectionStyle.cssText = this._getStyleString(style, 'css', true, variables, highlightInfo.rangeRect);
         // A shorthand with var() values may not expand into textDecorationLine until computed.
         const decoration = selectionStyle.textDecorationLine || selectionStyle.textDecoration;
-        useSvgSelection = /(^|\s)(underline|overline|line-through)(\s|$)/.test(decoration);
+        useSvgSelection = isTouchDevice || /(^|\s)(underline|overline|line-through)(\s|$)/.test(decoration);
       }
     }
 
@@ -1249,7 +1249,7 @@
     this._selectionState = { activeHighlightId, color, style, variables, isResizing, pointerType, selection, changes, rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
     this._previousBoundsHash = boundsHash;
 
-    // Draw SVG selection rects (SVG drawing mode, or WebKit text decoration fallback)
+    // Draw SVG selection rects (SVG drawing mode, or WebKit selection style fallback)
     this._svgActiveOverlay.innerHTML = '';
     if (useSvgSelection) {
       this._svgActiveOverlay.dataset.hhColor = color;

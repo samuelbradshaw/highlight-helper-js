@@ -429,6 +429,7 @@
     // Set drawing mode to mark elements temporarily when printing (highlights get offset in SVG drawing mode)
     let previousDrawingMode = null;
     globalThis.addEventListener('beforeprint', () => {
+      if (this._activeHighlightId) this.deactivateHighlights();
       previousDrawingMode = this._options.drawingMode;
       if (previousDrawingMode === 'mark-elements') return;
       this.setOptions({ drawingMode: 'mark-elements' });
@@ -1192,7 +1193,6 @@
     // Get active highlight properties
     const activeHighlightId = this._activeHighlightId;
     const highlightInfo = this._highlightsById[activeHighlightId] ?? null;
-    const isSvgActive = activeHighlightId && highlightInfo?.resolvedDrawingMode === 'svg';
     const color = highlightInfo?.color ?? null;
     const style = highlightInfo?.style ?? null;
     const variables = highlightInfo?.variables ?? {};
@@ -1211,18 +1211,8 @@
     if (boundsHash != this._previousBoundsHash) changes.push('selection');
     if (changes.length === 0) return;
 
-    // WebKit doesn't draw text decorations on ::selection, and iOS ignores selection colors. If the style has an SVG template, use it for the active selection without changing how inactive highlights are drawn.
-    let useSvgSelection = isSvgActive;
-    if (isWebKit && activeHighlightId && !isSvgActive) {
-      const resolvedStyle = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
-      if (options.styleDefs[resolvedStyle]?.svg) {
-        const selectionStyle = document.createElement('span').style;
-        selectionStyle.cssText = this._getStyleString(style, 'css', true, variables, highlightInfo.rangeRect);
-        // A shorthand with var() values may not expand into textDecorationLine until computed.
-        const decoration = selectionStyle.textDecorationLine || selectionStyle.textDecoration;
-        useSvgSelection = isTouchDevice || /(^|\s)(underline|overline|line-through)(\s|$)/.test(decoration);
-      }
-    }
+    // WebKit doesn't draw text decorations on ::selection, and iOS ignores ::selection styles entirely. If the style has an SVG template, use it for the active state.
+    const useSvgSelection = activeHighlightId && (highlightInfo?.resolvedDrawingMode === 'svg' || isWebKit && this._getStyleDef(style)?.svg);
 
     // Get range metadata
     let rangeText = null, rangeHtml = null, rangeParagraphIds = null, rangeObj = null;
@@ -1271,35 +1261,28 @@
       const colorString = options.colorDefs[color] ?? (supportsAccentColor ? 'AccentColor' : 'dodgerblue');
       this._container.style.setProperty('--hh-color', colorString);
 
-      // Hide the active highlight (and wrappers), and set a selection style that mimics the highlight. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
-      if (useSvgSelection) {
-        this._selectionStylesheet.replaceSync(`
+      // Hide the active highlight (and wrappers), and either draw it with the SVG overlay or set a selection style that mimics it. This avoids the need to redraw the highlight while actively editing it (especially important for <mark> highlights, because DOM manipulation around the selection can make the selection UI unstable).
+      if (activeHighlightId) {
+        let cssText = `
+          ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}),
+          ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
+          ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+          ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
+          ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
           ${this._containerSelector} g[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { display: none; }
-          ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}),
-          ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
-          ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
-          ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
-          ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
           ${this._containerSelector} ::selection { background-color: transparent; }
-        `);
-      } else if (activeHighlightId) {
-        // Remove stale SVG highlight if a highlight switches from SVG to a different resolvedDrawingMode
-        for (const svgHighlight of this._svgBackground.querySelectorAll(`g[data-hh-highlight-id="${activeHighlightId}"]`)) {
-          svgHighlight.remove();
+        `;
+        // If not drawn by the SVG overlay, style the selection to mimic the highlight
+        if (!useSvgSelection) {
+          const styleString = this._getStyleString(style, 'css', true, highlightInfo.variables, highlightInfo.rangeRect);
+          cssText += `
+            ${this._containerSelector} :is(${this._paragraphSelector})::selection,
+            ${this._containerSelector} :is(${this._paragraphSelector}) *::selection { --hh-color: ${colorString}; ${styleString} }
+            ${this._containerSelector} :is(rt, img)::selection,
+            ${this._containerSelector} :is(${this._paragraphSelector}) :is(rt, img)::selection { background-color: transparent; }
+          `;
         }
-        const styleString = this._getStyleString(style, 'css', true, highlightInfo.variables, highlightInfo.rangeRect);
-        this._selectionStylesheet.replaceSync(`
-          ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}),
-          ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
-          ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
-          ${this._containerSelector} mark[data-hh-highlight-id="${activeHighlightId}"][data-hh-style] { all: unset; }
-          ${this._containerSelector} [data-hh-wrapper][data-hh-highlight-id="${activeHighlightId}"] { visibility: hidden; }
-          ${this._containerSelector} ::selection { background-color: transparent; }
-          ${this._containerSelector} :is(${this._paragraphSelector})::selection,
-          ${this._containerSelector} :is(${this._paragraphSelector}) *::selection { --hh-color: ${colorString}; ${styleString} }
-          ${this._containerSelector} :is(rt, img)::selection,
-          ${this._containerSelector} :is(${this._paragraphSelector}) :is(rt, img)::selection { background-color: transparent; }
-        `);
+        this._selectionStylesheet.replaceSync(cssText);
 
       // No active highlight (show the regular selection UI)
       } else {
@@ -1537,8 +1520,7 @@
   Highlighter.prototype._getResolvedDrawingMode = function (highlightInfo) {
     const options = this._options;
     if (options.drawingMode === 'mark-elements') return 'mark-elements';
-    const resolvedStyle = Object.hasOwn(options.styleDefs, highlightInfo.style) ? highlightInfo.style : _defaultStyle;
-    if ((options.drawingMode === 'svg' && !options.styleDefs[resolvedStyle]?.svg)
+    if ((options.drawingMode === 'svg' && !this._getStyleDef(highlightInfo.style)?.svg)
       || (options.drawingMode === 'highlight-api' && !supportsHighlightApi)) {
       return 'mark-elements';
     }
@@ -1611,13 +1593,18 @@
     return str.replace(/\{[^}]+\}/g, match => map[match] ?? match);
   }
 
+  // Get the style definition for a highlight style, falling back to the default style
+  Highlighter.prototype._getStyleDef = function (style) {
+    const styleDefs = this._options.styleDefs;
+    return styleDefs[Object.hasOwn(styleDefs, style) ? style : _defaultStyle];
+  }
+
   // Get style string for a given highlight style
   Highlighter.prototype._getStyleString = function (style, type, active = false, variables = {}, rangeRect = null, lineRect = null) {
-    const options = this._options;
-    style = Object.hasOwn(options.styleDefs, style) ? style : _defaultStyle;
-    let styleString = options.styleDefs[style]?.[type] ?? '';
+    const styleDef = this._getStyleDef(style);
+    let styleString = styleDef?.[type] ?? '';
     if (active) {
-      styleString = options.styleDefs[style]?.[`${type}Active`] ?? styleString;
+      styleString = styleDef?.[`${type}Active`] ?? styleString;
     }
     if (styleString) {
       styleString = this._applySubstitutions(styleString, variables, rangeRect, lineRect);

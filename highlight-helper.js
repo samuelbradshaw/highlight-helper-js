@@ -77,6 +77,7 @@
     this._container.highlighter = this;
     this._selectionState = {
       activeHighlightId: null,
+      activeAppearanceId: null,
       color: null,
       style: null,
       isResizing: false,
@@ -92,6 +93,10 @@
     };
     this._isResizingSelection = false;
     this._previousBoundsHash = null;
+    this._activeAppearanceHighlightId = null;
+    this._previousAppearanceHash = null;
+    this._lastPointerType = null;
+    this._isPrinting = false;
     this._containerRect = null;
     this._additionsRect = null;
 
@@ -126,9 +131,12 @@
         visibility: hidden;
         touch-action: none;
       }
-      [data-hh-pointer-down="true"] [data-hh-handle] {
-        /* Hiding selection handle reduces jumpiness when dragging (and makes it easier to see the selection) */
+      [data-hh-pointer-down="true"] [data-hh-handle]:not([data-hh-appearance-handle]) {
+        /* Hiding selection handle reduces jumpiness when dragging (and makes it easier to see the selection). Handles for an active-appearance highlight stay visible, because they mark the highlight rather than the selection. */
         visibility: hidden !important;
+      }
+      @media print {
+        [data-hh-handle] { display: none !important; }
       }
       [data-hh-handle-content] {
         position: absolute;
@@ -268,6 +276,12 @@
           const handleClientRect = this._activeHandle.getBoundingClientRect();
           const lineHeight = handleClientRect.bottom - handleClientRect.top;
           this._activeHandle.dataset.hhDragYOffset = Math.max(0, event.clientY - handleClientRect.bottom + (lineHeight / 6));
+
+          // If the handles belong to an active-appearance highlight (not a real selection), activate the highlight now so it can be resized. This is the only time the active appearance moves focus or the text selection, and it's in response to the user grabbing a handle.
+          if (!this._activeHighlightId && this._activeAppearanceHighlightId) {
+            if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+            this.activateHighlight(this._activeAppearanceHighlightId);
+          }
           const selectionRange = globalThis.getSelection().getRangeAt(0);
           this._dragAnchorNode = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endContainer : selectionRange.startContainer;
           this._dragAnchorOffset = this._activeHandle.dataset.hhPosition === 'start' ? selectionRange.endOffset : selectionRange.startOffset;
@@ -297,6 +311,12 @@
       this._tapResult = this._checkForTapTargets(event);
     }
     this._container.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
+
+    // Pointer down anywhere on the page. The active appearance is usually set from outside the container (such as a notes list), so its drag handles follow the most recent pointer type on the page.
+    globalThis.addEventListener('pointerdown', (event) => {
+      this._lastPointerType = event.pointerType;
+      if (this._activeAppearanceHighlightId) this._updateSelectionState();
+    }, { capture: true, signal: this._controller.signal });
 
     // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
     const respondToHandleDrag = (event) => {
@@ -418,7 +438,7 @@
           } else {
             this._updateHighlightRects();
           }
-          if (this._previousSelectionRange) this._updateSelectionState();
+          if (this._previousSelectionRange || this._activeAppearanceHighlightId) this._updateSelectionState();
           previousWidth = width;
           previousHeight = height;
         }
@@ -427,16 +447,19 @@
     this._resizeObserver.observe(this._container);
 
     // Set drawing mode to mark elements temporarily when printing (highlights get offset in SVG drawing mode)
+    // The active-appearance highlight is printed with its regular style (it's UI state, not content), but it isn't cleared, so the app doesn't see a change
     let previousDrawingMode = null;
     globalThis.addEventListener('beforeprint', () => {
       if (this._activeHighlightId) this.deactivateHighlights();
+      this._isPrinting = true;
       previousDrawingMode = this._options.drawingMode;
-      if (previousDrawingMode === 'mark-elements') return;
+      if (previousDrawingMode === 'mark-elements') return this._rebuildHighlightStylesheet();
       this.setOptions({ drawingMode: 'mark-elements' });
       this.drawHighlights();
     }, { signal: this._controller.signal });
     globalThis.addEventListener('afterprint', () => {
-      if (previousDrawingMode === 'mark-elements') return;
+      this._isPrinting = false;
+      if (previousDrawingMode === 'mark-elements') return this._rebuildHighlightStylesheet();
       this.setOptions({ drawingMode: previousDrawingMode });
       this.drawHighlights();
     }, { signal: this._controller.signal });
@@ -535,9 +558,12 @@
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
     if (selection.type === 'Range') adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0));
-    if ((properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
+    const hasBoundsProperties = ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset'].some(key => properties[key] != null);
+    // New highlights and the active highlight take their bounds from the text selection. Other highlights keep their saved bounds, unless new bounds are provided (otherwise, updating an inactive highlight would move it to the text selection, or do nothing if there isn't one).
+    const useSelectionBounds = !hasBoundsProperties && adjustedSelectionRange && !adjustedSelectionRange.collapsed && (isNewHighlight || highlightId === this._activeHighlightId);
+    if (hasBoundsProperties || useSelectionBounds || !isNewHighlight) {
       let startNode, startOffset, endNode, endOffset;
-      if (properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) {
+      if (!useSelectionBounds) {
         startParagraphId = properties.startParagraphId ?? oldHighlightInfo?.startParagraphId;
         startParagraphOffset = Number.parseInt(properties.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
         endParagraphId = properties.endParagraphId ?? oldHighlightInfo?.endParagraphId;
@@ -545,7 +571,7 @@
         if (!this._paragraphIds.includes(startParagraphId) || !this._paragraphIds.includes(endParagraphId)) return;
         ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
         ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
-      } else if (adjustedSelectionRange) {
+      } else {
         startNode = adjustedSelectionRange.startContainer;
         startOffset = adjustedSelectionRange.startOffset;
         if (this._shouldSkipTextNode(startNode)) {
@@ -864,7 +890,7 @@
         group.dataset.hhStyle = highlightInfo.style;
         let svgContent = '';
         for (const lineRect of highlightInfo.rangeLineRects) {
-          svgContent += this._getStyleString(highlightInfo.style, 'svg', false, highlightInfo.variables, highlightInfo.rangeRect, lineRect);
+          svgContent += this._getStyleString(highlightInfo.style, 'svg', this._hasActiveAppearance(highlightId), highlightInfo.variables, highlightInfo.rangeRect, lineRect);
         }
         group.innerHTML = svgContent;
         this._svgBackground.appendChild(group);
@@ -872,6 +898,9 @@
     }
 
     this._rebuildHighlightStylesheet();
+
+    // Move the active-appearance handles if the highlight was redrawn
+    if (this._activeAppearanceHighlightId && !this._activeHighlightId) this._updateSelectionState();
   }
 
   // Activate a highlight by ID
@@ -886,7 +915,14 @@
     }
     const selection = globalThis.getSelection();
     const highlightRange = this._getCorrectedRangeObj(highlightId);
+
+    // If a different highlight is active, deactivate it first (so it's redrawn, and an hh:highlightdeactivate event is sent)
+    if (this._activeHighlightId) this.deactivateHighlights(false);
     this._activeHighlightId = highlightId;
+
+    // Save the highlight's range as the previous selection range. Otherwise, a pending selectionchange event (such as one from the tap that led to this highlight being activated) is compared against a stale range, which can deactivate the highlight or restore a different selection range.
+    this._previousSelectionRange = highlightRange.cloneRange();
+    this._previousSelectionDirection = 'forward';
 
     // Update the selection range if needed
     // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
@@ -929,6 +965,26 @@
   // Get the active highlight ID (if there is one)
   Highlighter.prototype.getActiveHighlightId = function () {
     return this._activeHighlightId;
+  }
+
+  // Make a highlight look active (active style and drag handles) without activating it. The text selection and focus aren't changed, so the user can keep working elsewhere (such as in a note editor for the highlight). Pass null to clear.
+  Highlighter.prototype.setActiveAppearance = function (highlightId = null) {
+    if (highlightId != null && !this._highlightsById[highlightId]) highlightId = null;
+    const previousId = this._activeAppearanceHighlightId;
+    if (highlightId === previousId) return;
+    this._activeAppearanceHighlightId = highlightId;
+    const changedIds = [previousId, highlightId].filter(id => id != null && this._highlightsById[id]);
+    if (this._options.drawingMode === 'svg') {
+      this.drawHighlights(changedIds);
+    } else {
+      this._rebuildHighlightStylesheet();
+    }
+    this._updateSelectionState();
+  }
+
+  // Get the ID of the highlight with an active appearance (if there is one)
+  Highlighter.prototype.getActiveAppearanceId = function () {
+    return this._activeAppearanceHighlightId;
   }
 
   // Get info for specified highlights, or all highlights on the page
@@ -1028,6 +1084,7 @@
 
   // Remove the specified highlights, or all highlights on the page
   Highlighter.prototype.removeHighlights = function (highlightIds = Object.keys(this._highlightsById)) {
+    if (highlightIds.includes(this._activeAppearanceHighlightId)) this._activeAppearanceHighlightId = null;
     this.deactivateHighlights();
     this._undrawHighlights(highlightIds);
     for (const highlightId of highlightIds) {
@@ -1149,7 +1206,7 @@
     for (const highlightInfo of Object.values(this._highlightsById)) {
       const resolvedMode = highlightInfo.resolvedDrawingMode;
       if (resolvedMode === 'highlight-api' || resolvedMode === 'mark-elements') {
-        const styleString = this._getStyleString(highlightInfo.style, 'css', false, highlightInfo.variables, highlightInfo.rangeRect);
+        const styleString = this._getStyleString(highlightInfo.style, 'css', this._hasActiveAppearance(highlightInfo.highlightId), highlightInfo.variables, highlightInfo.rangeRect);
         if (resolvedMode === 'highlight-api') {
           const colorString = this._options.colorDefs[highlightInfo.color];
           cssText += `
@@ -1174,7 +1231,19 @@
 
     // If the selection starts in another container, let the other container handle it
     const selectionContainer = this._getSelectionContainer();
-    if (selectionContainer && selectionContainer !== this._container) return;
+    if (selectionContainer && selectionContainer !== this._container) {
+      // The selection is in another container (such as a popup), but an active-appearance highlight in this container still needs its handles
+      this._containerRect = this._container.getBoundingClientRect();
+      this._additionsRect = this._additionsDiv.getBoundingClientRect();
+      if (!this._activeHighlightId) this._setDragHandleVisibility(this._showActiveAppearanceHandles(), true);
+      const appearanceHash = this._getActiveAppearanceHash();
+      if (appearanceHash !== this._previousAppearanceHash) {
+        this._previousAppearanceHash = appearanceHash;
+        this._selectionState = { ...this._selectionState, activeAppearanceId: this._activeAppearanceHighlightId, changes: ['activeAppearance'] };
+        this._container.dispatchEvent(new CustomEvent('hh:selectionchange', { detail: this._selectionState }));
+      }
+      return;
+    }
     this._containerRect = this._container.getBoundingClientRect();
     this._additionsRect = this._additionsDiv.getBoundingClientRect();
 
@@ -1209,6 +1278,9 @@
     if (isResizing !== prev.isResizing) changes.push('isResizing');
     if (pointerType !== prev.pointerType) changes.push('pointerType');
     if (boundsHash != this._previousBoundsHash) changes.push('selection');
+    const appearanceHash = this._getActiveAppearanceHash();
+    if (appearanceHash !== this._previousAppearanceHash) changes.push('activeAppearance');
+    this._previousAppearanceHash = appearanceHash;
     if (changes.length === 0) return;
 
     // WebKit doesn't draw text decorations on ::selection, and iOS ignores ::selection styles entirely. If the style has an SVG template, use it for the active state.
@@ -1236,7 +1308,7 @@
     }
 
     // Update selection state
-    this._selectionState = { activeHighlightId, color, style, variables, isResizing, pointerType, selection, changes, rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
+    this._selectionState = { activeHighlightId, activeAppearanceId: this._activeAppearanceHighlightId, color, style, variables, isResizing, pointerType, selection, changes, rangeText, rangeHtml, rangeRect: rangeRect, rangeLineRects, rangeParagraphIds, rangeObj };
     this._previousBoundsHash = boundsHash;
 
     // Draw SVG selection rects (SVG drawing mode, or WebKit selection style fallback)
@@ -1298,9 +1370,27 @@
       (options.showDragHandles.includes('touch') || pointerType === 'mouse')
       && (options.showDragHandles.includes('highlights') && activeHighlightId
         || options.showDragHandles.includes('selection') && !activeHighlightId);
-    if (selection.type === 'Range' && showDragHandles && rangeLineRects.length > 0) {
-      const startNodeIsRtl = globalThis.getComputedStyle(selectionRange.startContainer.parentElement).direction === 'rtl';
-      const endNodeIsRtl = globalThis.getComputedStyle(selectionRange.endContainer.parentElement).direction === 'rtl';
+    // Handles go to the active highlight first, then a text selection in this container (so the user's new selection never gets another highlight's handles), then the active-appearance highlight
+    const hasSelectionInContainer = selection.type === 'Range' && selectionContainer === this._container;
+    if (!activeHighlightId && this._activeAppearanceHighlightId && !hasSelectionInContainer) {
+      this._setDragHandleVisibility(this._showActiveAppearanceHandles(), true);
+    } else if (selection.type === 'Range' && showDragHandles && rangeLineRects.length > 0) {
+      this._positionDragHandles(selectionRange, rangeLineRects);
+      this._setDragHandleVisibility(true);
+    } else {
+      this._setDragHandleVisibility(false);
+    }
+
+    // Send event
+    this._container.dispatchEvent(new CustomEvent('hh:selectionchange', { detail: this._selectionState }));
+  }
+
+  // Position the drag handles at the start and end of a range
+  Highlighter.prototype._positionDragHandles = function (range, rangeLineRects) {
+    const options = this._options;
+    {
+      const startNodeIsRtl = globalThis.getComputedStyle(range.startContainer.parentElement).direction === 'rtl';
+      const endNodeIsRtl = globalThis.getComputedStyle(range.endContainer.parentElement).direction === 'rtl';
       for (const handle of this._dragHandles) {
         let side;
         const startRect = rangeLineRects[0];
@@ -1321,18 +1411,42 @@
           this.setOptions({ dragHandles: options.dragHandles });
         }
       }
-      this._setDragHandleVisibility(true);
-    } else {
-      this._setDragHandleVisibility(false);
     }
-
-    // Send event
-    this._container.dispatchEvent(new CustomEvent('hh:selectionchange', { detail: this._selectionState }));
   }
 
-  Highlighter.prototype._setDragHandleVisibility = function (visible = this._dragHandles[0].style.visibility === 'hidden') {
+  // Position drag handles for the active-appearance highlight. Returns true if the handles should be visible.
+  Highlighter.prototype._showActiveAppearanceHandles = function () {
+    const options = this._options;
+    const highlightInfo = this._highlightsById[this._activeAppearanceHighlightId];
+    if (!highlightInfo || highlightInfo.readOnly || !highlightInfo.rangeLineRects?.length) return false;
+    const showDragHandles = options.showDragHandles.includes('highlights') && (options.showDragHandles.includes('touch') || this._getAppearancePointerType() === 'mouse');
+    if (!showDragHandles) return false;
+    this._positionDragHandles(this._getCorrectedRangeObj(highlightInfo.highlightId), highlightInfo.rangeLineRects);
+    return true;
+  }
+
+  // Pointer type for the active-appearance handles: the most recent pointer type on the page, or (before the first pointer event) the device's primary pointer
+  Highlighter.prototype._getAppearancePointerType = function () {
+    return this._lastPointerType ?? (globalThis.matchMedia?.('(pointer: fine)').matches ? 'mouse' : 'touch');
+  }
+
+  // Check if a highlight should be drawn with its active style because of setActiveAppearance() (not while printing)
+  Highlighter.prototype._hasActiveAppearance = function (highlightId) {
+    return !this._isPrinting && highlightId != null && highlightId === this._activeAppearanceHighlightId;
+  }
+
+  // Hash of the active-appearance highlight's ID, position, and pointer type (used to detect when its handles need to move, show, or hide)
+  Highlighter.prototype._getActiveAppearanceHash = function () {
+    const highlightInfo = this._highlightsById[this._activeAppearanceHighlightId];
+    if (!highlightInfo) return null;
+    const first = highlightInfo.rangeLineRects?.[0], last = highlightInfo.rangeLineRects?.at(-1);
+    return `${highlightInfo.highlightId}-${Math.round(first?.top)},${Math.round(first?.left)}-${Math.round(last?.bottom)},${Math.round(last?.right)}-${this._getAppearancePointerType()}`;
+  }
+
+  Highlighter.prototype._setDragHandleVisibility = function (visible = this._dragHandles[0].style.visibility === 'hidden', isActiveAppearance = false) {
     for (const handle of this._dragHandles) {
       handle.style.visibility = visible ? 'visible' : 'hidden';
+      handle.toggleAttribute('data-hh-appearance-handle', visible && isActiveAppearance);
     }
   }
 

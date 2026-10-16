@@ -280,12 +280,14 @@ Other:
 
 - **Chrome on Android** doesn't show text selection handles when text is selected programmatically (such as from a disambiguation panel, or with snap-to-word). Text selection UI must be initiated by a user gesture.
     - Workaround: Tap the highlight again to show the handles, or enable custom drag handles.
-- **Safari on iOS and macOS** doesn't allow setting underline thickness on a ::highlight() pseudo-element, so underline highlights drawn by the CSS Custom Highlight API are thin and hard to see (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
+- **Safari on iOS and macOS** doesn't allow full control of the underline style on a `::highlight()` pseudo-element, so underline highlights drawn by the CSS Custom Highlight API may look incorrect (see [StackOverflow](https://stackoverflow.com/q/79060854/1349044) and [WebKit Bugzilla](https://bugs.webkit.org/show_bug.cgi?id=282027)).
     - Workaround: Use a different drawing mode.
+- **Safari on iOS and macOS** ignores text decoration styles on `::selection`, so active underline highlights can't be styled with CSS alone.
+    - Workaround: Set `svg` and `svgActive` for underline styles in styleDefs. On Safari, if a style has an `svg` template, HighlightHelper.js draws the active highlight with `svgActive` (or `svg` if `svgActive` isn't set), in any drawing mode.
+- **Safari on iOS** ignores all `::selection` styles, so active highlights show the native blue selection overlay instead of the highlight style.
+    - Workaround: Set `svg` and `svgActive` for all styles in styleDefs. Alternatively, in a native app with a webview, you may be able to set colors natively. See [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
 - **Safari on iOS and macOS** expand text selection to include the previous word when selecting a word in an inline element at the beginning of the line of text. Code to reproduce: `<p style="font-family: Times; font-size: 16px; width: 250px">This is an example of <i>text selection</i> <b>jumping</b> to include the previous word when text wraps at the beginning of an inline element. Double-click (macOS) or long-press (iOS) the word "jumping."</p>`
     - Workaround: Manually adjust highlight after it's created.
-- **Safari on iOS** doesn't respect text selection colors set via CSS, so when a highlight is active for editing it has a blue overlay.
-    - Workaround: In a native app with a webview, you may be able to set colors natively. See [tintColor](https://stackoverflow.com/a/60510743/1349044), [highlightView](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195471-highlightview), and/or [handleViews](https://developer.apple.com/documentation/uikit/uitextselectiondisplayinteraction/4195470-handleviews).
 - **Safari on iOS 26** doesn't create a text selection when using an Apple Pencil (or other compatible stylus), until the stylus is lifted.
     - Workaround: Double-tap then drag the stylus.
 - **Safari on macOS** – SVG highlights are slightly shifted when zoomed to the maximum zoom size.

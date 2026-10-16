@@ -135,6 +135,15 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
     - **removeSelectionRanges** – Boolean. Indicates whether text selection should be cleared. Default: `true`.
     - **redraw** – Boolean. Indicates whether the highlight should be redrawn. Default: `true`.
 - **getActiveHighlightId()** – Get the highlight ID of the active highlight (if there is one).
+- **setActiveAppearance(highlightId = null)** – Make the specified highlight look active without activating it, so the user can keep working somewhere else on the page (such as in a note editor for the highlight) while still seeing which highlight they're working on. See [Note editor](#note-editor) for an example. Parameters:
+    - **highlightId** – The `highlightId` of the highlight to show as active. Pass `null` to clear it.
+    - Behavior:
+        - The highlight is drawn with its `cssActive` / `svgActive` style. If the style doesn't define one, the highlight looks the same as usual.
+        - The text selection and focus aren't changed, and no `hh:highlightactivate` event is sent.
+        - Drag handles show for the highlight (following the `showDragHandles` option) while no highlight is active and there's no text selection in the container. Grabbing a handle blurs the focused element (such as a note editor) and activates the highlight so it can be resized.
+        - The active appearance stays until it's changed, or the highlight is removed. It isn't cleared when the user taps away, activates or creates another highlight, or deactivates highlights, so the app should clear it when the related UI closes.
+        - When the page is printed, the highlight is printed with its regular style and the handles are hidden.
+- **getActiveAppearanceId()** – Get the highlight ID of the highlight shown with `setActiveAppearance()` (if there is one).
 - **getHighlightInfo(highlightIds = all, paragraphId = null)** – Get an array of [highlight objects](#highlight-objects) for specified highlight IDs. Highlights will be sorted based on their position on the page. Parameters:
     - **highlightIds** – Array of highlight IDs. Default: all highlights.
     - **paragraphId** – Paragraph ID. Filters highlights based on their start paragraph. Default: `null`.
@@ -144,7 +153,7 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 - **setOptions(optionsToUpdate)** – Change one or more options. Parameters:
     - **optionsToUpdate** – Object with one or more [option keys and values](#options).
 - **getOptions()** – Get the current option values.
-- **getSelectionState()** – Get information about the current text selection and active highlight.
+- **getSelectionState()** – Get information about the current text selection and active highlight. `activeAppearanceId` is the highlight set with `setActiveAppearance()`, and `changes` includes `activeAppearance` when that highlight, its position, or its drag handles change.
 - **removeHighlights(highlightIds = all)** – Remove the specified highlights. Parameters:
     - **highlightIds** – Array of highlight IDs. Default: all highlights.
 - **removeHighlighter()** – Removes the current Highlighter instance and its highlights, resetting to a clean state. Called automatically if a new Highlighter instance is created on the same container.
@@ -272,6 +281,7 @@ Other:
 - **@highlighter** (on container) – Highlighter instance associated with the container.
 - **@style="--hh-color: [color string];"** (on container) – CSS custom property with the current highlight's color string.
 - **@data-pointer-down** (on container) – Indicates whether the pointer (mouse, finger, etc.) is down on the page.
+- **@data-hh-appearance-handle** (on drag handles) – Indicates that the drag handles are shown for a highlight set with `setActiveAppearance()`. These handles stay visible while the pointer is down. Can be used to style them differently from selection handles.
 
 
 ## <a name="appendix"></a>Appendix
@@ -575,6 +585,73 @@ function moveMarginIndicator(event) {
 container.addEventListener('hh:selectionchange', moveMarginIndicator);
 ```
 
+#### Note editor
+
+`setActiveAppearance()` keeps a highlight looking active while the user works somewhere else, such as in a note editor. The app decides when the active appearance starts and ends. See [Demo 4: Notes](https://samuelbradshaw.github.io/highlight-helper-js/demo.html#notes) for a full example.
+
+```html
+<form id="note-editor" hidden>
+  <label for="note-text">Note for <q id="note-quote"></q></label>
+  <textarea id="note-text"></textarea>
+  <button type="submit">Done</button>
+</form>
+```
+
+```javascript
+const noteEditor = document.getElementById('note-editor');
+const noteText = document.getElementById('note-text');
+let editingHighlightId = null;
+
+function openNoteEditor(highlightId) {
+  editingHighlightId = highlightId;
+  document.getElementById('note-quote').textContent = highlighter.getHighlightInfo([highlightId])[0].rangeText;
+  noteText.value = notes.get(highlightId) ?? '';
+
+  // Clear the text selection, then show the highlight as active while the user types
+  highlighter.deactivateHighlights();
+  highlighter.setActiveAppearance(highlightId);
+  noteEditor.hidden = false;
+  noteText.focus();
+}
+
+function closeNoteEditor() {
+  if (!editingHighlightId) return;
+  notes.set(editingHighlightId, noteText.value);
+  // The active appearance isn't cleared automatically, so clear it when the related UI closes
+  highlighter.setActiveAppearance(null);
+  editingHighlightId = null;
+  noteEditor.hidden = true;
+}
+
+// Open the note for a tapped highlight. Tapping away doesn't clear the active appearance, so close the editor.
+container.addEventListener('hh:tap', (event) => {
+  if (event.detail.highlights.length > 0) openNoteEditor(event.detail.highlights[0].highlightId);
+  else if (event.detail.targetCount === 0) closeNoteEditor();
+});
+noteEditor.addEventListener('submit', (event) => { event.preventDefault(); closeNoteEditor(); });
+noteEditor.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeNoteEditor(); });
+
+// Grabbing a drag handle activates the highlight (and blurs the editor). When the user returns to the editor, deactivate the highlight so the active appearance takes over again.
+noteEditor.addEventListener('focusin', () => {
+  if (highlighter.getActiveHighlightId()) highlighter.deactivateHighlights();
+});
+
+// Removing the highlight clears the active appearance, but the editor needs to close too
+container.addEventListener('hh:highlightremove', (event) => {
+  if (event.detail.highlightId === editingHighlightId) {
+    editingHighlightId = null;
+    noteEditor.hidden = true;
+  }
+});
+```
+
+Tips:
+- Make the active style clearly different from the regular style (the default `fill` style only changes the opacity). Users may not notice a subtle change while they're looking at the editor.
+- Grabbing a drag handle blurs the editor and activates the highlight, which sends `hh:highlightactivate`. If your app shows a highlight menu on that event, skip it while the editor is open. The highlight stays active (even if the user clicks back into the editor) until it's deactivated, so deactivate it when the editor gets focus, as above.
+- On touch devices, focusing the editor may show the on-screen keyboard and resize the viewport. Scroll the highlight into view if needed, so the user can see both.
+- The active appearance is only visual. Label the editor with the highlighted text (as above), so screen reader users know which highlight the note belongs to.
+- When a note is stored in the highlight's `variables`, pass the highlight's bounds (`startParagraphId`, `startParagraphOffset`, `endParagraphId`, `endParagraphOffset`) to `createOrUpdateHighlight()` too. Otherwise, an inactive highlight is updated from the current text selection, or not at all if there isn't one.
+
 #### Keyboard shortcut for deleting a highlight
 
 ```javascript
@@ -583,7 +660,8 @@ function removeHighlight(event) {
   highlighter.removeHighlights([activeHighlightId]);
 }
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Backspace') removeHighlight(event);
+  // Don't delete a highlight while the user is typing in a form field
+  if (event.key === 'Backspace' && highlighter.getActiveHighlightId() && !event.target.closest('input, textarea, [contenteditable]')) removeHighlight(event);
 });
 ```
 

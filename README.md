@@ -122,7 +122,7 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 - **loadHighlights(highlights)** – Load a set of highlights. If highlights are already loaded, this method will diff for changes and replace the loaded highlights. Parameters:
     - **highlights** – Array of [highlight objects](#highlight-objects). Each highlight should have a `highlightId`, and one or more other attributes. Omitted or invalid properties will fall back to previous or default values.
 - **createOrUpdateHighlight(properties, draw = true, activate = true)** – Create and load a new highlight, or update an existing highlight. Return value: updated highlight object. Parameters:
-    - **properties** – Object with one or more [highlight object](#highlight-objects) properties. When updating an existing highlight, only the `highlightId` and properties that changed need to be provided. If a highlight ID isn't provided, HighlightHelper.js will update the currently-active highlight or create a new highlight with a default ID.
+    - **properties** – Object with one or more [highlight object](#highlight-objects) properties. When updating an existing highlight, only the `highlightId` and properties that changed need to be provided. If a highlight ID isn't provided, HighlightHelper.js will update the currently-active highlight or create a new highlight with a default ID. New highlights and the active highlight use the text selection for their range, unless a range is provided. Other highlights keep their range.
     - **draw** – Boolean. Indicates if the highlight should be drawn after loading. Default: `true`.
     - **activate** – Boolean. Indicates if the highlight should be activated after loading. Default: `true`.
 - **drawHighlights(highlightIds = all)** – Draw or redraw highlights. In most cases, HighlightHelper.js will draw highlights automatically, but a manual redraw can be triggered if needed. Parameters:
@@ -650,7 +650,6 @@ Tips:
 - Grabbing a drag handle blurs the editor and activates the highlight, which sends `hh:highlightactivate`. If your app shows a highlight menu on that event, skip it while the editor is open. The highlight stays active (even if the user clicks back into the editor) until it's deactivated, so deactivate it when the editor gets focus, as above.
 - On touch devices, focusing the editor may show the on-screen keyboard and resize the viewport. Scroll the highlight into view if needed, so the user can see both.
 - The active appearance is only visual. Label the editor with the highlighted text (as above), so screen reader users know which highlight the note belongs to.
-- When a note is stored in the highlight's `variables`, pass the highlight's bounds (`startParagraphId`, `startParagraphOffset`, `endParagraphId`, `endParagraphOffset`) to `createOrUpdateHighlight()` too. Otherwise, an inactive highlight is updated from the current text selection, or not at all if there isn't one.
 
 #### Keyboard shortcut for deleting a highlight
 

@@ -291,7 +291,8 @@
         }
         document.getElementById('remove').addEventListener('click', removeHighlight);
         document.addEventListener('keydown', (event) => {
-          if (event.key === 'Backspace') removeHighlight(event);
+          // Don't delete a highlight while the user is typing in a form field (such as the note editor in Demo 4)
+          if (event.key === 'Backspace' && highlighter.getActiveHighlightId() && !event.target.closest('input, textarea, [contenteditable]')) removeHighlight(event);
         });
 
         // Add an event listener for selection change (used for live highlighting)
@@ -879,6 +880,226 @@
           [data-hh-wrapper="comment"] .popup { right: 0; }
           [data-hh-wrapper="spelling-suggestion"] .popup {
             bottom: 1.2em; left: -0.4em;
+          }
+        }
+      </style>
+    </section>
+
+    <section id="notes">
+      <h2>Demo 4: Notes</h2>
+      <div class="layout">
+        <div class="container">
+          <p id="notes-p1">Tap a highlight to open its note. While you type, the highlight keeps its active look, so it's clear which text the note belongs to. Drag a handle to resize the highlight without closing the note.</p>
+          <p id="notes-p2">To add a note, select some text and choose “Add note.” Tap empty space in the text, press Escape, or choose “Done” to close the note editor.</p>
+          <p id="notes-p3">Notes can also be opened from the list. The list is outside the highlighted text, so this shows how a highlight can look active while focus is somewhere else on the page.</p>
+        </div>
+        <aside class="notes-panel" data-hh-ignore="">
+          <button type="button" class="add-note" disabled>Add note</button>
+          <form class="note-editor" hidden>
+            <label for="note-text">Note for <q class="note-quote"></q></label>
+            <textarea id="note-text" rows="4"></textarea>
+            <div class="note-buttons">
+              <button type="submit">Done</button>
+              <button type="button" class="delete-note">Delete</button>
+            </div>
+          </form>
+          <ul class="notes-list"></ul>
+        </aside>
+      </div>
+      <p class="explanation">This demo uses <code>setActiveAppearance()</code> to show which highlight a note belongs to. The app clears the active appearance when the editor closes or the highlight is removed.</p>
+
+      <script type="module">
+        // Notes are app data, stored separately from the highlights
+        const notes = new Map([
+          ['note-1', 'The active appearance stays while you type here.'],
+          ['note-2', 'Try dragging a handle on the highlight.'],
+        ]);
+        const highlights = [
+          {
+            highlightId: 'note-1',
+            color: 'yellow', style: 'fill',
+            startParagraphId: 'notes-p1', startParagraphOffset: 64,
+            endParagraphId: 'notes-p1', endParagraphOffset: 85,
+          },
+          {
+            highlightId: 'note-2',
+            color: 'blue', style: 'underline',
+            startParagraphId: 'notes-p3', startParagraphOffset: 116,
+            endParagraphId: 'notes-p3', endParagraphOffset: 157,
+          },
+        ];
+
+        const container = document.querySelector('#notes .container');
+        const highlighter = new Highlighter('#notes .container', '[id]');
+        highlighter.loadHighlights(highlights);
+
+        const addNoteButton = document.querySelector('#notes .add-note');
+        const noteEditor = document.querySelector('#notes .note-editor');
+        const noteQuote = document.querySelector('#notes .note-quote');
+        const noteText = document.querySelector('#notes .note-editor textarea');
+        const notesList = document.querySelector('#notes .notes-list');
+        let editingHighlightId = null;
+
+        function openNoteEditor(highlightId) {
+          const highlight = highlighter.getHighlightInfo([highlightId])[0];
+          if (!highlight) return;
+          if (editingHighlightId && editingHighlightId !== highlightId) saveNote();
+          editingHighlightId = highlightId;
+
+          // Clear the text selection, then show the highlight as active while the user types somewhere else
+          highlighter.deactivateHighlights();
+          highlighter.setActiveAppearance(highlightId);
+
+          noteQuote.textContent = highlight.rangeText;
+          noteText.value = notes.get(highlightId) ?? '';
+          noteEditor.hidden = false;
+          noteText.focus();
+          renderNotesList();
+        }
+
+        function saveNote() {
+          if (!editingHighlightId) return;
+          const text = noteText.value.trim();
+          if (text) notes.set(editingHighlightId, text);
+          else notes.delete(editingHighlightId);
+        }
+
+        function closeNoteEditor() {
+          if (!editingHighlightId) return;
+          saveNote();
+          // The active appearance isn't cleared automatically, so clear it when the editor closes
+          highlighter.setActiveAppearance(null);
+          editingHighlightId = null;
+          noteEditor.hidden = true;
+          renderNotesList();
+        }
+
+        function renderNotesList() {
+          const colorDefs = highlighter.getOptions().colorDefs;
+          notesList.replaceChildren(...highlighter.getHighlightInfo().map((highlight) => {
+            const item = document.createElement('li');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.style.setProperty('--hh-color', colorDefs[highlight.color]);
+            if (highlight.highlightId === editingHighlightId) button.setAttribute('aria-current', 'true');
+            const quote = document.createElement('q');
+            quote.textContent = highlight.rangeText;
+            const note = document.createElement('span');
+            note.textContent = notes.get(highlight.highlightId) ?? 'No note';
+            button.append(quote, note);
+            button.addEventListener('click', () => openNoteEditor(highlight.highlightId));
+            item.append(button);
+            return item;
+          }));
+        }
+        container.addEventListener('hh:highlightsload', renderNotesList);
+
+        // Tap a highlight to open its note, or tap empty space to close the note editor
+        container.addEventListener('hh:tap', (event) => {
+          // Ignore taps that dismiss a plain text selection. (After a drag handle is used, the selection is the active highlight, so the tap should still count.)
+          if (event.detail.isLongPress || (event.detail.selectionType === 'Range' && !event.detail.activeHighlightId)) return;
+          if (event.detail.highlights.length > 0) {
+            openNoteEditor(event.detail.highlights[0].highlightId);
+          } else if (event.detail.targetCount === 0) {
+            closeNoteEditor();
+          }
+        });
+
+        // Create a highlight from the text selection and open a note for it
+        container.addEventListener('hh:selectionchange', (event) => {
+          addNoteButton.disabled = !(event.detail.selection.type === 'Range' && event.detail.rangeText && !event.detail.activeHighlightId);
+        });
+        addNoteButton.addEventListener('click', () => {
+          const highlight = highlighter.createOrUpdateHighlight({ color: 'green', style: 'fill' });
+          if (highlight) openNoteEditor(highlight.highlightId);
+        });
+
+        // Grabbing a drag handle activates the highlight (and blurs the editor). When the user returns to the editor, deactivate the highlight so the active appearance takes over again.
+        noteEditor.addEventListener('focusin', () => {
+          if (highlighter.getActiveHighlightId()) highlighter.deactivateHighlights();
+        });
+
+        // Close the editor with Escape or Done, or delete the highlight and its note
+        noteEditor.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') closeNoteEditor();
+        });
+        noteEditor.addEventListener('submit', (event) => {
+          event.preventDefault();
+          closeNoteEditor();
+        });
+        document.querySelector('#notes .delete-note').addEventListener('click', () => {
+          highlighter.removeHighlights([editingHighlightId]);
+        });
+
+        // Keep the editor and list in sync when a highlight is resized or removed
+        container.addEventListener('hh:highlightupdate', (event) => {
+          if (event.detail.highlight.highlightId === editingHighlightId) noteQuote.textContent = event.detail.highlight.rangeText;
+          renderNotesList();
+        });
+        container.addEventListener('hh:highlightremove', (event) => {
+          notes.delete(event.detail.highlightId);
+          if (event.detail.highlightId === editingHighlightId) {
+            editingHighlightId = null;
+            noteEditor.hidden = true;
+          }
+          renderNotesList();
+        });
+      </script>
+      <style>
+        @scope {
+          .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(12em, 18em);
+            gap: 1.5em;
+          }
+          .container { padding-right: 1em; }
+          .explanation { font-style: italic; }
+          .notes-panel {
+            font-family: sans-serif;
+            font-size: 0.8em;
+            -webkit-user-select: none;
+            user-select: none;
+          }
+          .note-editor {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4em;
+            margin-top: 1em;
+            padding: 0.6em;
+            border: 1px solid var(--dark-gray);
+          }
+          .note-editor[hidden] { display: none; }
+          .note-editor label { display: block; }
+          .note-editor textarea {
+            font: inherit;
+            -webkit-user-select: text;
+            user-select: text;
+          }
+          .note-buttons { display: flex; gap: 0.6em; }
+          .notes-list {
+            list-style: none;
+            margin: 1em 0 0; padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4em;
+          }
+          .notes-list button {
+            all: unset;
+            display: flex;
+            flex-direction: column;
+            gap: 0.2em;
+            box-sizing: border-box;
+            width: 100%;
+            padding: 0.4em 0.6em;
+            border-inline-start: 4px solid var(--hh-color);
+            background-color: var(--light-gray);
+            cursor: pointer;
+          }
+          .notes-list button:focus-visible { outline: 2px solid var(--dark-gray); }
+          .notes-list button[aria-current] { background-color: hsl(from var(--hh-color) h s l / 30%); }
+          .notes-list span { color: var(--dark-gray); }
+          @media (width <= 600px) {
+            .layout { grid-template-columns: minmax(0, 1fr); }
           }
         }
       </style>

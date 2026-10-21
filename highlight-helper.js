@@ -178,7 +178,8 @@
         fill: transparent;
         stroke: none;
       }
-      mark[data-hh-highlight-id] {
+      mark[data-hh-highlight-id]:where(${this._containerSelector} *) {
+        /* Scoped to the container, so another Highlighter instance's base rule can't override this instance's highlight styles */
         print-color-adjust: exact;
         background-color: transparent;
         color: inherit;
@@ -1171,14 +1172,14 @@
         if (resolvedMode === 'highlight-api') {
           const colorString = this._options.colorDefs[highlightInfo.color];
           cssText += `
-            ${this._containerSelector} ::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
-            ${this._containerSelector} :is(${this._paragraphSelector})::highlight(${highlightInfo.escapedHighlightId}),
-            ${this._containerSelector} :is(${this._paragraphSelector}) *::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }
-            ${this._containerSelector} :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}),
-            ${this._containerSelector} :is(${this._paragraphSelector}) :is(rt, img)::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }
+            :where(${this._containerSelector} *)::highlight(${highlightInfo.escapedHighlightId}) { all: unset; }
+            :where(${this._containerSelector} :is(${this._paragraphSelector}))::highlight(${highlightInfo.escapedHighlightId}),
+            :where(${this._containerSelector} :is(${this._paragraphSelector}) *)::highlight(${highlightInfo.escapedHighlightId}) { --hh-color: ${colorString}; ${styleString} }
+            :where(${this._containerSelector} :is(rt, img))::highlight(${highlightInfo.escapedHighlightId}),
+            :where(${this._containerSelector} :is(${this._paragraphSelector}) :is(rt, img))::highlight(${highlightInfo.escapedHighlightId}) { color: inherit; background-color: transparent; }
           `;
         } else {
-          cssText += `mark[data-hh-highlight-id=${highlightInfo.escapedHighlightId}][data-hh-style] { ${styleString} }\n`;
+          cssText += `mark[data-hh-style]:where([data-hh-highlight-id=${highlightInfo.escapedHighlightId}]) { ${styleString} }\n`;
         }
       }
     }
@@ -1305,7 +1306,7 @@
       // No active highlight (show the regular selection UI)
       } else {
         this._selectionStylesheet.replaceSync(`
-          ${this._containerSelector} ::selection { background-color: Highlight; color: inherit; }
+          :where(${this._containerSelector} *)::selection { background-color: Highlight; color: inherit; }
           ${this._containerSelector} rt::selection, ${this._containerSelector} img::selection { background-color: transparent; }
         `);
       }
@@ -1529,7 +1530,7 @@
     const options = this._options;
     let css = '';
     for (const color of Object.keys(options.colorDefs)) {
-      css += `${this._containerSelector} [data-hh-color="${color}"] { --hh-color: ${options.colorDefs[color]}; }\n`;
+      css += `:where(${this._containerSelector} [data-hh-color="${color}"]) { --hh-color: ${options.colorDefs[color]}; }\n`;
     }
     this._colorStylesheet.replaceSync(css);
   }

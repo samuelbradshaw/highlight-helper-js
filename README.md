@@ -165,6 +165,7 @@ HighlightHelper.js sends [custom events](https://developer.mozilla.org/en-US/doc
 - **hh:highlightactivate** – Sent when a highlight is activated.
 - **hh:highlightdeactivate** – Sent when a highlight is deactivated.
 - **hh:highlightremove** – Sent when a highlight is removed.
+- **hh:layoutchange** – Sent when highlights redraw because of container size changes.
 
 Each event has a `detail` property that provides additional information. For example, the `hh:tap` event could be used to activate a highlight:
 

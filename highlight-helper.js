@@ -886,8 +886,18 @@
       return;
     }
     const selection = globalThis.getSelection();
-    const highlightRange = this._getCorrectedRangeObj(highlightId);
+
+    // Switch the active highlight before redrawing the previously active one, so there's no in-between state with no active highlight (an hh:selectionchange event in that state could lead an app to create a new highlight over the previous one)
+    const previousHighlight = this._highlightsById[this._activeHighlightId];
     this._activeHighlightId = highlightId;
+
+    // Redraw the previously active highlight. In mark-elements mode, this changes the DOM, so get the new highlight's range afterward.
+    if (previousHighlight) this.drawHighlights([previousHighlight.highlightId]);
+    const highlightRange = this._getCorrectedRangeObj(highlightId);
+
+    // Save the highlight's range as the previous selection range. Otherwise, a pending selectionchange event (such as one from the tap that led to this highlight being activated) is compared against a stale range, which can deactivate the highlight or restore a different selection range.
+    this._previousSelectionRange = highlightRange.cloneRange();
+    this._previousSelectionDirection = 'forward';
 
     // Update the selection range if needed
     // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
@@ -898,6 +908,7 @@
     }
 
     this._updateSelectionState();
+    if (previousHighlight) this._container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: previousHighlight } }));
     this._container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
 

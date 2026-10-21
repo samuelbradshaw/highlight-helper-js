@@ -536,9 +536,15 @@
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
     if (selection.type === 'Range') adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0));
-    if ((properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
+    const hasBoundsProperties = ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset'].some(key => properties[key] != null);
+    // New highlights and the active highlight take their bounds from the text selection. Other highlights keep their saved bounds, unless new bounds are provided (otherwise, updating an inactive highlight would move it to the text selection, or do nothing if there isn't one).
+    const useSelectionBounds = !hasBoundsProperties && adjustedSelectionRange && !adjustedSelectionRange.collapsed && (isNewHighlight || highlightId === this._activeHighlightId);
+    if (!isNewHighlight && !hasBoundsProperties && !useSelectionBounds) {
+      // Only appearance properties changed, so reuse the saved range instead of recalculating it
+      highlightRange = this._getCorrectedRangeObj(highlightId);
+    } else if (hasBoundsProperties || useSelectionBounds) {
       let startNode, startOffset, endNode, endOffset;
-      if (properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) {
+      if (!useSelectionBounds) {
         startParagraphId = properties.startParagraphId ?? oldHighlightInfo?.startParagraphId;
         startParagraphOffset = Number.parseInt(properties.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
         endParagraphId = properties.endParagraphId ?? oldHighlightInfo?.endParagraphId;
@@ -546,7 +552,7 @@
         if (!this._paragraphIds.includes(startParagraphId) || !this._paragraphIds.includes(endParagraphId)) return;
         ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
         ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
-      } else if (adjustedSelectionRange) {
+      } else {
         startNode = adjustedSelectionRange.startContainer;
         startOffset = adjustedSelectionRange.startOffset;
         if (this._shouldSkipTextNode(startNode)) {

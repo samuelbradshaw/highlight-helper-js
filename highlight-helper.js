@@ -422,6 +422,7 @@
           if (this._previousSelectionRange) this._updateSelectionState();
           previousWidth = width;
           previousHeight = height;
+          this._container.dispatchEvent(new CustomEvent('hh:layoutchange', { detail: { width, height } }));
         }
       }
     }, Math.floor(Object.keys(this._highlightsById).length / 20)));

@@ -536,9 +536,15 @@
     let startParagraphId, startParagraphOffset, endParagraphId, endParagraphOffset;
     const selection = this._getRestoredSelectionOrCaret(globalThis.getSelection());
     if (selection.type === 'Range') adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0));
-    if ((properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) || (adjustedSelectionRange && !adjustedSelectionRange.collapsed)) {
+    const hasBoundsProperties = ['startParagraphId', 'startParagraphOffset', 'endParagraphId', 'endParagraphOffset'].some(key => properties[key] != null);
+    // New highlights and the active highlight take their bounds from the text selection. Other highlights keep their saved bounds, unless new bounds are provided (otherwise, updating an inactive highlight would move it to the text selection, or do nothing if there isn't one).
+    const useSelectionBounds = !hasBoundsProperties && adjustedSelectionRange && !adjustedSelectionRange.collapsed && (isNewHighlight || highlightId === this._activeHighlightId);
+    if (!isNewHighlight && !hasBoundsProperties && !useSelectionBounds) {
+      // Only appearance properties changed, so reuse the saved range instead of recalculating it
+      highlightRange = this._getCorrectedRangeObj(highlightId);
+    } else if (hasBoundsProperties || useSelectionBounds) {
       let startNode, startOffset, endNode, endOffset;
-      if (properties.startParagraphId ?? properties.startParagraphOffset ?? properties.endParagraphId ?? properties.endParagraphOffset != null) {
+      if (!useSelectionBounds) {
         startParagraphId = properties.startParagraphId ?? oldHighlightInfo?.startParagraphId;
         startParagraphOffset = Number.parseInt(properties.startParagraphOffset ?? oldHighlightInfo?.startParagraphOffset);
         endParagraphId = properties.endParagraphId ?? oldHighlightInfo?.endParagraphId;
@@ -546,7 +552,7 @@
         if (!this._paragraphIds.includes(startParagraphId) || !this._paragraphIds.includes(endParagraphId)) return;
         ([ startNode, startOffset ] = this._getTextNodeAndOffset(document.getElementById(startParagraphId), startParagraphOffset, 'start'));
         ([ endNode, endOffset ] = this._getTextNodeAndOffset(document.getElementById(endParagraphId), endParagraphOffset, 'end'));
-      } else if (adjustedSelectionRange) {
+      } else {
         startNode = adjustedSelectionRange.startContainer;
         startOffset = adjustedSelectionRange.startOffset;
         if (this._shouldSkipTextNode(startNode)) {
@@ -886,8 +892,18 @@
       return;
     }
     const selection = globalThis.getSelection();
-    const highlightRange = this._getCorrectedRangeObj(highlightId);
+
+    // Switch the active highlight before redrawing the previously active one, so there's no in-between state with no active highlight (an hh:selectionchange event in that state could lead an app to create a new highlight over the previous one)
+    const previousHighlight = this._highlightsById[this._activeHighlightId];
     this._activeHighlightId = highlightId;
+
+    // Redraw the previously active highlight. In mark-elements mode, this changes the DOM, so get the new highlight's range afterward.
+    if (previousHighlight) this.drawHighlights([previousHighlight.highlightId]);
+    const highlightRange = this._getCorrectedRangeObj(highlightId);
+
+    // Save the highlight's range as the previous selection range. Otherwise, a pending selectionchange event (such as one from the tap that led to this highlight being activated) is compared against a stale range, which can deactivate the highlight or restore a different selection range.
+    this._previousSelectionRange = highlightRange.cloneRange();
+    this._previousSelectionDirection = 'forward';
 
     // Update the selection range if needed
     // In Android Chrome, sometimes selection handles don't show when a selection is updated programmatically, so it's best to only update the selection if needed.
@@ -898,6 +914,7 @@
     }
 
     this._updateSelectionState();
+    if (previousHighlight) this._container.dispatchEvent(new CustomEvent('hh:highlightdeactivate', { detail: { highlight: previousHighlight } }));
     this._container.dispatchEvent(new CustomEvent('hh:highlightactivate', { detail: { highlight: highlightToActivate } }));
   }
 

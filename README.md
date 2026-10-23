@@ -452,7 +452,7 @@ mark[data-hh-highlight-id][data-hh-style="fill"][data-hh-position~="end"] {
   border-bottom-right-radius: 0.25em;
   margin-right: -0.13em; padding-right: 0.13em;
 }
-mark[data-hh-highlight-id][data-hh-style="fill"] + mark[hh-highlight-id][data-hh-style="fill"] {
+mark[data-hh-highlight-id][data-hh-style="fill"] + mark[data-hh-highlight-id][data-hh-style="fill"] {
   margin-left: 0; padding-left: 0;
 }
 ```

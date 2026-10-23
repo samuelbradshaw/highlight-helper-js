@@ -190,10 +190,10 @@ Highlight objects have the following properties that can be edited using the cre
 - **wrapper** – String. Highlight wrapper (key from the `wrapperDefs` option). Example: `{ startLabel: 'Start', }`. Default: `null`.
 - **variables** – Object. Style and wrapper variables. Values are substituted into `{key}` placeholders in style and wrapper templates. Default: `null`.
 - **readOnly** – Boolean. Indicates whether the highlight should be read-only. Default: `false`.
-- **startParagraphId** – String. Paragraph ID where the highlight starts. Example: `p1`. Default based on selected text.
-- **startParagraphOffset** – Integer. Character offset* where the highlight starts, relative to the beginning of the paragraph. Example: `0`. Default based on selected text.
-- **endParagraphId** – String. Paragraph ID where the highlight ends. Example: `p1`. Default based on selected text.
-- **endParagraphOffset** – Integer. Character offset* where the highlight ends (exclusive), relative to the beginning of the paragraph. Example: `27`. Default based on selected text.
+- **startParagraphId** – String. Paragraph ID where the highlight starts. Example: `p1`. Default: based on selected text for new highlights and the active highlight; otherwise the highlight's current value.
+- **startParagraphOffset** – Integer. Character offset* where the highlight starts, relative to the beginning of the paragraph. Example: `0`. Default: based on selected text for new highlights and the active highlight; otherwise the highlight's current value.
+- **endParagraphId** – String. Paragraph ID where the highlight ends. Example: `p1`. Default: based on selected text for new highlights and the active highlight; otherwise the highlight's current value.
+- **endParagraphOffset** – Integer. Character offset* where the highlight ends (exclusive), relative to the beginning of the paragraph. Example: `27`. Default: based on selected text for new highlights and the active highlight; otherwise the highlight's current value.
 
 These additional properties are added/updated automatically:
 
@@ -457,26 +457,6 @@ mark[data-hh-highlight-id][data-hh-style="fill"] + mark[data-hh-highlight-id][da
 }
 ```
 
-#### Keeping wrapper on same line as highlight
-
-```css
-[data-hh-wrapper="smile"] {
-  white-space: nowrap;
-}
-```
-
-```javascript
-const options = {
-  wrapperDefs: {
-    'smile': {
-      start: '<span>[:)]</span>&NoBreak;',
-      end: '&NoBreak;<span>[(:]</span>',
-    },
-  },
-};
-highlighter.setOptions(options);
-```
-
 #### Inserting dynamic elements
 
 ```html
@@ -561,6 +541,26 @@ container.addEventListener('hh:hover', (event) => {
 });
 ```
 
+#### Keeping wrapper on same line as highlight
+
+```css
+[data-hh-wrapper="smile"] {
+  white-space: nowrap;
+}
+```
+
+```javascript
+const options = {
+  wrapperDefs: {
+    'smile': {
+      start: '<span>[:)]</span>&NoBreak;',
+      end: '&NoBreak;<span>[(:]</span>',
+    },
+  },
+};
+highlighter.setOptions(options);
+```
+
 #### Moving wrappers during highlight resize
 
 ```javascript
@@ -574,6 +574,74 @@ function moveMarginIndicator(event) {
   }
 }
 container.addEventListener('hh:selectionchange', moveMarginIndicator);
+```
+
+#### Reacting to layout changes
+
+```javascript
+container.addEventListener('hh:layoutchange', (event) => {
+  const highlightBottoms = new Set();
+  for (const highlight of highlighter.getHighlightInfo()) {
+    for (const lineRect of highlight.rangeLineRects ?? []) {
+      highlightBottoms.add(Math.round(lineRect.bottom));
+    }
+  }
+  const numHighlightedLines = highlightBottoms.size;
+  console.log(`Container is ${event.detail.width}×${event.detail.height}px, with ${numHighlightedLines} highlighted lines`);
+});
+```
+
+#### Making an inactive highlight look active
+
+```html
+<div class="container">
+  <p id="p1">…</p>
+  <!-- data-hh-ignore keeps the note field from being highlighted -->
+  <textarea class="note-editor" data-hh-ignore placeholder="Add a note…"></textarea>
+</div>
+```
+
+```javascript
+const noteEditor = container.querySelector('.note-editor');
+let pseudoActiveId = null;
+
+// Set CSS styles for the pseudo-active highlight
+const pseudoActiveStyles = new CSSStyleSheet();
+document.adoptedStyleSheets = [...document.adoptedStyleSheets, pseudoActiveStyles];
+function setPseudoActive(highlightId) {
+  pseudoActiveId = highlightId;
+  if (!highlightId) return pseudoActiveStyles.replaceSync('');
+  const { color, style } = highlighter.getHighlightInfo([highlightId])[0];
+  const { colorDefs, styleDefs } = highlighter.getOptions();
+  pseudoActiveStyles.replaceSync(`
+    .container { --hh-color: ${colorDefs[color]} !important; } /* Drag handle color (overrides the container's inline --hh-color) */
+    mark[data-hh-highlight-id="${CSS.escape(highlightId)}"][data-hh-style] { all: unset; ${styleDefs[style].cssActive ?? styleDefs[style].css} }
+    .container [data-hh-handle] { visibility: visible !important; }
+  `);
+}
+
+// Switch to the pseudo-active style when the note field gets focus, and switch back when focus moves away
+document.addEventListener('focusin', (event) => {
+  const highlightId = highlighter.getActiveHighlightId();
+  const isInEditor = noteEditor.contains(event.target);
+  if (highlightId && isInEditor) {
+    highlighter.deactivateHighlights();
+    setPseudoActive(highlightId);
+  } else if (!isInEditor && !event.target.contains(noteEditor)) {
+    setPseudoActive(null);
+  }
+});
+
+// Clear the pseudo-active style when clicking away, or reactivate the highlight if a drag handle is clicked
+document.addEventListener('pointerdown', (event) => {
+  const highlightId = pseudoActiveId;
+  if (!highlightId || noteEditor.contains(event.target)) return;
+  setPseudoActive(null);
+  if (event.target.closest('[data-hh-handle]')) {
+    document.activeElement.blur();
+    highlighter.activateHighlight(highlightId);
+  }
+}, { capture: true });
 ```
 
 #### Keyboard shortcut for deleting a highlight

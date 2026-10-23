@@ -613,7 +613,7 @@ document.getElementById('copy-html').addEventListener('click', (event) => {
 @media print {
   [data-hh-additions] { display: none; } /* Hide SVG highlights and custom drag handles */
   [data-hh-wrapper] { display: none; } /* Hide wrappers */
-  mark[data-hh-highlight-id] { all: unset; } /* Hide mark-element highlights */
+  mark[data-hh-highlight-id][data-hh-style] { all: unset; } /* Hide mark-element highlights */
 }
 ```
 

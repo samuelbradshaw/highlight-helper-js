@@ -398,6 +398,7 @@
     // Hyperlink click (for each hyperlink in container)
     for (const hyperlinkElement of this._hyperlinkElements) {
       hyperlinkElement.addEventListener('click', (event) => {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         this.deactivateHighlights();
         if (!this._allowHyperlinkClick) event.preventDefault();
       }, { signal: this._controller.signal });

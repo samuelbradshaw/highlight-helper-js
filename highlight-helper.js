@@ -258,7 +258,8 @@
 
     // Pointer down in container
     const respondToPointerDown = (event) => {
-      const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+      // A touch while another finger is already down isn't primary
+      const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isPrimary === false);
       if (!isSecondaryClick) this._container.dataset.hhPointerDown = 'true';
       this._pointerType = event.pointerType;
 
@@ -285,6 +286,9 @@
         return event.preventDefault();
       }
 
+      // Return if it's not a regular click
+      if (isSecondaryClick) return;
+
       // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
       // A second tap only counts as a double-tap if it's within 100 pixels of the first (the double-tap distance Android uses). Mouse double-clicks are handled in the mousedown event instead.
       if (event.pointerType !== 'mouse') {
@@ -298,9 +302,6 @@
         }
       }
 
-      // Return if it's not a regular click
-      if (isSecondaryClick) return;
-
       // Trigger a long-press event if the user doesn't lift their finger within the specified time
       if (options.longPressTimeout) this._longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
 
@@ -312,7 +313,8 @@
     // The browser counts clicks using the operating system's double-click time and distance. The count is only available in mouse events in some browsers (not pointer events).
     const respondToMouseDown = (event) => {
       // Deactivate highlights and cancel the tap on double-click (see double-tap comment in pointerdown event)
-      if (this._pointerType === 'mouse' && event.detail > 1) {
+      const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
+      if (this._pointerType === 'mouse' && !isSecondaryClick && event.detail > 1) {
         this._tapResult = null;
         this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
         this.deactivateHighlights();

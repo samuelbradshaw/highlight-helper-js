@@ -286,10 +286,16 @@
       }
 
       // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
-      if (this._doubleTapTimeoutId) {
-        return this.deactivateHighlights();
-      } else {
-        this._doubleTapTimeoutId = setTimeout(() => this._doubleTapTimeoutId = clearTimeout(this._doubleTapTimeoutId), 500);
+      // A second tap only counts as a double-tap if it's within 100 pixels of the first (the double-tap distance Android uses). Mouse double-clicks are handled in the mousedown event instead.
+      if (event.pointerType !== 'mouse') {
+        if (this._doubleTapTimeoutId && Math.hypot(event.clientX - this._doubleTapX, event.clientY - this._doubleTapY) <= 100) {
+          return this.deactivateHighlights();
+        } else {
+          clearTimeout(this._doubleTapTimeoutId);
+          this._doubleTapTimeoutId = setTimeout(() => this._doubleTapTimeoutId = clearTimeout(this._doubleTapTimeoutId), 500);
+          this._doubleTapX = event.clientX;
+          this._doubleTapY = event.clientY;
+        }
       }
 
       // Return if it's not a regular click
@@ -301,6 +307,18 @@
       this._tapResult = this._checkForTapTargets(event);
     }
     this._container.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
+
+    // Mouse down in container
+    // The browser counts clicks using the operating system's double-click time and distance. The count is only available in mouse events in some browsers (not pointer events).
+    const respondToMouseDown = (event) => {
+      // Deactivate highlights and cancel the tap on double-click (see double-tap comment in pointerdown event)
+      if (this._pointerType === 'mouse' && event.detail > 1) {
+        this._tapResult = null;
+        this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
+        this.deactivateHighlights();
+      }
+    }
+    this._container.addEventListener('mousedown', (event) => respondToMouseDown(event), { signal: this._controller.signal });
 
     // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
     const respondToHandleDrag = (event) => {

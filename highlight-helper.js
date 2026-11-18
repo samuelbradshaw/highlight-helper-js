@@ -262,6 +262,9 @@
       if (!isSecondaryClick) this._container.dataset.hhPointerDown = 'true';
       this._pointerType = event.pointerType;
 
+      // Save targets where the press started, so that a hyperlink click is handled the same way as the hh:tap event
+      this._pointerDownTargets = this.getTargetsAtPoint(event.clientX, event.clientY);
+
       // Pointer down on a selection handle
       if (event.target?.closest('[data-hh-handle]')) {
         if (!isSecondaryClick) {
@@ -401,7 +404,11 @@
       hyperlinkElement.addEventListener('click', (event) => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         this.deactivateHighlights();
-        if (!this._allowHyperlinkClick) event.preventDefault();
+        // Keyboard and screen reader clicks (and activateHyperlink()) have a detail of 0. They target the link directly, so the browser can open it.
+        if (event.detail === 0) return;
+        // If a highlight (or its wrapper) overlaps the link where the press started, the app decides what to do in response to the hh:tap event
+        const targets = this._pointerDownTargets;
+        if (targets?.highlights.length > 0 || targets?.wrappers.length > 0) event.preventDefault();
       }, { signal: this._controller.signal });
     }
 
@@ -923,9 +930,7 @@
   // Activate a link by index
   Highlighter.prototype.activateHyperlink = function (index) {
     this.deactivateHighlights();
-    this._allowHyperlinkClick = true;
     this._hyperlinksByIndex[index].hyperlinkElement.click();
-    this._allowHyperlinkClick = false;
   }
 
   // Deactivate any highlights that are currently active/selected

@@ -233,8 +233,6 @@
               highlighter.activateHighlight(event.detail.highlights[0].highlightId);
             } else if (event.detail.wrappers.length === 1) {
               highlighter.activateHighlight(event.detail.wrappers[0].highlight.highlightId);
-            } else if (event.detail.hyperlinks.length === 1) {
-              highlighter.activateHyperlink(event.detail.hyperlinks[0].index);
             }
           }
         }

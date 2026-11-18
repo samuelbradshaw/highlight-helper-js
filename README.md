@@ -129,7 +129,7 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
     - **highlightIds** – Array of highlight IDs. Default: all highlights.
 - **activateHighlight(highlightId)** – Activate the specified highlight (i.e. enable it for editing). Only one highlight can be active at a time (because it's tied to text selection, and there can only be one text selection on a page). This is usually called in response to an `hh:tap` event. Parameters:
     - **highlightId** – The `highlightId` of the highlight to activate.
-- **activateHyperlink(index)** – Activate the specified hyperlink (i.e. open the link). A link without overlapping highlights will open automatically, but if there are overlaps it will need to be handled manually in response to the `hh:tap` event. Parameters:
+- **activateHyperlink(index)** – Activate the specified hyperlink (i.e. open the link). A link opens automatically when it's clicked, unless a highlight (or its wrapper) overlaps it where the click or tap started. Overlaps need to be handled manually in response to the `hh:tap` event. Keyboard and screen reader clicks always open the link. Parameters:
     - **index** – The 0-based index of the link, relative to other links in the container.
 - **deactivateHighlights(removeSelectionRanges = true, redraw = true)** – Deactivate the active highlight, if there is one. Highlights are deactivated automatically if the user taps away. Parameters:
     - **removeSelectionRanges** – Boolean. Indicates whether text selection should be cleared. Default: `true`.
@@ -481,8 +481,6 @@ function respondToTap(event) {
       highlighter.activateHighlight(event.detail.highlights[0].highlightId);
     } else if (event.detail.wrappers.length === 1) {
       highlighter.activateHighlight(event.detail.wrappers[0].highlight.highlightId);
-    } else if (event.detail.hyperlinks.length === 1) {
-      highlighter.activateHyperlink(event.detail.hyperlinks[0].index);
     }
   }
 }

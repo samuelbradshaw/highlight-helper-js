@@ -419,12 +419,11 @@
     for (const hyperlinkElement of this._hyperlinkElements) {
       hyperlinkElement.addEventListener('click', (event) => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        this.deactivateHighlights();
+        // If a highlight (or its wrapper) overlaps the link where the press started, the app decides what to do in response to the hh:tap event (so a highlight it activated stays active)
         // Keyboard and screen reader clicks (and activateHyperlink()) have a detail of 0. They target the link directly, so the browser can open it.
-        if (event.detail === 0) return;
-        // If a highlight (or its wrapper) overlaps the link where the press started, the app decides what to do in response to the hh:tap event
         const targets = this._pointerDownTargets;
-        if (targets?.highlights.length > 0 || targets?.wrappers.length > 0) event.preventDefault();
+        if (event.detail !== 0 && (targets?.highlights.length > 0 || targets?.wrappers.length > 0)) return event.preventDefault();
+        this.deactivateHighlights();
       }, { signal: this._controller.signal });
     }
 

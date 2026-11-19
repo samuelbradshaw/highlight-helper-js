@@ -258,13 +258,13 @@
 
     // Pointer down in container
     const respondToPointerDown = (event) => {
-      // A touch while another finger is already down isn't primary
-      const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isPrimary === false);
-      if (!isSecondaryClick) this._container.dataset.hhPointerDown = 'true';
+      const isSecondaryClick = _isSecondaryClick(event);
+      if (!isSecondaryClick) {
+        this._container.dataset.hhPointerDown = 'true';
+        // Save targets where the press started, so that a hyperlink click is handled the same way as the hh:tap event
+        this._pointerDownTargets = this.getTargetsAtPoint(event.clientX, event.clientY);
+      }
       this._pointerType = event.pointerType;
-
-      // Save targets where the press started, so that a hyperlink click is handled the same way as the hh:tap event
-      this._pointerDownTargets = this.getTargetsAtPoint(event.clientX, event.clientY);
 
       // Pointer down on a selection handle
       if (event.target?.closest('[data-hh-handle]')) {
@@ -280,7 +280,7 @@
           this._updateSelectionState();
 
           // Check for tap targets so hh:tap can fire if the area around a handle is tapped without dragging (tap result will reset to null if the user starts dragging)
-          this._tapResult = this._checkForTapTargets(event);
+          this._tapResult = this._checkForTapTargets(event, this._pointerDownTargets);
         }
         // Prevent default drag interaction (which would show a thumbnail and drag selected text)
         return event.preventDefault();
@@ -302,16 +302,15 @@
       // Trigger a long-press event if the user doesn't lift their finger within the specified time
       if (options.longPressTimeout) this._longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
 
-      this._tapResult = this._checkForTapTargets(event);
+      this._tapResult = this._checkForTapTargets(event, this._pointerDownTargets);
     }
     this._container.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
 
     // Mouse down in container
-    // The browser counts clicks using the operating system's double-click time and distance. The count is only available in mouse events in some browsers (not pointer events).
+    // Pointer events don't include the click count (detail is 0 per the Pointer Events spec), so use mousedown, which counts clicks using the operating system's double-click time and distance.
     const respondToMouseDown = (event) => {
       // Deactivate highlights and cancel the tap on double-click (see double-tap comment in pointerdown event)
-      const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
-      if (this._pointerType === 'mouse' && !isSecondaryClick && event.detail > 1) {
+      if (this._pointerType === 'mouse' && !_isSecondaryClick(event) && event.detail > 1) {
         this._tapResult = null;
         this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
         this.deactivateHighlights();
@@ -1096,10 +1095,9 @@
 
   /********************** Private Methods **********************/
 
-  // Check if the tap hits any highlights, wrappers, or links
-  Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
+  // Build the hh:tap event detail from the highlights, wrappers, and links where the press started
+  Highlighter.prototype._checkForTapTargets = function (pointerEvent, targets) {
     if (!pointerEvent) return;
-    const targets = this.getTargetsAtPoint(pointerEvent.clientX, pointerEvent.clientY);
     return {
       ...targets,
       isLongPress: null,
@@ -2102,6 +2100,11 @@
   // Check if two ranges are roughly the same
   function _rangesEqual(range1, range2) {
     return range1 && range2 && range1.compareBoundaryPoints(Range.START_TO_START, range2) === 0 && range1.compareBoundaryPoints(Range.END_TO_END, range2) === 0;
+  }
+
+  // Check if a press isn't a regular click or tap: a non-primary button, a modifier key, or a touch while another finger is already down
+  function _isSecondaryClick(event) {
+    return event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isPrimary === false;
   }
 
   // Check if a point is in a DOMRect

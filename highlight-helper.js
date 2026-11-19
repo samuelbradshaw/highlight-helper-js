@@ -258,6 +258,9 @@
 
     // Pointer down in container
     const respondToPointerDown = (event) => {
+      // Ignore a mouse press shortly after a touch. Long-pressing a link in iOS Safari cancels the touch, then sends a mouse press with no pointerup after it.
+      if (event.pointerType === 'mouse' && this._lastTouch && event.timeStamp - this._lastTouch.time < 1000) return;
+
       const isSecondaryClick = _isSecondaryClick(event);
       if (!isSecondaryClick) {
         this._container.dataset.hhPointerDown = 'true';

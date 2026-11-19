@@ -292,12 +292,10 @@
       // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
       // A second tap only counts as a double-tap if it's within 100 pixels of the first (the double-tap distance Android uses). Mouse double-clicks are handled in the mousedown event instead.
       if (event.pointerType !== 'mouse') {
-        const isDoubleTap = this._doubleTapTimeoutId && Math.hypot(event.clientX - this._doubleTapX, event.clientY - this._doubleTapY) <= 100;
-        // Restart the timer on every tap (including double-taps), so each tap is compared to the one before it, like the browser's click count
-        clearTimeout(this._doubleTapTimeoutId);
-        this._doubleTapTimeoutId = setTimeout(() => this._doubleTapTimeoutId = clearTimeout(this._doubleTapTimeoutId), 500);
-        this._doubleTapX = event.clientX;
-        this._doubleTapY = event.clientY;
+        const lastTouch = this._lastTouch;
+        const isDoubleTap = lastTouch && event.timeStamp - lastTouch.time < 500 && Math.hypot(event.clientX - lastTouch.x, event.clientY - lastTouch.y) <= 100;
+        // Save every tap (including double-taps), so each tap is compared to the one before it, like the browser's click count
+        this._lastTouch = { time: event.timeStamp, x: event.clientX, y: event.clientY };
         if (isDoubleTap) return this.deactivateHighlights();
       }
 

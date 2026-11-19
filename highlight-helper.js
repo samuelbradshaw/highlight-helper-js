@@ -310,7 +310,7 @@
     this._container.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
 
     // Mouse down in container
-    // Pointer events don't include the click count (detail is 0 per the Pointer Events spec), so use mousedown, which counts clicks using the operating system's double-click time and distance.
+    // Use mousedown for the click count, since the Pointer Events spec sets detail to 0 on pointer events. The count follows the operating system's double-click time and distance.
     const respondToMouseDown = (event) => {
       // Deactivate highlights and cancel the tap on double-click (see double-tap comment in pointerdown event)
       if (this._pointerType === 'mouse' && !_isSecondaryClick(event) && event.detail > 1) {

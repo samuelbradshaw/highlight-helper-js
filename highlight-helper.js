@@ -258,8 +258,8 @@
 
     // Pointer down in container
     const respondToPointerDown = (event) => {
-      // Ignore a mouse press shortly after a touch. Long-pressing a link in iOS Safari cancels the touch, then sends a mouse press with no pointerup after it.
-      if (event.pointerType === 'mouse' && this._lastTouch && event.timeStamp - this._lastTouch.time < 1000) return;
+      // Ignore a mouse press shortly after a cancelled touch. Long-pressing a link in iOS Safari cancels the touch, then sends a mouse press with no pointerup after it.
+      if (event.pointerType === 'mouse' && this._touchCancelTime && event.timeStamp - this._touchCancelTime < 1000) return;
 
       const isSecondaryClick = _isSecondaryClick(event);
       if (!isSecondaryClick) {
@@ -362,6 +362,7 @@
 
     // Pointer up or cancel in window
     const respondToWindowPointerUp = (event) => {
+      if (event.type === 'pointercancel' && (event.pointerType === 'touch' || event.pointerType === 'pen')) this._touchCancelTime = event.timeStamp;
       const selection = globalThis.getSelection();
       if (selection.type === 'Range' && this._activeHighlightId && this._getSelectionContainer() === this._container) {
         const adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);

@@ -258,8 +258,15 @@
 
     // Pointer down in container
     const respondToPointerDown = (event) => {
-      const isSecondaryClick = (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey);
-      if (!isSecondaryClick) this._container.dataset.hhPointerDown = 'true';
+      // Ignore a mouse press shortly after a cancelled touch. Long-pressing a link in iOS Safari cancels the touch, then sends a mouse press with no pointerup after it.
+      if (event.pointerType === 'mouse' && this._touchCancelTime && event.timeStamp - this._touchCancelTime < 1000) return;
+
+      const isSecondaryClick = _isSecondaryClick(event);
+      if (!isSecondaryClick) {
+        this._container.dataset.hhPointerDown = 'true';
+        // Save targets where the press started, so that a hyperlink click is handled the same way as the hh:tap event
+        this._pointerDownTargets = this.getTargetsAtPoint(event.clientX, event.clientY);
+      }
       this._pointerType = event.pointerType;
 
       // Pointer down on a selection handle
@@ -276,28 +283,43 @@
           this._updateSelectionState();
 
           // Check for tap targets so hh:tap can fire if the area around a handle is tapped without dragging (tap result will reset to null if the user starts dragging)
-          this._tapResult = this._checkForTapTargets(event);
+          this._tapResult = this._checkForTapTargets(event, this._pointerDownTargets);
         }
         // Prevent default drag interaction (which would show a thumbnail and drag selected text)
         return event.preventDefault();
       }
 
-      // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
-      if (this._doubleTapTimeoutId) {
-        return this.deactivateHighlights();
-      } else {
-        this._doubleTapTimeoutId = setTimeout(() => this._doubleTapTimeoutId = clearTimeout(this._doubleTapTimeoutId), 500);
-      }
-
       // Return if it's not a regular click
       if (isSecondaryClick) return;
+
+      // Deactivate highlights and return on double-tap. This fixes a bug where double-tapping and holding a word in a highlight in iOS Safari caused the highlight to activate then shrink to the selected word.
+      // A second tap only counts as a double-tap if it's within 100 pixels of the first (the double-tap distance Android uses). Mouse double-clicks are handled in the mousedown event instead.
+      if (event.pointerType !== 'mouse') {
+        const lastTouch = this._lastTouch;
+        const isDoubleTap = lastTouch && event.timeStamp - lastTouch.time < 500 && Math.hypot(event.clientX - lastTouch.x, event.clientY - lastTouch.y) <= 100;
+        // Save every tap (including double-taps), so each tap is compared to the one before it, like the browser's click count
+        this._lastTouch = { time: event.timeStamp, x: event.clientX, y: event.clientY };
+        if (isDoubleTap) return this.deactivateHighlights();
+      }
 
       // Trigger a long-press event if the user doesn't lift their finger within the specified time
       if (options.longPressTimeout) this._longPressTimeoutId = setTimeout(() => respondToLongPress(event), options.longPressTimeout);
 
-      this._tapResult = this._checkForTapTargets(event);
+      this._tapResult = this._checkForTapTargets(event, this._pointerDownTargets);
     }
     this._container.addEventListener('pointerdown', (event) => respondToPointerDown(event), { signal: this._controller.signal });
+
+    // Mouse down in container
+    // Use mousedown for the click count, since the Pointer Events spec sets detail to 0 on pointer events. The count follows the operating system's double-click time and distance.
+    const respondToMouseDown = (event) => {
+      // Deactivate highlights and cancel the tap on double-click (see double-tap comment in pointerdown event)
+      if (this._pointerType === 'mouse' && !_isSecondaryClick(event) && event.detail > 1) {
+        this._tapResult = null;
+        this._longPressTimeoutId = clearTimeout(this._longPressTimeoutId);
+        this.deactivateHighlights();
+      }
+    }
+    this._container.addEventListener('mousedown', (event) => respondToMouseDown(event), { signal: this._controller.signal });
 
     // Selection handle drag (this function is added as an event listener on pointerdown, and removed on pointerup)
     const respondToHandleDrag = (event) => {
@@ -340,6 +362,7 @@
 
     // Pointer up or cancel in window
     const respondToWindowPointerUp = (event) => {
+      if (event.type === 'pointercancel' && (event.pointerType === 'touch' || event.pointerType === 'pen')) this._touchCancelTime = event.timeStamp;
       const selection = globalThis.getSelection();
       if (selection.type === 'Range' && this._activeHighlightId && this._getSelectionContainer() === this._container) {
         const adjustedSelectionRange = this._snapRangeToBoundaries(selection.getRangeAt(0), selection.anchorNode);
@@ -401,7 +424,11 @@
       hyperlinkElement.addEventListener('click', (event) => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         this.deactivateHighlights();
-        if (!this._allowHyperlinkClick) event.preventDefault();
+        // Keyboard and screen reader clicks (and activateHyperlink()) have a detail of 0. They target the link directly, so the browser can open it.
+        if (event.detail === 0) return;
+        // If a highlight (or its wrapper) overlaps the link where the press started, the app decides what to do in response to the hh:tap event
+        const targets = this._pointerDownTargets;
+        if (targets?.highlights.length > 0 || targets?.wrappers.length > 0) event.preventDefault();
       }, { signal: this._controller.signal });
     }
 
@@ -923,9 +950,7 @@
   // Activate a link by index
   Highlighter.prototype.activateHyperlink = function (index) {
     this.deactivateHighlights();
-    this._allowHyperlinkClick = true;
     this._hyperlinksByIndex[index].hyperlinkElement.click();
-    this._allowHyperlinkClick = false;
   }
 
   // Deactivate any highlights that are currently active/selected
@@ -1074,10 +1099,9 @@
 
   /********************** Private Methods **********************/
 
-  // Check if the tap hits any highlights, wrappers, or links
-  Highlighter.prototype._checkForTapTargets = function (pointerEvent) {
+  // Build the hh:tap event detail from the highlights, wrappers, and links where the press started
+  Highlighter.prototype._checkForTapTargets = function (pointerEvent, targets) {
     if (!pointerEvent) return;
-    const targets = this.getTargetsAtPoint(pointerEvent.clientX, pointerEvent.clientY);
     return {
       ...targets,
       isLongPress: null,
@@ -2080,6 +2104,11 @@
   // Check if two ranges are roughly the same
   function _rangesEqual(range1, range2) {
     return range1 && range2 && range1.compareBoundaryPoints(Range.START_TO_START, range2) === 0 && range1.compareBoundaryPoints(Range.END_TO_END, range2) === 0;
+  }
+
+  // Check if a press isn't a regular click or tap: a non-primary button, a modifier key, or a touch while another finger is already down
+  function _isSecondaryClick(event) {
+    return event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isPrimary === false;
   }
 
   // Check if a point is in a DOMRect

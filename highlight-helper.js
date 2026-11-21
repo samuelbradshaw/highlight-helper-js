@@ -57,20 +57,6 @@
     this._svgActiveOverlay = this._additionsDiv.querySelector('[data-hh-svg-active-overlay]');
     this._dragHandles = this._additionsDiv.querySelectorAll('[data-hh-handle]');
 
-    // Check for hyperlinks on the page
-    this._hyperlinkElements = this._container.getElementsByTagName('a');
-    this._hyperlinksByIndex = {}
-    for (let hyp = 0; hyp < this._hyperlinkElements.length; hyp++) {
-      const hyperlink = this._hyperlinkElements[hyp];
-      hyperlink.dataset.hhIndex = hyp;
-      this._hyperlinksByIndex[hyp] = {
-        'index': hyp,
-        'text': hyperlink.innerHTML,
-        'url': hyperlink.href,
-        'hyperlinkElement': hyperlink,
-      }
-    }
-
     this._highlightsById = {};
     this._wrapperElements = new Map();
     this._container.dataset.hhContainer = '';
@@ -419,18 +405,17 @@
       handleHoverEvent(event);
     }, { signal: this._controller.signal });
 
-    // Hyperlink click (for each hyperlink in container)
-    for (const hyperlinkElement of this._hyperlinkElements) {
-      hyperlinkElement.addEventListener('click', (event) => {
-        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-        this.deactivateHighlights();
-        // Keyboard and screen reader clicks (and activateHyperlink()) have a detail of 0. They target the link directly, so the browser can open it.
-        if (event.detail === 0) return;
-        // If a highlight (or its wrapper) overlaps the link where the press started, the app decides what to do in response to the hh:tap event
-        const targets = this._pointerDownTargets;
-        if (targets?.highlights.length > 0 || targets?.wrappers.length > 0) event.preventDefault();
-      }, { signal: this._controller.signal });
-    }
+    // Hyperlink click (one listener for the container, so links added after setup are included)
+    this._container.addEventListener('click', (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (!this._getHyperlinkElement(event.target)) return;
+      this.deactivateHighlights();
+      // Keyboard and screen reader clicks (and activateHyperlink()) have a detail of 0. They target the link directly, so the browser can open it.
+      if (event.detail === 0) return;
+      // If a highlight (or its wrapper) overlaps the link where the press started, the app decides what to do in response to the hh:tap event
+      const targets = this._pointerDownTargets;
+      if (targets?.highlights.length > 0 || targets?.wrappers.length > 0) event.preventDefault();
+    }, { signal: this._controller.signal });
 
     // Container resize (debounced)
     let computedStyle = globalThis.getComputedStyle(this._container);
@@ -949,8 +934,10 @@
 
   // Activate a link by index
   Highlighter.prototype.activateHyperlink = function (index) {
+    const hyperlinkElement = this._getHyperlinkElements()[index];
+    if (!hyperlinkElement) return;
     this.deactivateHighlights();
-    this._hyperlinksByIndex[index].hyperlinkElement.click();
+    hyperlinkElement.click();
   }
 
   // Deactivate any highlights that are currently active/selected
@@ -995,7 +982,7 @@
   Highlighter.prototype.getTargetsAtPoint = function (clientX, clientY) {
     const highlightIds = new Set();
     const wrappers = [];
-    const hyperlinks = [];
+    const hyperlinkElements = [];
     const wrapperElements = new Set();
     const targetElements = document.elementsFromPoint(clientX, clientY);
     for (const element of targetElements) {
@@ -1011,10 +998,11 @@
           highlight: this._highlightsById[wrapper.dataset.hhHighlightId],
         });
         wrapperElements.add(wrapper);
-      } else if (element.matches('a') && element.dataset.hhIndex) {
-        hyperlinks.push(this._hyperlinksByIndex[element.dataset.hhIndex]);
+      } else if (element.matches(_hyperlinkSelector)) {
+        hyperlinkElements.push(element);
       }
     }
+    const hyperlinks = this._getHyperlinkInfo(hyperlinkElements);
     this._additionsRect = this._additionsDiv.getBoundingClientRect();
     const x = clientX - this._additionsRect.left;
     const y = clientY - this._additionsRect.top;
@@ -1109,6 +1097,29 @@
       activeHighlightId: this._activeHighlightId,
       nativeEvent: pointerEvent,
     };
+  }
+
+  // Get the hyperlinks in the container, in page order
+  Highlighter.prototype._getHyperlinkElements = function () {
+    return this._container.querySelectorAll(_hyperlinkSelector);
+  }
+
+  // Get the hyperlink that contains an element (or is the element), if it's one of the container's hyperlinks
+  Highlighter.prototype._getHyperlinkElement = function (element) {
+    const hyperlinkElement = element.closest('a');
+    return hyperlinkElement && this._container.contains(hyperlinkElement) && hyperlinkElement.matches(_hyperlinkSelector) ? hyperlinkElement : null;
+  }
+
+  // Build info for hyperlinks on demand, to avoid stale references to added or removed links
+  Highlighter.prototype._getHyperlinkInfo = function (hyperlinkElements) {
+    if (hyperlinkElements.length === 0) return [];
+    const allHyperlinkElements = Array.from(this._getHyperlinkElements());
+    return hyperlinkElements.map(hyperlinkElement => ({
+      index: allHyperlinkElements.indexOf(hyperlinkElement),
+      text: hyperlinkElement.innerHTML,
+      url: hyperlinkElement.href,
+      hyperlinkElement,
+    }));
   }
 
   // Compare new highlight information to old highlight information, returning an object with the properties that changed
@@ -2163,6 +2174,8 @@
   }
 
   // Default options
+  // Links in wrappers and in HighlightHelper.js additions aren't counted as hyperlinks
+  const _hyperlinkSelector = 'a:not([data-hh-wrapper] a, [data-hh-additions] a)';
   const _defaultColor = 'yellow';
   const _defaultStyle = 'fill';
   const _defaultOptions = {

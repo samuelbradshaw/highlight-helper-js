@@ -130,7 +130,7 @@ You can also install it using [npm](https://www.npmjs.com/package/@samuelbradsha
 - **activateHighlight(highlightId)** – Activate the specified highlight (i.e. enable it for editing). Only one highlight can be active at a time (because it's tied to text selection, and there can only be one text selection on a page). This is usually called in response to an `hh:tap` event. Parameters:
     - **highlightId** – The `highlightId` of the highlight to activate.
 - **activateHyperlink(index)** – Activate the specified hyperlink (i.e. open the link). A link opens automatically when it's clicked, unless a highlight (or its wrapper) overlaps it where the click or tap started. Overlaps need to be handled manually in response to the `hh:tap` event. Keyboard and screen reader clicks always open the link. Parameters:
-    - **index** – The 0-based index of the link, relative to other links in the container.
+    - **index** – The 0-based index of the link, relative to other links in the container (not counting links in wrappers). Links added after setup are included, so indexes can change when links are added or removed. Use the `index` from a recent `hh:tap` or `hh:hover` event.
 - **deactivateHighlights(removeSelectionRanges = true, redraw = true)** – Deactivate the active highlight, if there is one. Highlights are deactivated automatically if the user taps away. Parameters:
     - **removeSelectionRanges** – Boolean. Indicates whether text selection should be cleared. Default: `true`.
     - **redraw** – Boolean. Indicates whether the highlight should be redrawn. Default: `true`.
@@ -263,7 +263,6 @@ Differentiating attributes:
 - **@data-hh-style** (on highlight and wrapper elements) – style name.
 - **@data-hh-wrapper** (on highlight and wrapper elements) – wrapper name.
 - **@data-hh-position** (on mark highlight and wrapper elements) – indicates if the element is at the `start` or `end` of the highlight, or both (`start end`).
-- **@data-hh-index** (on hyperlink) – 0-based index of the hyperlink.
 - **@data-hh-side** (on drag handle) – indicates if the handle is `left` or `right`.
 - **@data-hh-wrapper-hash** (on wrapper elements) – used internally to check if a wrapper needs to be replaced with a different wrapper.
 

@@ -2147,9 +2147,10 @@
   const _reWhitespaceDash = /\s|\p{Pd}/u;
   const _reNonWhitespaceDash = /[^\s|\p{Pd}]/u;
 
-  // Workaround to allow programmatic text selection on tap in iOS Safari
+  // Workaround to allow programmatic text selection on older versions of iOS Safari (pre-26.1).
+  // Text selection on tap is a programmatic selection, and doesn't show the iOS selection UI (handles and blue overlay) unless the page is already in focus. This code brings the page into focus in the tap handler. supportsCaretPositionFromPoint is true on Safari 26.2, so it can be used to detect newer Safari versions.
   // See https://stackoverflow.com/a/79261423/1349044
-  if (isTouchDevice && isWebKit) {
+  if (isTouchDevice && isWebKit && !supportsCaretPositionFromPoint) {
     const tempInput = document.createElement('input');
     tempInput.style.position = 'fixed';
     tempInput.style.top = 0;
@@ -2159,18 +2160,32 @@
     tempInput.inputMode = 'none'; // Don't show keyboard
     tempInput.tabIndex = -1; // Prevent user from tabbing to input
     tempInput.ariaHidden = 'true'; // Hide from screen readers
-    const initializeSelection = (event) => {
-      if (document.readyState !== 'complete') return setTimeout(initializeSelection, 20);
+    const initializeSelection = () => {
       if (!tempInput.parentElement) document.body.append(tempInput);
+      const previouslyFocusedElement = document.activeElement;
       tempInput.focus();
       setTimeout(() => {
         tempInput.blur();
+        // Put focus back where it was, unless something else took focus in the meantime
+        if (previouslyFocusedElement !== document.body && previouslyFocusedElement?.isConnected && document.activeElement === document.body) {
+          previouslyFocusedElement.focus({ preventScroll: true });
+        }
       }, 100);
     }
-    initializeSelection();
-    document.addEventListener('visibilitychange', (event) => {
-      if (document.visibilityState === 'visible') initializeSelection();
+    let needsReinitialization = true;
+    let lastPointerDownTime = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') needsReinitialization = true;
     });
+    document.addEventListener('pointerdown', (event) => {
+      lastPointerDownTime = event.timeStamp;
+    }, { capture: true });
+    document.addEventListener('pointerup', (event) => {
+      // Ignore mouse clicks, taps before the page finishes loading, and short screen reader clicks
+      if (!needsReinitialization || event.pointerType !== 'touch' || document.readyState !== 'complete' || !event.target.closest?.('[data-hh-container]') || event.timeStamp - lastPointerDownTime < 10) return;
+      needsReinitialization = false;
+      initializeSelection();
+    }, { capture: true });
   }
 
   // Default options
